@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/lessons/$day")({
+export const Route = createFileRoute("/lessons/")({
   component: LessonPage,
 });
 
