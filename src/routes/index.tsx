@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Sparkles, BookOpen, Code2, Bug, FileText, Briefcase, Users, PlayCircle, MessageSquare, ClipboardCheck, Database, Globe, Search, Layers, Target, LogIn } from "lucide-react";
+import { ArrowRight, Sparkles, BookOpen, Code2, Bug, FileText, Briefcase, Users, PlayCircle, MessageSquare, ClipboardCheck, Database, Globe, Search, Layers, Target, LogIn, CheckCircle2, GraduationCap, Rocket, Heart } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
 import heroQa from "@/assets/hero-qa.png";
 
 export const Route = createFileRoute("/")({
@@ -26,46 +27,69 @@ const program = [
   { day: "День 14", title: "Итоговая практика", icon: Target, desc: "Закрепляем всё на реальном мини-проекте" },
 ];
 
-const howSteps = [
-  { icon: PlayCircle, title: "Видео-уроки", desc: "Каждый день — короткий понятный урок без воды" },
-  { icon: ClipboardCheck, title: "Практика", desc: "Закрепляем теорию на реальных примерах" },
-  { icon: MessageSquare, title: "Поддержка", desc: "Можно задавать вопросы, тебя не оставят одного" },
-  { icon: Target, title: "Итоговый проект", desc: "Пробуешь себя в роли тестировщика" },
+const benefits = [
+  { icon: PlayCircle, title: "14 понятных уроков", desc: "Короткие видео без воды" },
+  { icon: ClipboardCheck, title: "Практические задания", desc: "Закрепляешь теорию руками" },
+  { icon: MessageSquare, title: "Поддержка в чате", desc: "Наставник рядом, когда нужен" },
+  { icon: Target, title: "Итоговый мини-проект", desc: "Пробуешь себя в роли тестировщика" },
+  { icon: Rocket, title: "Подготовка к работе", desc: "Резюме и первое собеседование" },
 ];
 
 function LandingPage() {
+  const { user } = useAuth();
+  const name = user
+    ? ((user.user_metadata?.full_name as string | undefined) ?? user.email?.split("@")[0] ?? "друг")
+    : null;
+
   return (
     <div className="min-h-screen flex flex-col">
       <SiteHeader />
 
-      {/* HERO */}
+      {/* HERO — welcome to platform */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10" style={{ background: "var(--gradient-accent)" }} />
         <div className="absolute -top-32 -right-32 -z-10 h-[520px] w-[520px] rounded-full bg-primary/10 blur-3xl" />
         <div className="container-page pt-16 pb-20 md:pt-24 md:pb-28 grid lg:grid-cols-[1.1fr_0.9fr] gap-12 items-center">
           <div className="animate-fade-up">
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              Интенсивный курс • 14 дней
+              <Heart className="h-3.5 w-3.5 text-primary" />
+              {user ? `Рад видеть тебя, ${name} 👋` : "Платформа обучения QA Start"}
             </div>
             <h1 className="mt-6 text-4xl md:text-6xl font-extrabold leading-[1.05] tracking-tight">
-              <span className="text-gradient-brand">Интенсивный 2-недельный курс</span><br />
-              по тестированию ПО для новичков
+              <span className="text-gradient-brand">Твой путь в тестирование</span><br />
+              начинается здесь
             </h1>
             <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-xl">
-              Интенсивный курс по тестированию для новичков. Попробуй себя в IT и пойми, подходит ли тебе профессия тестировщика — спокойно, понятно и без давления.
+              14 дней практики, видеоуроки, поддержка наставника и итоговый проект. Всё, чтобы уверенно попробовать себя в QA.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
-              <Button asChild variant="hero" size="xl">
-                <Link to="/auth">
-                  Начать обучение <ArrowRight className="h-5 w-5" />
-                </Link>
-              </Button>
-              <Button asChild variant="soft" size="xl">
-                <Link to="/auth">
-                  <LogIn className="h-5 w-5" /> Войти в кабинет
-                </Link>
-              </Button>
+              {user ? (
+                <>
+                  <Button asChild variant="hero" size="xl">
+                    <Link to="/dashboard">
+                      Продолжить обучение <ArrowRight className="h-5 w-5" />
+                    </Link>
+                  </Button>
+                  <Button asChild variant="soft" size="xl">
+                    <Link to="/dashboard">
+                      <PlayCircle className="h-5 w-5" /> Готов начать первый урок?
+                    </Link>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button asChild variant="hero" size="xl">
+                    <Link to="/auth">
+                      Перейти к обучению <ArrowRight className="h-5 w-5" />
+                    </Link>
+                  </Button>
+                  <Button asChild variant="soft" size="xl">
+                    <Link to="/auth">
+                      <LogIn className="h-5 w-5" /> Войти
+                    </Link>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
@@ -75,7 +99,7 @@ function LandingPage() {
               <div className="absolute inset-0 rounded-[2.5rem] bg-gradient-to-br from-primary/5 to-primary/0 border border-border" />
               <img
                 src={heroQa}
-                alt="Иллюстрация QA-инженера с ноутбуком"
+                alt="Иллюстрация старта обучения QA"
                 width={520}
                 height={520}
                 className="relative z-10 w-full h-full object-contain animate-float-slow"
@@ -85,21 +109,45 @@ function LandingPage() {
         </div>
       </section>
 
-      {/* HOW */}
-      <section id="how" className="py-20 md:py-28">
+      {/* WELCOME emotional block */}
+      <section className="pb-4">
+        <div className="container-page">
+          <div className="rounded-3xl border border-border bg-card p-8 md:p-10 shadow-[var(--shadow-soft)] flex flex-col md:flex-row items-start md:items-center gap-6">
+            <div className="h-14 w-14 shrink-0 rounded-2xl bg-primary-soft text-primary flex items-center justify-center">
+              <GraduationCap className="h-7 w-7" />
+            </div>
+            <div className="flex-1">
+              <h2 className="font-display text-2xl md:text-3xl font-extrabold tracking-tight">
+                Рад видеть тебя 👋
+              </h2>
+              <p className="mt-2 text-muted-foreground text-base md:text-lg">
+                Сегодня отличный день начать путь в IT. Платформа уже всё подготовила — остаётся только сделать первый шаг.
+              </p>
+            </div>
+            <Button asChild variant="hero" size="lg" className="shrink-0">
+              <Link to={user ? "/dashboard" : "/auth"}>
+                {user ? "В кабинет" : "Начать"} <ArrowRight className="h-5 w-5" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* BENEFITS — what's inside */}
+      <section id="how" className="py-20 md:py-24">
         <div className="container-page">
           <SectionHead
-            badge="Как проходит обучение"
-            title="Интенсивный формат обучения"
-            subtitle="Каждый день — новая тема, практика и домашка. Будет насыщенно: придётся приложить усилия, но за 2 недели ты реально попробуешь себя в роли тестировщика."
+            badge="Что внутри"
+            title="Что тебя ждёт внутри"
+            subtitle="Всё для того, чтобы спокойно и уверенно попробовать себя в QA — от первого видео до подготовки к собеседованию."
           />
-          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {howSteps.map((s) => (
-              <div key={s.title} className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-soft)] hover:shadow-[var(--shadow-card)] transition-all">
+          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-5 gap-5">
+            {benefits.map((s) => (
+              <div key={s.title} className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-soft)] hover:shadow-[var(--shadow-card)] hover:-translate-y-1 transition-all">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-soft text-primary">
                   <s.icon className="h-6 w-6" />
                 </div>
-                <h3 className="mt-5 font-display font-bold text-lg">{s.title}</h3>
+                <h3 className="mt-5 font-display font-bold text-base">{s.title}</h3>
                 <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{s.desc}</p>
               </div>
             ))}
@@ -107,31 +155,50 @@ function LandingPage() {
         </div>
       </section>
 
-      {/* PROGRAM */}
+      {/* ROADMAP */}
       <section id="program" className="py-20 md:py-28 bg-[var(--gradient-soft)]">
         <div className="container-page">
           <SectionHead
             badge="14 дней"
-            title="Программа курса"
-            subtitle="Каждый день — новая тема: видео, конспект и небольшая практика, чтобы попробовать себя в роли тестировщика."
+            title="Твой маршрут обучения"
+            subtitle="Каждый день — новая тема, короткое видео и небольшая практика. Двигайся последовательно — и через две недели соберётся полная картина профессии."
           />
-          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {program.map((p, i) => (
-              <div
-                key={p.day}
-                className="group rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)] hover:shadow-[var(--shadow-card)] hover:-translate-y-1 transition-all"
-                style={{ animationDelay: `${i * 30}ms` }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-soft text-primary">
-                    <p.icon className="h-5 w-5" />
+          <div className="mt-12 relative">
+            {/* roadmap line on lg+ */}
+            <div className="hidden lg:block absolute left-0 right-0 top-7 h-px bg-border" />
+            <div className="grid sm:grid-cols-2 lg:grid-cols-7 gap-4">
+              {program.map((p, i) => (
+                <div
+                  key={p.day}
+                  className="group relative rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)] hover:shadow-[var(--shadow-card)] hover:-translate-y-1 transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-soft text-primary">
+                      <p.icon className="h-5 w-5" />
+                    </div>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{p.day}</span>
                   </div>
-                  <span className="text-xs font-semibold text-muted-foreground">{p.day}</span>
+                  <h3 className="mt-4 font-display font-bold text-sm leading-snug">{p.title}</h3>
+                  <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">{p.desc}</p>
+                  <div className="mt-3 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <CheckCircle2 className="h-3 w-3" />
+                    <span>~30–60 мин</span>
+                  </div>
+                  {/* tiny step number */}
+                  <div className="absolute -top-2 -left-2 h-6 w-6 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center shadow-[var(--shadow-glow)]">
+                    {i + 1}
+                  </div>
                 </div>
-                <h3 className="mt-4 font-display font-bold text-lg leading-snug">{p.title}</h3>
-                <p className="mt-1.5 text-sm text-muted-foreground">{p.desc}</p>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-14 flex justify-center">
+            <Button asChild variant="hero" size="xl">
+              <Link to={user ? "/dashboard" : "/auth"}>
+                {user ? "Перейти к урокам" : "Начать с первого дня"} <ArrowRight className="h-5 w-5" />
+              </Link>
+            </Button>
           </div>
         </div>
       </section>
