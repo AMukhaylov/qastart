@@ -20,8 +20,8 @@ export function SiteHeader() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
-          <a href="#how" className="hover:text-foreground transition-colors">Как проходит обучение</a>
-          <a href="#program" className="hover:text-foreground transition-colors">Программа</a>
+          <a href="#how" className="hover:text-foreground transition-colors">Что внутри</a>
+          <a href="#program" className="hover:text-foreground transition-colors">Маршрут обучения</a>
         </nav>
 
         <div className="flex items-center gap-2">
