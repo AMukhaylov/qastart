@@ -104,6 +104,51 @@ function LandingPage() {
                 height={520}
                 className="relative z-10 w-full h-full object-contain animate-float-slow"
               />
+
+              {/* Floating decorative cards */}
+              <div className="absolute top-4 left-2 md:-left-6 z-20 rounded-2xl bg-card border border-border shadow-[var(--shadow-card)] px-4 py-3 flex items-center gap-3 animate-float-slow">
+                <div className="h-9 w-9 rounded-xl bg-primary-soft text-primary flex items-center justify-center">
+                  <Bug className="h-4 w-4" />
+                </div>
+                <div className="leading-tight">
+                  <div className="text-[11px] text-muted-foreground">Найдено багов</div>
+                  <div className="font-display font-bold text-sm">128</div>
+                </div>
+              </div>
+
+              <div className="absolute top-10 -right-2 md:-right-4 z-20 rounded-2xl bg-card border border-border shadow-[var(--shadow-card)] px-4 py-3 flex items-center gap-3 animate-float-slow [animation-delay:1.5s]">
+                <div className="h-9 w-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+                <div className="leading-tight">
+                  <div className="text-[11px] text-muted-foreground">Урок 1</div>
+                  <div className="font-display font-bold text-sm">Завершён</div>
+                </div>
+              </div>
+
+              <div className="absolute bottom-6 -left-2 md:-left-8 z-20 rounded-2xl bg-card border border-border shadow-[var(--shadow-card)] px-4 py-3 flex items-center gap-3 animate-float-slow [animation-delay:0.8s]">
+                <div className="h-9 w-9 rounded-xl bg-primary-soft text-primary flex items-center justify-center">
+                  <Sparkles className="h-4 w-4" />
+                </div>
+                <div className="leading-tight">
+                  <div className="text-[11px] text-muted-foreground">Прогресс</div>
+                  <div className="font-display font-bold text-sm">14 дней</div>
+                </div>
+              </div>
+
+              <div className="absolute bottom-2 right-2 md:-right-6 z-20 rounded-2xl bg-card border border-border shadow-[var(--shadow-card)] px-4 py-3 flex items-center gap-3 animate-float-slow [animation-delay:2.2s]">
+                <div className="h-9 w-9 rounded-xl bg-primary-soft text-primary flex items-center justify-center">
+                  <PlayCircle className="h-4 w-4" />
+                </div>
+                <div className="leading-tight">
+                  <div className="text-[11px] text-muted-foreground">Видео</div>
+                  <div className="font-display font-bold text-sm">14 уроков</div>
+                </div>
+              </div>
+
+              {/* Tiny floating dots */}
+              <div className="absolute top-1/4 -right-8 h-3 w-3 rounded-full bg-primary/60 animate-float-slow [animation-delay:1s] hidden md:block" />
+              <div className="absolute bottom-1/3 -left-10 h-2 w-2 rounded-full bg-primary animate-float-slow [animation-delay:1.8s] hidden md:block" />
             </div>
           </div>
         </div>
