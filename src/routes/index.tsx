@@ -49,8 +49,8 @@ function LandingPage() {
               Интенсивный курс • 14 дней
             </div>
             <h1 className="mt-6 text-4xl md:text-6xl font-extrabold leading-[1.05] tracking-tight">
-              Познакомься с профессией <br />
-              <span className="text-gradient-brand">QA Engineer</span> за 2 недели
+              <span className="text-gradient-brand">Интенсивный 2-недельный курс</span><br />
+              по тестированию ПО для новичков
             </h1>
             <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-xl">
               Интенсивный курс по тестированию для новичков. Попробуй себя в IT и пойми, подходит ли тебе профессия тестировщика — спокойно, понятно и без давления.
@@ -90,8 +90,8 @@ function LandingPage() {
         <div className="container-page">
           <SectionHead
             badge="Как проходит обучение"
-            title="Спокойный вход в профессию"
-            subtitle="Каждый день — небольшой шаг. Ты сам решаешь, в каком темпе двигаться, и пробуешь, нравится ли тебе тестировать."
+            title="Интенсивный формат обучения"
+            subtitle="Каждый день — новая тема, практика и домашка. Будет насыщенно: придётся приложить усилия, но за 2 недели ты реально попробуешь себя в роли тестировщика."
           />
           <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {howSteps.map((s) => (
@@ -132,32 +132,6 @@ function LandingPage() {
                 <p className="mt-1.5 text-sm text-muted-foreground">{p.desc}</p>
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="py-20 md:py-28">
-        <div className="container-page">
-          <div className="rounded-[2rem] p-10 md:p-16 text-center shadow-[var(--shadow-glow)]" style={{ background: "var(--gradient-hero)" }}>
-            <h2 className="text-3xl md:text-5xl font-extrabold text-primary-foreground tracking-tight">
-              Готов попробовать себя в QA?
-            </h2>
-            <p className="mt-4 text-primary-foreground/80 max-w-xl mx-auto">
-              Заходи в личный кабинет и начинай первый урок — спокойно, в своём темпе.
-            </p>
-            <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-              <Button asChild size="xl" className="bg-background text-primary hover:bg-background/90 shadow-2xl">
-                <Link to="/auth">
-                  Начать обучение <ArrowRight className="h-5 w-5" />
-                </Link>
-              </Button>
-              <Button asChild size="xl" variant="ghost" className="text-primary-foreground hover:bg-white/10 hover:text-primary-foreground">
-                <Link to="/auth">
-                  <LogIn className="h-5 w-5" /> Войти в кабинет
-                </Link>
-              </Button>
-            </div>
           </div>
         </div>
       </section>
