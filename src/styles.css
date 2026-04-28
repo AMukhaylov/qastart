@@ -4,6 +4,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* QA School — VK-inspired EdTech design system
+ * Brand: vibrant electric blue (#2D2BFF) on white
+ * Fonts: Manrope (display) + Inter (body)
+ */
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap");
+
 /*
  * Design system definition.
  *
