@@ -220,6 +220,40 @@ function LandingPage() {
         </div>
       </section>
 
+      {/* MENTOR */}
+      <section id="mentor" className="py-20 md:py-24">
+        <div className="container-page">
+          <SectionHead badge="Наставник" title="О наставнике" subtitle="Курс ведёт практикующий инженер, который помогал десяткам новичков войти в профессию." />
+          <div className="mt-12 max-w-3xl mx-auto">
+            <div className="rounded-3xl border border-border bg-card p-8 md:p-10 shadow-[var(--shadow-card)] flex flex-col md:flex-row items-center md:items-start gap-8">
+              <div className="relative shrink-0">
+                <div className="h-28 w-28 md:h-32 md:w-32 rounded-3xl bg-[var(--gradient-accent)] border border-border flex items-center justify-center">
+                  <span className="font-display font-extrabold text-4xl text-gradient-brand">АМ</span>
+                </div>
+                <div className="absolute -bottom-2 -right-2 h-9 w-9 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shadow-[var(--shadow-glow)]">
+                  <GraduationCap className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="flex-1 text-center md:text-left">
+                <h3 className="font-display font-extrabold text-2xl md:text-3xl">Артур Мухайлов</h3>
+                <p className="mt-2 text-muted-foreground">Senior QA Engineer • 8+ лет в тестировании • Ментор</p>
+                <div className="mt-5 flex flex-wrap justify-center md:justify-start gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft text-primary px-3 py-1 text-xs font-semibold">
+                    <Award className="h-3.5 w-3.5" /> 8+ лет опыта
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft text-primary px-3 py-1 text-xs font-semibold">
+                    <Users className="h-3.5 w-3.5" /> Сотни студентов
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft text-primary px-3 py-1 text-xs font-semibold">
+                    <MessageSquare className="h-3.5 w-3.5" /> На связи в чате
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <SiteFooter />
     </div>
   );
