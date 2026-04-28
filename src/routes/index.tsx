@@ -5,6 +5,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import heroQa from "@/assets/hero-qa.png";
+import mentorPhoto from "@/assets/mentor-mukhailov.jpg";
 
 export const Route = createFileRoute("/")({
   component: LandingPage,
@@ -227,9 +228,13 @@ function LandingPage() {
           <div className="mt-12 max-w-3xl mx-auto">
             <div className="rounded-3xl border border-border bg-card p-8 md:p-10 shadow-[var(--shadow-card)] flex flex-col md:flex-row items-center md:items-start gap-8">
               <div className="relative shrink-0">
-                <div className="h-28 w-28 md:h-32 md:w-32 rounded-3xl bg-[var(--gradient-accent)] border border-border flex items-center justify-center">
-                  <span className="font-display font-extrabold text-4xl text-gradient-brand">АМ</span>
-                </div>
+                <img
+                  src={mentorPhoto}
+                  alt="Артур Мухайлов — Senior QA Engineer"
+                  width={160}
+                  height={160}
+                  className="h-32 w-32 md:h-40 md:w-40 rounded-3xl object-cover border border-border shadow-[var(--shadow-card)]"
+                />
                 <div className="absolute -bottom-2 -right-2 h-9 w-9 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shadow-[var(--shadow-glow)]">
                   <GraduationCap className="h-4 w-4" />
                 </div>
