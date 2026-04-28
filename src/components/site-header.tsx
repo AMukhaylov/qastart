@@ -32,16 +32,7 @@ export function SiteHeader() {
               </Button>
               <Button variant="ghost" size="sm" onClick={signOut}>Выйти</Button>
             </>
-          ) : (
-            <>
-              <Button asChild variant="ghost" size="sm">
-                <Link to="/auth">Войти</Link>
-              </Button>
-              <Button asChild variant="hero" size="sm">
-                <Link to="/auth">Начать обучение</Link>
-              </Button>
-            </>
-          )}
+          ) : null}
         </div>
       </div>
     </header>

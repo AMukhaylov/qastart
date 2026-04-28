@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Sparkles, BookOpen, Code2, Bug, FileText, Briefcase, Users, PlayCircle, MessageSquare, ClipboardCheck, Database, Globe, Search, Layers, Target, LogIn, GraduationCap, Heart } from "lucide-react";
+import { ArrowRight, Sparkles, BookOpen, Code2, Bug, FileText, Briefcase, Users, PlayCircle, MessageSquare, ClipboardCheck, Database, Globe, Search, Layers, Target, LogIn, Heart, Video } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ const program = [
 const benefits = [
   { icon: PlayCircle, title: "14 понятных уроков", desc: "Короткие видео без воды" },
   { icon: ClipboardCheck, title: "Практические задания", desc: "Закрепляешь теорию руками" },
+  { icon: Video, title: "2 групповые встречи", desc: "Живая практика и разбор вопросов" },
   { icon: MessageSquare, title: "Поддержка в чате", desc: "Наставник рядом, когда нужен" },
   { icon: Target, title: "Итоговый мини-проект", desc: "Пробуешь себя в роли тестировщика" },
 ];
@@ -52,14 +53,14 @@ function LandingPage() {
           <div className="animate-fade-up">
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
               <Heart className="h-3.5 w-3.5 text-primary" />
-              {user ? `Рад видеть тебя, ${name} 👋` : "Платформа обучения QA Start"}
+              {user ? `Рад видеть тебя, ${name} 👋` : "Интенсивный курс QA Start"}
             </div>
             <h1 className="mt-6 text-4xl md:text-6xl font-extrabold leading-[1.05] tracking-tight">
               <span className="text-gradient-brand">Твой путь в тестирование</span><br />
               начинается здесь
             </h1>
             <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-xl">
-              14 дней практики, видеоуроки, поддержка наставника и итоговый проект. Всё, чтобы уверенно попробовать себя в QA.
+              14 дней практики, видеоуроки, поддержка наставника и итоговый проект. Всё, чтобы попробовать себя в QA.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
               {user ? (
@@ -79,7 +80,7 @@ function LandingPage() {
                 <>
                   <Button asChild variant="hero" size="xl">
                     <Link to="/auth">
-                      Перейти к обучению <ArrowRight className="h-5 w-5" />
+                      Регистрация <ArrowRight className="h-5 w-5" />
                     </Link>
                   </Button>
                   <Button asChild variant="soft" size="xl">
@@ -108,32 +109,13 @@ function LandingPage() {
         </div>
       </section>
 
-      {/* WELCOME emotional block */}
-      <section className="pb-4">
-        <div className="container-page">
-          <div className="rounded-3xl border border-border bg-card p-8 md:p-10 shadow-[var(--shadow-soft)] flex flex-col md:flex-row items-start md:items-center gap-6">
-            <div className="h-14 w-14 shrink-0 rounded-2xl bg-primary-soft text-primary flex items-center justify-center">
-              <GraduationCap className="h-7 w-7" />
-            </div>
-            <div className="flex-1">
-              <h2 className="font-display text-2xl md:text-3xl font-extrabold tracking-tight">
-                Рад видеть тебя 👋
-              </h2>
-              <p className="mt-2 text-muted-foreground text-base md:text-lg">
-                Сегодня отличный день начать путь в IT. Платформа уже всё подготовила — остаётся только сделать первый шаг.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* BENEFITS — what's inside */}
       <section id="how" className="py-20 md:py-24">
         <div className="container-page">
           <SectionHead
             badge="Что внутри"
             title="Что тебя ждёт внутри"
-            subtitle="Всё для того, чтобы спокойно и уверенно попробовать себя в QA — от первого видео до подготовки к собеседованию."
+            subtitle="Всё сделано для того, чтобы ты уверенно попробовал себя в QA — от первого урока до итогового проекта."
           />
           <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-5 gap-5">
             {benefits.map((s) => (
@@ -183,13 +165,6 @@ function LandingPage() {
             </div>
           </div>
 
-          <div className="mt-14 flex justify-center">
-            <Button asChild variant="hero" size="xl">
-              <Link to={user ? "/dashboard" : "/auth"}>
-                {user ? "Перейти к урокам" : "Начать с первого дня"} <ArrowRight className="h-5 w-5" />
-              </Link>
-            </Button>
-          </div>
         </div>
       </section>
 
