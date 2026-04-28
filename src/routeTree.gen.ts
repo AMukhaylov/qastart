@@ -16,6 +16,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as LessonsDayRouteImport } from './routes/lessons.$day'
+import { Route as AdminStudentsRouteImport } from './routes/admin.students'
 import { Route as AdminLessonsRouteImport } from './routes/admin.lessons'
 import { Route as AdminHomeworkRouteImport } from './routes/admin.homework'
 
@@ -54,6 +55,11 @@ const LessonsDayRoute = LessonsDayRouteImport.update({
   path: '/lessons/$day',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminStudentsRoute = AdminStudentsRouteImport.update({
+  id: '/students',
+  path: '/students',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminLessonsRoute = AdminLessonsRouteImport.update({
   id: '/lessons',
   path: '/lessons',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/admin/homework': typeof AdminHomeworkRoute
   '/admin/lessons': typeof AdminLessonsRoute
+  '/admin/students': typeof AdminStudentsRoute
   '/lessons/$day': typeof LessonsDayRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/admin/homework': typeof AdminHomeworkRoute
   '/admin/lessons': typeof AdminLessonsRoute
+  '/admin/students': typeof AdminStudentsRoute
   '/lessons/$day': typeof LessonsDayRoute
   '/admin': typeof AdminIndexRoute
 }
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/admin/homework': typeof AdminHomeworkRoute
   '/admin/lessons': typeof AdminLessonsRoute
+  '/admin/students': typeof AdminStudentsRoute
   '/lessons/$day': typeof LessonsDayRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/admin/homework'
     | '/admin/lessons'
+    | '/admin/students'
     | '/lessons/$day'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/admin/homework'
     | '/admin/lessons'
+    | '/admin/students'
     | '/lessons/$day'
     | '/admin'
   id:
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/admin/homework'
     | '/admin/lessons'
+    | '/admin/students'
     | '/lessons/$day'
     | '/admin/'
   fileRoutesById: FileRoutesById
@@ -193,6 +205,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LessonsDayRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/students': {
+      id: '/admin/students'
+      path: '/students'
+      fullPath: '/admin/students'
+      preLoaderRoute: typeof AdminStudentsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/lessons': {
       id: '/admin/lessons'
       path: '/lessons'
@@ -213,12 +232,14 @@ declare module '@tanstack/react-router' {
 interface AdminRouteChildren {
   AdminHomeworkRoute: typeof AdminHomeworkRoute
   AdminLessonsRoute: typeof AdminLessonsRoute
+  AdminStudentsRoute: typeof AdminStudentsRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminHomeworkRoute: AdminHomeworkRoute,
   AdminLessonsRoute: AdminLessonsRoute,
+  AdminStudentsRoute: AdminStudentsRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
