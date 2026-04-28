@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Sparkles, BookOpen, Code2, Bug, FileText, Briefcase, Users, PlayCircle, MessageSquare, ClipboardCheck, Database, Globe, Search, Layers, Target, LogIn, CheckCircle2, GraduationCap, Rocket, Heart } from "lucide-react";
+import { ArrowRight, Sparkles, BookOpen, Code2, Bug, FileText, Briefcase, Users, PlayCircle, MessageSquare, ClipboardCheck, Database, Globe, Search, Layers, Target, LogIn, GraduationCap, Heart } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
@@ -23,8 +23,8 @@ const program = [
   { day: "День 10", title: "SQL для тестировщика", icon: Database, desc: "SELECT, JOIN, проверка данных в БД" },
   { day: "День 11", title: "Работа с DevTools", icon: Search, desc: "Network, Console, проверка фронтенда" },
   { day: "День 12", title: "Agile / Scrum / Jira", icon: Briefcase, desc: "Командные процессы и трекеры задач" },
-  { day: "День 13", title: "Как искать первую работу QA", icon: FileText, desc: "Резюме, отклики, подготовка к собеседованию" },
-  { day: "День 14", title: "Итоговая практика", icon: Target, desc: "Закрепляем всё на реальном мини-проекте" },
+  { day: "День 13", title: "Повторение и разбор ошибок", icon: FileText, desc: "Закрепляем сложные темы на примерах" },
+  { day: "День 14", title: "Итоговая практика", icon: Target, desc: "Собираем всё вместе на мини-проекте" },
 ];
 
 const benefits = [
@@ -32,7 +32,6 @@ const benefits = [
   { icon: ClipboardCheck, title: "Практические задания", desc: "Закрепляешь теорию руками" },
   { icon: MessageSquare, title: "Поддержка в чате", desc: "Наставник рядом, когда нужен" },
   { icon: Target, title: "Итоговый мини-проект", desc: "Пробуешь себя в роли тестировщика" },
-  { icon: Rocket, title: "Подготовка к работе", desc: "Резюме и первое собеседование" },
 ];
 
 function LandingPage() {
@@ -124,11 +123,6 @@ function LandingPage() {
                 Сегодня отличный день начать путь в IT. Платформа уже всё подготовила — остаётся только сделать первый шаг.
               </p>
             </div>
-            <Button asChild variant="hero" size="lg" className="shrink-0">
-              <Link to={user ? "/dashboard" : "/auth"}>
-                {user ? "В кабинет" : "Начать"} <ArrowRight className="h-5 w-5" />
-              </Link>
-            </Button>
           </div>
         </div>
       </section>
@@ -180,10 +174,6 @@ function LandingPage() {
                   </div>
                   <h3 className="mt-4 font-display font-bold text-sm leading-snug">{p.title}</h3>
                   <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">{p.desc}</p>
-                  <div className="mt-3 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                    <CheckCircle2 className="h-3 w-3" />
-                    <span>~30–60 мин</span>
-                  </div>
                   {/* tiny step number */}
                   <div className="absolute -top-2 -left-2 h-6 w-6 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center shadow-[var(--shadow-glow)]">
                     {i + 1}
