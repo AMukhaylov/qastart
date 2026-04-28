@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Sparkles, BookOpen, Code2, Bug, FileText, Briefcase, Users, PlayCircle, MessageSquare, ClipboardCheck, Database, Globe, Search, Layers, Target, LogIn, CheckCircle2, GraduationCap, Rocket, Heart } from "lucide-react";
+import { ArrowRight, Sparkles, BookOpen, Code2, Bug, FileText, Briefcase, Users, PlayCircle, MessageSquare, ClipboardCheck, Database, Globe, Search, Layers, Target, LogIn, GraduationCap, Heart } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,6 @@ const benefits = [
   { icon: ClipboardCheck, title: "Практические задания", desc: "Закрепляешь теорию руками" },
   { icon: MessageSquare, title: "Поддержка в чате", desc: "Наставник рядом, когда нужен" },
   { icon: Target, title: "Итоговый мини-проект", desc: "Пробуешь себя в роли тестировщика" },
-  { icon: Rocket, title: "Подготовка к работе", desc: "Резюме и первое собеседование" },
 ];
 
 function LandingPage() {
