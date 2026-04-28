@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Sparkles, BookOpen, Code2, Bug, FileText, Briefcase, Users, PlayCircle, MessageSquare, ClipboardCheck, Database, Globe, Search, Layers, Target, LogIn, Heart, Video, CheckCircle2 } from "lucide-react";
+import { ArrowRight, Sparkles, BookOpen, Code2, Bug, FileText, Briefcase, Users, PlayCircle, MessageSquare, ClipboardCheck, Database, Globe, Search, Layers, Target, LogIn, Heart, Video, CheckCircle2, GraduationCap, Award, Sprout, ShieldCheck, UserCheck } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ const benefits = [
   { icon: PlayCircle, title: "14 понятных уроков", desc: "Короткие видео без воды" },
   { icon: ClipboardCheck, title: "Практические задания", desc: "Закрепляешь теорию руками" },
   { icon: Video, title: "2 групповые встречи", desc: "Живая практика и разбор вопросов" },
-  { icon: MessageSquare, title: "Поддержка в чате", desc: "Наставник рядом, когда нужен" },
+  { icon: MessageSquare, title: "Поддержка в чате", desc: "Ответы на вопросы и помощь по заданиям" },
   { icon: Target, title: "Итоговый мини-проект", desc: "Пробуешь себя в роли тестировщика" },
 ];
 
