@@ -62,6 +62,13 @@ function LandingPage() {
             <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-xl">
               14 дней практики, видеоуроки, поддержка наставника и итоговый проект. Всё, чтобы попробовать себя в QA.
             </p>
+            <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5"><Sprout className="h-4 w-4 text-primary" /> Для новичков</span>
+              <span className="text-border">•</span>
+              <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-primary" /> Без опыта</span>
+              <span className="text-border">•</span>
+              <span className="inline-flex items-center gap-1.5"><UserCheck className="h-4 w-4 text-primary" /> С поддержкой наставника</span>
+            </div>
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
               {user ? (
                 <>
