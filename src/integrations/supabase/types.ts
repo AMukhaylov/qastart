@@ -14,6 +14,127 @@ export type Database = {
   }
   public: {
     Tables: {
+      homework_submissions: {
+        Row: {
+          content: string
+          created_at: string
+          feedback: string | null
+          id: string
+          lesson_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: Database["public"]["Enums"]["homework_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          feedback?: string | null
+          id?: string
+          lesson_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["homework_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          feedback?: string | null
+          id?: string
+          lesson_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["homework_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homework_submissions_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lesson_progress: {
+        Row: {
+          completed: boolean
+          completed_at: string | null
+          created_at: string
+          id: string
+          lesson_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          lesson_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed?: boolean
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          lesson_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lesson_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lessons: {
+        Row: {
+          content_md: string
+          created_at: string
+          day_number: number
+          description: string
+          homework_md: string
+          id: string
+          title: string
+          updated_at: string
+          video_url: string | null
+        }
+        Insert: {
+          content_md?: string
+          created_at?: string
+          day_number: number
+          description?: string
+          homework_md?: string
+          id?: string
+          title: string
+          updated_at?: string
+          video_url?: string | null
+        }
+        Update: {
+          content_md?: string
+          created_at?: string
+          day_number?: number
+          description?: string
+          homework_md?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          video_url?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -74,6 +195,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "student"
+      homework_status: "pending" | "approved" | "rejected"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -202,6 +324,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "student"],
+      homework_status: ["pending", "approved", "rejected"],
     },
   },
 } as const
