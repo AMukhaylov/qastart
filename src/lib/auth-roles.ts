@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getCurrentUserRoles } from "@/server/admin-auth.functions";
 
 export type AppRole = "admin" | "student";
 
@@ -14,6 +15,16 @@ function wait(ms: number) {
 
 export async function fetchUserRolesWithRetry(userId: string, attempts = 5): Promise<AppRole[]> {
   let lastError: unknown;
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (accessToken && sessionData.session?.user.id === userId) {
+    try {
+      return await getCurrentUserRoles({ data: { accessToken } });
+    } catch (error) {
+      lastError = error;
+    }
+  }
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", userId);
