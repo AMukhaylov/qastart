@@ -32,6 +32,7 @@ function AdminHomework() {
   const [filter, setFilter] = useState<Status>("pending");
   const [items, setItems] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [feedbacks, setFeedbacks] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -42,36 +43,40 @@ function AdminHomework() {
 
   async function load() {
     setLoading(true);
-    const { data: subs } = await supabase
-      .from("homework_submissions")
-      .select("id,user_id,lesson_id,content,status,feedback,created_at,reviewed_at")
-      .eq("status", filter)
-      .order("created_at", { ascending: false });
+    setLoadError(null);
+    try {
+      const { data: subs, error } = await withTimeout(
+        supabase
+          .from("homework_submissions")
+          .select("id,user_id,lesson_id,content,status,feedback,created_at,reviewed_at")
+          .eq("status", filter)
+          .order("created_at", { ascending: false })
+      );
+      if (error) throw error;
 
-    const list = (subs ?? []) as Submission[];
-    const userIds = Array.from(new Set(list.map((s) => s.user_id)));
-    const lessonIds = Array.from(new Set(list.map((s) => s.lesson_id)));
+      const list = (subs ?? []) as Submission[];
+      const userIds = Array.from(new Set(list.map((s) => s.user_id)));
+      const lessonIds = Array.from(new Set(list.map((s) => s.lesson_id)));
 
-    const [{ data: profiles }, { data: lessons }] = await Promise.all([
-      userIds.length
-        ? supabase.from("profiles").select("id,full_name").in("id", userIds)
-        : Promise.resolve({ data: [] as { id: string; full_name: string | null }[] }),
-      lessonIds.length
-        ? supabase.from("lessons").select("id,day_number,title").in("id", lessonIds)
-        : Promise.resolve({ data: [] as { id: string; day_number: number; title: string }[] }),
-    ]);
+      const [{ data: profiles }, { data: lessons }] = await Promise.all([
+        userIds.length
+          ? withTimeout(supabase.from("profiles").select("id,full_name").in("id", userIds))
+          : Promise.resolve({ data: [] as { id: string; full_name: string | null }[] }),
+        lessonIds.length
+          ? withTimeout(supabase.from("lessons").select("id,day_number,title").in("id", lessonIds))
+          : Promise.resolve({ data: [] as { id: string; day_number: number; title: string }[] }),
+      ]);
 
-    const pMap = new Map((profiles ?? []).map((p) => [p.id, p]));
-    const lMap = new Map((lessons ?? []).map((l) => [l.id, l]));
+      const pMap = new Map((profiles ?? []).map((p) => [p.id, p]));
+      const lMap = new Map((lessons ?? []).map((l) => [l.id, l]));
 
-    setItems(
-      list.map((s) => ({
-        ...s,
-        profile: pMap.get(s.user_id) ?? null,
-        lesson: lMap.get(s.lesson_id) ?? null,
-      }))
-    );
-    setLoading(false);
+      setItems(list.map((s) => ({ ...s, profile: pMap.get(s.user_id) ?? null, lesson: lMap.get(s.lesson_id) ?? null })));
+    } catch {
+      setItems([]);
+      setLoadError("Не удалось загрузить ДЗ. Обнови страницу или попробуй позже.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function review(id: string, status: "approved" | "rejected") {
