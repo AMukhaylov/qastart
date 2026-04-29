@@ -9,22 +9,26 @@ export const Route = createFileRoute("/admin")({
 });
 
 function AdminLayout() {
-  const { user, loading, isAdmin, signOut } = useAuth();
+  const { user, loading, rolesLoading, isAdmin, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || rolesLoading) return;
     if (location.pathname === "/admin/login") return;
     if (!user || !isAdmin) navigate({ to: "/admin/login" });
-  }, [user, isAdmin, loading, navigate]);
+  }, [user, isAdmin, loading, rolesLoading, location.pathname, navigate]);
 
   if (location.pathname === "/admin/login") {
     return <Outlet />;
   }
 
-  if (loading || !user || !isAdmin) {
+  if (loading || rolesLoading) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Загрузка…</div>;
+  }
+
+  if (!user || !isAdmin) {
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Переходим ко входу…</div>;
   }
 
   const tabs = [

@@ -18,15 +18,15 @@ const passwordSchema = z.string().min(6, "Минимум 6 символов").ma
 
 function AdminLoginPage() {
   const navigate = useNavigate();
-  const { user, isAdmin, loading } = useAuth();
+  const { user, isAdmin, loading, rolesLoading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || rolesLoading) return;
     if (user && isAdmin) navigate({ to: "/admin/homework" });
-  }, [user, isAdmin, loading, navigate]);
+  }, [user, isAdmin, loading, rolesLoading, navigate]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();

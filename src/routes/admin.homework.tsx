@@ -27,11 +27,22 @@ type Submission = {
   profile?: { full_name: string | null } | null;
 };
 
+type ProfileMini = { id: string; full_name: string | null };
+type LessonMini = { id: string; day_number: number; title: string };
+
+function withTimeout<T>(query: PromiseLike<T>, ms = 8000): Promise<T> {
+  return Promise.race([
+    Promise.resolve(query),
+    new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error("Request timed out")), ms)),
+  ]);
+}
+
 function AdminHomework() {
   const { user, isAdmin } = useAuth();
   const [filter, setFilter] = useState<Status>("pending");
   const [items, setItems] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [feedbacks, setFeedbacks] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -42,36 +53,42 @@ function AdminHomework() {
 
   async function load() {
     setLoading(true);
-    const { data: subs } = await supabase
-      .from("homework_submissions")
-      .select("id,user_id,lesson_id,content,status,feedback,created_at,reviewed_at")
-      .eq("status", filter)
-      .order("created_at", { ascending: false });
+    setLoadError(null);
+    try {
+      const { data: subs, error } = await withTimeout(
+        supabase
+          .from("homework_submissions")
+          .select("id,user_id,lesson_id,content,status,feedback,created_at,reviewed_at")
+          .eq("status", filter)
+          .order("created_at", { ascending: false })
+      );
+      if (error) throw error;
 
-    const list = (subs ?? []) as Submission[];
-    const userIds = Array.from(new Set(list.map((s) => s.user_id)));
-    const lessonIds = Array.from(new Set(list.map((s) => s.lesson_id)));
+      const list = (subs ?? []) as Submission[];
+      const userIds = Array.from(new Set(list.map((s) => s.user_id)));
+      const lessonIds = Array.from(new Set(list.map((s) => s.lesson_id)));
 
-    const [{ data: profiles }, { data: lessons }] = await Promise.all([
-      userIds.length
-        ? supabase.from("profiles").select("id,full_name").in("id", userIds)
-        : Promise.resolve({ data: [] as { id: string; full_name: string | null }[] }),
-      lessonIds.length
-        ? supabase.from("lessons").select("id,day_number,title").in("id", lessonIds)
-        : Promise.resolve({ data: [] as { id: string; day_number: number; title: string }[] }),
-    ]);
+      const [{ data: profiles }, { data: lessons }] = await Promise.all([
+        userIds.length
+          ? withTimeout(supabase.from("profiles").select("id,full_name").in("id", userIds))
+          : Promise.resolve({ data: [] as ProfileMini[] }),
+        lessonIds.length
+          ? withTimeout(supabase.from("lessons").select("id,day_number,title").in("id", lessonIds))
+          : Promise.resolve({ data: [] as LessonMini[] }),
+      ]);
 
-    const pMap = new Map((profiles ?? []).map((p) => [p.id, p]));
-    const lMap = new Map((lessons ?? []).map((l) => [l.id, l]));
+      const profileRows = (profiles ?? []) as ProfileMini[];
+      const lessonRows = (lessons ?? []) as LessonMini[];
+      const pMap = new Map(profileRows.map((p) => [p.id, { full_name: p.full_name }]));
+      const lMap = new Map(lessonRows.map((l) => [l.id, { day_number: l.day_number, title: l.title }]));
 
-    setItems(
-      list.map((s) => ({
-        ...s,
-        profile: pMap.get(s.user_id) ?? null,
-        lesson: lMap.get(s.lesson_id) ?? null,
-      }))
-    );
-    setLoading(false);
+      setItems(list.map((s): Submission => ({ ...s, profile: pMap.get(s.user_id) ?? null, lesson: lMap.get(s.lesson_id) ?? null })));
+    } catch {
+      setItems([]);
+      setLoadError("Не удалось загрузить ДЗ. Обнови страницу или попробуй позже.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function review(id: string, status: "approved" | "rejected") {
@@ -132,6 +149,10 @@ function AdminHomework() {
       {loading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+      ) : loadError ? (
+        <div className="rounded-2xl border border-border bg-card p-12 text-center text-muted-foreground">
+          {loadError}
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-12 text-center text-muted-foreground">
