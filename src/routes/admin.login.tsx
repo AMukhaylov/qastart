@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { fetchUserRolesWithRetry } from "@/lib/auth-roles";
+import { fetchUserRoles } from "@/lib/auth-roles";
 
 export const Route = createFileRoute("/admin/login")({
   component: AdminLoginPage,
@@ -47,7 +47,7 @@ function AdminLoginPage() {
 
     let hasAdmin = false;
     try {
-      const roles = await fetchUserRolesWithRetry(data.user.id);
+      const roles = await fetchUserRoles(data.user.id, 5, data.session?.access_token);
       hasAdmin = roles.includes("admin");
     } catch {
       setSubmitting(false);

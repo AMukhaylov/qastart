@@ -14,10 +14,14 @@ function wait(ms: number) {
 }
 
 export async function fetchUserRolesWithRetry(userId: string, attempts = 5): Promise<AppRole[]> {
+  return fetchUserRoles(userId, attempts);
+}
+
+export async function fetchUserRoles(userId: string, attempts = 5, explicitAccessToken?: string): Promise<AppRole[]> {
   let lastError: unknown;
 
   const { data: sessionData } = await supabase.auth.getSession();
-  const accessToken = sessionData.session?.access_token;
+  const accessToken = explicitAccessToken ?? sessionData.session?.access_token;
   if (accessToken && sessionData.session?.user.id === userId) {
     try {
       return await getCurrentUserRoles({ data: { accessToken } });
