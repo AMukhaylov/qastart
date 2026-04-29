@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchUserRolesWithRetry, type AppRole } from "@/lib/auth-roles";
 
-type Role = "admin" | "student";
+type Role = AppRole;
 
 interface AuthContextValue {
   user: User | null;
@@ -71,9 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function fetchRoles(userId: string) {
     try {
-      const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", userId);
-      if (error) throw error;
-      setRoles((data ?? []).map((r) => r.role as Role).filter((role): role is Role => role === "admin" || role === "student"));
+      setRoles(await fetchUserRolesWithRetry(userId));
     } catch {
       setRoles([]);
     } finally {

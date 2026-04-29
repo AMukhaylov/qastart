@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { fetchUserRolesWithRetry } from "@/lib/auth-roles";
 
 export const Route = createFileRoute("/admin/login")({
   component: AdminLoginPage,
@@ -44,13 +45,15 @@ function AdminLoginPage() {
       return toast.error("Неверный email или пароль");
     }
 
-    // Проверяем роль admin
-    const { data: roles } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", data.user.id);
+    let hasAdmin = false;
+    try {
+      const roles = await fetchUserRolesWithRetry(data.user.id);
+      hasAdmin = roles.includes("admin");
+    } catch {
+      setSubmitting(false);
+      return toast.error("Не удалось проверить права администратора. Попробуйте ещё раз через несколько секунд");
+    }
 
-    const hasAdmin = (roles ?? []).some((r) => r.role === "admin");
     setSubmitting(false);
 
     if (!hasAdmin) {
