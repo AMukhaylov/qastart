@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Loader2, User, CheckCircle2, ClipboardCheck } from "lucide-react";
+import { Loader2, User, CheckCircle2, ClipboardCheck, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
+import { withRetry } from "@/lib/admin-diagnostics";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/admin/students")({
   component: AdminStudents,
@@ -16,47 +18,71 @@ function AdminStudents() {
   const [rows, setRows] = useState<Row[]>([]);
   const [totalLessons, setTotalLessons] = useState(14);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAdmin) return;
-    void (async () => {
-      setLoading(true);
-      const [{ data: profiles }, { data: lessons }, { data: progress }, { data: hw }] = await Promise.all([
-        supabase.from("profiles").select("id,full_name,created_at").order("created_at", { ascending: false }),
-        supabase.from("lessons").select("id"),
-        supabase.from("lesson_progress").select("user_id,completed").eq("completed", true),
-        supabase.from("homework_submissions").select("user_id,status"),
-      ]);
-
-      setTotalLessons((lessons ?? []).length || 14);
-      const completedMap = new Map<string, number>();
-      (progress ?? []).forEach((p) => completedMap.set(p.user_id as string, (completedMap.get(p.user_id as string) ?? 0) + 1));
-
-      const approvedMap = new Map<string, number>();
-      const pendingMap = new Map<string, number>();
-      (hw ?? []).forEach((h) => {
-        const m = h.status === "approved" ? approvedMap : h.status === "pending" ? pendingMap : null;
-        if (m) m.set(h.user_id as string, (m.get(h.user_id as string) ?? 0) + 1);
-      });
-
-      setRows(
-        (profiles ?? []).map((p) => ({
-          ...(p as Profile),
-          completed: completedMap.get(p.id) ?? 0,
-          approved: approvedMap.get(p.id) ?? 0,
-          pending: pendingMap.get(p.id) ?? 0,
-        }))
-      );
-      setLoading(false);
-    })();
+    void load();
   }, [isAdmin]);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    const [profilesRes, lessonsRes, progressRes, hwRes] = await Promise.all([
+      withRetry("profiles.list", () => supabase.from("profiles").select("id,full_name,created_at").order("created_at", { ascending: false })),
+      withRetry("lessons.count", () => supabase.from("lessons").select("id")),
+      withRetry("lesson_progress.completed", () => supabase.from("lesson_progress").select("user_id,completed").eq("completed", true)),
+      withRetry("homework.byStatus", () => supabase.from("homework_submissions").select("user_id,status")),
+    ]);
+
+    if (profilesRes.error || lessonsRes.error || progressRes.error || hwRes.error) {
+      setError("Не удалось загрузить данные. Повторим автоматически…");
+      setLoading(false);
+      window.setTimeout(() => void load(), 2500);
+      return;
+    }
+
+    const profiles = (profilesRes.data ?? []) as Profile[];
+    const lessons = (lessonsRes.data ?? []) as { id: string }[];
+    const progress = (progressRes.data ?? []) as { user_id: string }[];
+    const hw = (hwRes.data ?? []) as { user_id: string; status: string }[];
+
+    setTotalLessons(lessons.length || 14);
+    const completedMap = new Map<string, number>();
+    progress.forEach((p) => completedMap.set(p.user_id, (completedMap.get(p.user_id) ?? 0) + 1));
+    const approvedMap = new Map<string, number>();
+    const pendingMap = new Map<string, number>();
+    hw.forEach((h) => {
+      const m = h.status === "approved" ? approvedMap : h.status === "pending" ? pendingMap : null;
+      if (m) m.set(h.user_id, (m.get(h.user_id) ?? 0) + 1);
+    });
+
+    setRows(profiles.map((p) => ({
+      ...p,
+      completed: completedMap.get(p.id) ?? 0,
+      approved: approvedMap.get(p.id) ?? 0,
+      pending: pendingMap.get(p.id) ?? 0,
+    })));
+    setLoading(false);
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Студенты</h1>
-        <p className="text-muted-foreground mt-1">Прогресс по курсу и статус домашних заданий.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Студенты</h1>
+          <p className="text-muted-foreground mt-1">Прогресс по курсу и статус домашних заданий.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Обновить
+        </Button>
       </div>
+
+      {error && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-700 dark:text-amber-400 inline-flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" /> {error}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
