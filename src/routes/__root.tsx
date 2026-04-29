@@ -38,10 +38,15 @@ export const Route = createRootRoute({
           "Индивидуальный 14-дневный онлайн-курс по тестированию ПО. Стань QA-инженером и выйди на первую работу в IT.",
       },
       { name: "author", content: "QA школа" },
-      { property: "og:title", content: "QA школа — Курс «Инженер по тестированию»" },
-      { property: "og:description", content: "Освой востребованную профессию тестировщика за 14 дней." },
+      { property: "og:title", content: "QA школа — Курс «Инженер по тестированию» с нуля" },
+      { property: "og:description", content: "QA Start is an online platform for learning QA engineering." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "QA школа — Курс «Инженер по тестированию» с нуля" },
+      { name: "description", content: "QA Start is an online platform for learning QA engineering." },
+      { name: "twitter:description", content: "QA Start is an online platform for learning QA engineering." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2e981dc2-0bbf-4d2e-b961-9d4d83ebdf25/id-preview-7dffc9b5--375d1ab7-de5f-4280-92a9-f81ca5cfda11.lovable.app-1777448084508.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2e981dc2-0bbf-4d2e-b961-9d4d83ebdf25/id-preview-7dffc9b5--375d1ab7-de5f-4280-92a9-f81ca5cfda11.lovable.app-1777448084508.png" },
     ],
     links: [
       {
