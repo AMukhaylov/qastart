@@ -117,6 +117,25 @@ function AdminHomework() {
     setItems((prev) => prev.filter((s) => s.id !== id));
   }
 
+  async function answerQuestion(id: string, currentFeedback: string | null) {
+    if (!user) return;
+    const reply = feedbacks[id]?.trim() ?? "";
+    if (!reply) {
+      toast.error("Напиши ответ ученику");
+      return;
+    }
+    const merged = `${currentFeedback ?? ""}\n\n— Ответ наставника —\n${reply}`.trim();
+    setSavingId(id);
+    const { error } = await supabase
+      .from("homework_submissions")
+      .update({ status: "approved", feedback: merged, reviewed_by: user.id, reviewed_at: new Date().toISOString() })
+      .eq("id", id);
+    setSavingId(null);
+    if (error) { toast.error("Не удалось отправить"); return; }
+    toast.success("Ответ отправлен ученику");
+    setItems((prev) => prev.filter((s) => s.id !== id));
+  }
+
   const tabs: { key: Status; label: string; icon: typeof Clock }[] = [
     { key: "pending", label: "На проверке", icon: Clock },
     { key: "awaiting_mentor", label: "Ждут ответа", icon: HelpCircle },
@@ -191,6 +210,24 @@ function AdminHomework() {
                       <XCircle className="h-4 w-4" /> На доработку
                     </Button>
                   </div>
+                </div>
+              ) : filter === "awaiting_mentor" ? (
+                <div className="space-y-3">
+                  {s.feedback && (
+                    <div className="rounded-xl bg-primary-soft p-4 text-sm">
+                      <div className="font-semibold mb-1 inline-flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5" /> Прошлый комментарий</div>
+                      <div className="whitespace-pre-wrap">{s.feedback}</div>
+                    </div>
+                  )}
+                  <Textarea
+                    placeholder="Ответ ученику…"
+                    rows={3}
+                    value={feedbacks[s.id] ?? ""}
+                    onChange={(e) => setFeedbacks((p) => ({ ...p, [s.id]: e.target.value }))}
+                  />
+                  <Button variant="hero" size="sm" disabled={savingId === s.id} onClick={() => answerQuestion(s.id, s.feedback)}>
+                    <Send className="h-4 w-4" /> Отправить ответ
+                  </Button>
                 </div>
               ) : (
                 s.feedback && (
