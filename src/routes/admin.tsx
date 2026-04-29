@@ -15,9 +15,13 @@ function AdminLayout() {
 
   useEffect(() => {
     if (loading) return;
-    if (!user) navigate({ to: "/auth" });
-    else if (!isAdmin) navigate({ to: "/dashboard" });
+    if (location.pathname === "/admin/login") return;
+    if (!user || !isAdmin) navigate({ to: "/admin/login" });
   }, [user, isAdmin, loading, navigate]);
+
+  if (location.pathname === "/admin/login") {
+    return <Outlet />;
+  }
 
   if (loading || !user || !isAdmin) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Загрузка…</div>;
