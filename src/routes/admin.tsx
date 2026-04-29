@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { ShieldCheck, ClipboardCheck, BookOpen, Users, ArrowLeft, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { AdminDiagnosticsPanel } from "@/components/admin-diagnostics-panel";
 
 export const Route = createFileRoute("/admin")({
   component: AdminLayout,
@@ -78,6 +79,7 @@ function AdminLayout() {
       <main className="container-page py-8">
         <Outlet />
       </main>
+      <AdminDiagnosticsPanel />
     </div>
   );
 }
