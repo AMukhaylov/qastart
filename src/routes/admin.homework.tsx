@@ -27,6 +27,16 @@ type Submission = {
   profile?: { full_name: string | null } | null;
 };
 
+type ProfileMini = { id: string; full_name: string | null };
+type LessonMini = { id: string; day_number: number; title: string };
+
+function withTimeout<T>(query: PromiseLike<T>, ms = 8000): Promise<T> {
+  return Promise.race([
+    Promise.resolve(query),
+    new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error("Request timed out")), ms)),
+  ]);
+}
+
 function AdminHomework() {
   const { user, isAdmin } = useAuth();
   const [filter, setFilter] = useState<Status>("pending");
@@ -61,14 +71,14 @@ function AdminHomework() {
       const [{ data: profiles }, { data: lessons }] = await Promise.all([
         userIds.length
           ? withTimeout(supabase.from("profiles").select("id,full_name").in("id", userIds))
-          : Promise.resolve({ data: [] as { id: string; full_name: string | null }[] }),
+          : Promise.resolve({ data: [] as ProfileMini[] }),
         lessonIds.length
           ? withTimeout(supabase.from("lessons").select("id,day_number,title").in("id", lessonIds))
-          : Promise.resolve({ data: [] as { id: string; day_number: number; title: string }[] }),
+          : Promise.resolve({ data: [] as LessonMini[] }),
       ]);
 
-      const pMap = new Map((profiles ?? []).map((p) => [p.id, p]));
-      const lMap = new Map((lessons ?? []).map((l) => [l.id, l]));
+      const pMap = new Map((profiles as ProfileMini[] | null ?? []).map((p) => [p.id, { full_name: p.full_name }]));
+      const lMap = new Map((lessons as LessonMini[] | null ?? []).map((l) => [l.id, { day_number: l.day_number, title: l.title }]));
 
       setItems(list.map((s) => ({ ...s, profile: pMap.get(s.user_id) ?? null, lesson: lMap.get(s.lesson_id) ?? null })));
     } catch {
