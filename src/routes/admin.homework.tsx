@@ -80,7 +80,7 @@ function AdminHomework() {
       const pMap = new Map((profiles as ProfileMini[] | null ?? []).map((p) => [p.id, { full_name: p.full_name }]));
       const lMap = new Map((lessons as LessonMini[] | null ?? []).map((l) => [l.id, { day_number: l.day_number, title: l.title }]));
 
-      setItems(list.map((s) => ({ ...s, profile: pMap.get(s.user_id) ?? null, lesson: lMap.get(s.lesson_id) ?? null })));
+      setItems(list.map((s): Submission => ({ ...s, profile: pMap.get(s.user_id) ?? null, lesson: lMap.get(s.lesson_id) ?? null })));
     } catch {
       setItems([]);
       setLoadError("Не удалось загрузить ДЗ. Обнови страницу или попробуй позже.");
@@ -147,6 +147,10 @@ function AdminHomework() {
       {loading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+      ) : loadError ? (
+        <div className="rounded-2xl border border-border bg-card p-12 text-center text-muted-foreground">
+          {loadError}
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-12 text-center text-muted-foreground">
