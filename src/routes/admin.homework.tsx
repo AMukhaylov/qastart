@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { CheckCircle2, XCircle, Loader2, Clock, MessageSquare, User, BookOpen } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Clock, MessageSquare, User, BookOpen, HelpCircle, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ export const Route = createFileRoute("/admin/homework")({
   component: AdminHomework,
 });
 
-type Status = "pending" | "approved" | "rejected";
+type Status = "pending" | "approved" | "rejected" | "awaiting_mentor";
 
 type Submission = {
   id: string;
@@ -119,6 +119,7 @@ function AdminHomework() {
 
   const tabs: { key: Status; label: string; icon: typeof Clock }[] = [
     { key: "pending", label: "На проверке", icon: Clock },
+    { key: "awaiting_mentor", label: "Ждут ответа", icon: HelpCircle },
     { key: "approved", label: "Принятые", icon: CheckCircle2 },
     { key: "rejected", label: "На доработке", icon: XCircle },
   ];
