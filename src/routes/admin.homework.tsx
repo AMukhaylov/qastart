@@ -77,8 +77,10 @@ function AdminHomework() {
           : Promise.resolve({ data: [] as LessonMini[] }),
       ]);
 
-      const pMap = new Map((profiles as ProfileMini[] | null ?? []).map((p) => [p.id, { full_name: p.full_name }]));
-      const lMap = new Map((lessons as LessonMini[] | null ?? []).map((l) => [l.id, { day_number: l.day_number, title: l.title }]));
+      const profileRows = (profiles ?? []) as ProfileMini[];
+      const lessonRows = (lessons ?? []) as LessonMini[];
+      const pMap = new Map(profileRows.map((p) => [p.id, { full_name: p.full_name }]));
+      const lMap = new Map(lessonRows.map((l) => [l.id, { day_number: l.day_number, title: l.title }]));
 
       setItems(list.map((s): Submission => ({ ...s, profile: pMap.get(s.user_id) ?? null, lesson: lMap.get(s.lesson_id) ?? null })));
     } catch {
