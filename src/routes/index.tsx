@@ -41,15 +41,15 @@ export const Route = createFileRoute("/")({
 const program = [
   {
     day: "День 1",
-    title: "Основы QA",
+    title: "Что такое тестирование",
     icon: BookOpen,
-    desc: "Качество и роль QA",
+    desc: "Знакомство с профессией QA и базовыми понятиями",
   },
   {
     day: "День 2",
-    title: "IT-продукт и команда",
+    title: "Как работает IT-команда",
     icon: Users,
-    desc: "Путь задачи до релиза",
+    desc: "Роли в команде, взаимодействие участников и место QA",
   },
   {
     day: "День 3",
@@ -107,15 +107,15 @@ const program = [
   },
   {
     day: "День 12",
-    title: "QA в команде",
+    title: "Методологии разработки",
     icon: Briefcase,
-    desc: "Agile, Scrum и Jira",
+    desc: "Waterfall, Agile, Scrum, Kanban: как устроены и чем отличаются",
   },
   {
     day: "День 13",
-    title: "Первый день QA",
+    title: "Твой первый день QA",
     icon: FileText,
-    desc: "Задача на тестовом стенде",
+    desc: "Получаем реальную QA-задачу и тестируем на учебном стенде",
   },
   {
     day: "День 14",
