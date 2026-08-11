@@ -35,7 +35,10 @@ function ResetPasswordPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-[var(--gradient-soft)]">
       <div className="w-full max-w-md rounded-3xl bg-card border border-border p-8 shadow-[var(--shadow-card)]">
-        <Link to="/auth" className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground">
+        <Link
+          to="/auth"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground"
+        >
           <ArrowLeft className="h-4 w-4" /> К входу
         </Link>
         <h1 className="text-3xl font-extrabold tracking-tight">Новый пароль</h1>

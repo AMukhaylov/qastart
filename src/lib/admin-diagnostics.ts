@@ -46,19 +46,27 @@ function isTransient(err: unknown): boolean {
   if (e.code === "PGRST002") return true;
   if (e.status === 503 || e.status === 502 || e.status === 504) return true;
   const msg = (e.message ?? "").toLowerCase();
-  return msg.includes("schema cache") || msg.includes("retrying") || msg.includes("timed out") || msg.includes("fetch");
+  return (
+    msg.includes("schema cache") ||
+    msg.includes("retrying") ||
+    msg.includes("timed out") ||
+    msg.includes("fetch")
+  );
 }
 
 function wait(ms: number) {
   return new Promise((r) => window.setTimeout(r, ms));
 }
 
-export type SupabaseLike<T> = PromiseLike<{ data: T | null; error: { code?: string; message?: string } | null }>;
+export type SupabaseLike<T> = PromiseLike<{
+  data: T | null;
+  error: { code?: string; message?: string } | null;
+}>;
 
 export async function withRetry<T>(
   label: string,
   factory: () => SupabaseLike<T>,
-  opts: { retries?: number; baseDelay?: number; timeoutMs?: number } = {}
+  opts: { retries?: number; baseDelay?: number; timeoutMs?: number } = {},
 ): Promise<{ data: T | null; error: { code?: string; message?: string } | null }> {
   const retries = opts.retries ?? 5;
   const baseDelay = opts.baseDelay ?? 600;
@@ -73,7 +81,10 @@ export async function withRetry<T>(
       const result = await Promise.race([
         Promise.resolve(factory()),
         new Promise<never>((_, reject) =>
-          window.setTimeout(() => reject(Object.assign(new Error("Request timed out"), { code: "TIMEOUT" })), timeoutMs)
+          window.setTimeout(
+            () => reject(Object.assign(new Error("Request timed out"), { code: "TIMEOUT" })),
+            timeoutMs,
+          ),
         ),
       ]);
       if (result.error) {

@@ -44,13 +44,25 @@ export function AdminDiagnosticsPanel() {
           </span>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => setCollapsed((v) => !v)} className="p-1 rounded hover:bg-muted" title="Свернуть">
-            {collapsed ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          <button
+            onClick={() => setCollapsed((v) => !v)}
+            className="p-1 rounded hover:bg-muted"
+            title="Свернуть"
+          >
+            {collapsed ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
           </button>
           <button onClick={clearDiag} className="p-1 rounded hover:bg-muted" title="Очистить">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
-          <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-muted" title="Закрыть">
+          <button
+            onClick={() => setOpen(false)}
+            className="p-1 rounded hover:bg-muted"
+            title="Закрыть"
+          >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -65,14 +77,19 @@ export function AdminDiagnosticsPanel() {
                 <div className="flex items-center gap-2">
                   <StatusDot entry={e} />
                   <span className="font-mono text-xs flex-1 truncate">{e.label}</span>
-                  <span className="text-[11px] text-muted-foreground tabular-nums">{e.durationMs}ms</span>
+                  <span className="text-[11px] text-muted-foreground tabular-nums">
+                    {e.durationMs}ms
+                  </span>
                   {e.attempts > 1 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 font-semibold">×{e.attempts}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 font-semibold">
+                      ×{e.attempts}
+                    </span>
                   )}
                 </div>
                 {e.error && (
                   <div className="mt-1 text-[11px] text-rose-500 font-mono truncate">
-                    {e.code ? `[${e.code}] ` : ""}{e.error}
+                    {e.code ? `[${e.code}] ` : ""}
+                    {e.error}
                   </div>
                 )}
               </div>

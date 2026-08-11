@@ -10,15 +10,24 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as OfferRouteImport } from './routes/offer'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ContactsRouteImport } from './routes/contacts'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as LessonsDayRouteImport } from './routes/lessons.$day'
+import { Route as CertificatesCodeRouteImport } from './routes/certificates.$code'
+import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
+import { Route as ApiAvatarRouteImport } from './routes/api.avatar'
 import { Route as AdminStudentsRouteImport } from './routes/admin.students'
+import { Route as AdminMeetingsRouteImport } from './routes/admin.meetings'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminLessonsRouteImport } from './routes/admin.lessons'
+import { Route as AdminInvitesRouteImport } from './routes/admin.invites'
 import { Route as AdminHomeworkRouteImport } from './routes/admin.homework'
 
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -26,9 +35,29 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
   path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OfferRoute = OfferRouteImport.update({
+  id: '/offer',
+  path: '/offer',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactsRoute = ContactsRouteImport.update({
+  id: '/contacts',
+  path: '/contacts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -56,9 +85,29 @@ const LessonsDayRoute = LessonsDayRouteImport.update({
   path: '/lessons/$day',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CertificatesCodeRoute = CertificatesCodeRouteImport.update({
+  id: '/certificates/$code',
+  path: '/certificates/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/callback',
+  path: '/callback',
+  getParentRoute: () => AuthRoute,
+} as any)
+const ApiAvatarRoute = ApiAvatarRouteImport.update({
+  id: '/api/avatar',
+  path: '/api/avatar',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminStudentsRoute = AdminStudentsRouteImport.update({
   id: '/students',
   path: '/students',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminMeetingsRoute = AdminMeetingsRouteImport.update({
+  id: '/meetings',
+  path: '/meetings',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminLoginRoute = AdminLoginRouteImport.update({
@@ -71,6 +120,11 @@ const AdminLessonsRoute = AdminLessonsRouteImport.update({
   path: '/lessons',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminInvitesRoute = AdminInvitesRouteImport.update({
+  id: '/invites',
+  path: '/invites',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminHomeworkRoute = AdminHomeworkRouteImport.update({
   id: '/homework',
   path: '/homework',
@@ -80,25 +134,43 @@ const AdminHomeworkRoute = AdminHomeworkRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
+  '/contacts': typeof ContactsRoute
   '/dashboard': typeof DashboardRoute
+  '/offer': typeof OfferRoute
+  '/privacy': typeof PrivacyRoute
+  '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/homework': typeof AdminHomeworkRoute
+  '/admin/invites': typeof AdminInvitesRoute
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/meetings': typeof AdminMeetingsRoute
   '/admin/students': typeof AdminStudentsRoute
+  '/api/avatar': typeof ApiAvatarRoute
+  '/auth/callback': typeof AuthCallbackRoute
+  '/certificates/$code': typeof CertificatesCodeRoute
   '/lessons/$day': typeof LessonsDayRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
+  '/contacts': typeof ContactsRoute
   '/dashboard': typeof DashboardRoute
+  '/offer': typeof OfferRoute
+  '/privacy': typeof PrivacyRoute
+  '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/homework': typeof AdminHomeworkRoute
+  '/admin/invites': typeof AdminInvitesRoute
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/meetings': typeof AdminMeetingsRoute
   '/admin/students': typeof AdminStudentsRoute
+  '/api/avatar': typeof ApiAvatarRoute
+  '/auth/callback': typeof AuthCallbackRoute
+  '/certificates/$code': typeof CertificatesCodeRoute
   '/lessons/$day': typeof LessonsDayRoute
   '/admin': typeof AdminIndexRoute
 }
@@ -106,13 +178,22 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
+  '/contacts': typeof ContactsRoute
   '/dashboard': typeof DashboardRoute
+  '/offer': typeof OfferRoute
+  '/privacy': typeof PrivacyRoute
+  '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/homework': typeof AdminHomeworkRoute
+  '/admin/invites': typeof AdminInvitesRoute
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/meetings': typeof AdminMeetingsRoute
   '/admin/students': typeof AdminStudentsRoute
+  '/api/avatar': typeof ApiAvatarRoute
+  '/auth/callback': typeof AuthCallbackRoute
+  '/certificates/$code': typeof CertificatesCodeRoute
   '/lessons/$day': typeof LessonsDayRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -122,24 +203,42 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/auth'
+    | '/contacts'
     | '/dashboard'
+    | '/offer'
+    | '/privacy'
+    | '/profile'
     | '/reset-password'
     | '/admin/homework'
+    | '/admin/invites'
     | '/admin/lessons'
     | '/admin/login'
+    | '/admin/meetings'
     | '/admin/students'
+    | '/api/avatar'
+    | '/auth/callback'
+    | '/certificates/$code'
     | '/lessons/$day'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
+    | '/contacts'
     | '/dashboard'
+    | '/offer'
+    | '/privacy'
+    | '/profile'
     | '/reset-password'
     | '/admin/homework'
+    | '/admin/invites'
     | '/admin/lessons'
     | '/admin/login'
+    | '/admin/meetings'
     | '/admin/students'
+    | '/api/avatar'
+    | '/auth/callback'
+    | '/certificates/$code'
     | '/lessons/$day'
     | '/admin'
   id:
@@ -147,12 +246,21 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/auth'
+    | '/contacts'
     | '/dashboard'
+    | '/offer'
+    | '/privacy'
+    | '/profile'
     | '/reset-password'
     | '/admin/homework'
+    | '/admin/invites'
     | '/admin/lessons'
     | '/admin/login'
+    | '/admin/meetings'
     | '/admin/students'
+    | '/api/avatar'
+    | '/auth/callback'
+    | '/certificates/$code'
     | '/lessons/$day'
     | '/admin/'
   fileRoutesById: FileRoutesById
@@ -160,9 +268,15 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
-  AuthRoute: typeof AuthRoute
+  AuthRoute: typeof AuthRouteWithChildren
+  ContactsRoute: typeof ContactsRoute
   DashboardRoute: typeof DashboardRoute
+  OfferRoute: typeof OfferRoute
+  PrivacyRoute: typeof PrivacyRoute
+  ProfileRoute: typeof ProfileRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  ApiAvatarRoute: typeof ApiAvatarRoute
+  CertificatesCodeRoute: typeof CertificatesCodeRoute
   LessonsDayRoute: typeof LessonsDayRoute
 }
 
@@ -175,11 +289,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/offer': {
+      id: '/offer'
+      path: '/offer'
+      fullPath: '/offer'
+      preLoaderRoute: typeof OfferRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contacts': {
+      id: '/contacts'
+      path: '/contacts'
+      fullPath: '/contacts'
+      preLoaderRoute: typeof ContactsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -217,11 +359,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LessonsDayRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/certificates/$code': {
+      id: '/certificates/$code'
+      path: '/certificates/$code'
+      fullPath: '/certificates/$code'
+      preLoaderRoute: typeof CertificatesCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/api/avatar': {
+      id: '/api/avatar'
+      path: '/api/avatar'
+      fullPath: '/api/avatar'
+      preLoaderRoute: typeof ApiAvatarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/students': {
       id: '/admin/students'
       path: '/students'
       fullPath: '/admin/students'
       preLoaderRoute: typeof AdminStudentsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/meetings': {
+      id: '/admin/meetings'
+      path: '/meetings'
+      fullPath: '/admin/meetings'
+      preLoaderRoute: typeof AdminMeetingsRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/login': {
@@ -238,6 +408,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLessonsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/invites': {
+      id: '/admin/invites'
+      path: '/invites'
+      fullPath: '/admin/invites'
+      preLoaderRoute: typeof AdminInvitesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/homework': {
       id: '/admin/homework'
       path: '/homework'
@@ -250,28 +427,48 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminHomeworkRoute: typeof AdminHomeworkRoute
+  AdminInvitesRoute: typeof AdminInvitesRoute
   AdminLessonsRoute: typeof AdminLessonsRoute
   AdminLoginRoute: typeof AdminLoginRoute
+  AdminMeetingsRoute: typeof AdminMeetingsRoute
   AdminStudentsRoute: typeof AdminStudentsRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminHomeworkRoute: AdminHomeworkRoute,
+  AdminInvitesRoute: AdminInvitesRoute,
   AdminLessonsRoute: AdminLessonsRoute,
   AdminLoginRoute: AdminLoginRoute,
+  AdminMeetingsRoute: AdminMeetingsRoute,
   AdminStudentsRoute: AdminStudentsRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
+interface AuthRouteChildren {
+  AuthCallbackRoute: typeof AuthCallbackRoute
+}
+
+const AuthRouteChildren: AuthRouteChildren = {
+  AuthCallbackRoute: AuthCallbackRoute,
+}
+
+const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
-  AuthRoute: AuthRoute,
+  AuthRoute: AuthRouteWithChildren,
+  ContactsRoute: ContactsRoute,
   DashboardRoute: DashboardRoute,
+  OfferRoute: OfferRoute,
+  PrivacyRoute: PrivacyRoute,
+  ProfileRoute: ProfileRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  ApiAvatarRoute: ApiAvatarRoute,
+  CertificatesCodeRoute: CertificatesCodeRoute,
   LessonsDayRoute: LessonsDayRoute,
 }
 export const routeTree = rootRouteImport
@@ -279,10 +476,11 @@ export const routeTree = rootRouteImport
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }

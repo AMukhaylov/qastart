@@ -1,5 +1,32 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Sparkles, BookOpen, Code2, Bug, FileText, Briefcase, Users, PlayCircle, MessageSquare, ClipboardCheck, Database, Globe, Search, Layers, Target, LogIn, Heart, Video, CheckCircle2, GraduationCap, Award, Sprout, ShieldCheck, UserCheck } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
+import {
+  ArrowRight,
+  Sparkles,
+  BookOpen,
+  Code2,
+  Bug,
+  FileText,
+  Briefcase,
+  Users,
+  PlayCircle,
+  MessageSquare,
+  ClipboardCheck,
+  Database,
+  Globe,
+  Search,
+  Layers,
+  Target,
+  LogIn,
+  Heart,
+  Video,
+  CheckCircle2,
+  GraduationCap,
+  Award,
+  Sprout,
+  ShieldCheck,
+  UserCheck,
+} from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
@@ -12,35 +39,126 @@ export const Route = createFileRoute("/")({
 });
 
 const program = [
-  { day: "День 1", title: "Что такое тестирование", icon: BookOpen, desc: "Знакомство с профессией QA, базовые понятия" },
-  { day: "День 2", title: "Как работает IT-команда", icon: Users, desc: "Роли, процессы, где в команде QA" },
-  { day: "День 3", title: "Тест-кейсы и чек-листы", icon: ClipboardCheck, desc: "Учимся описывать проверки понятно" },
-  { day: "День 4", title: "Баг-репорты", icon: Bug, desc: "Как правильно оформить найденную ошибку" },
-  { day: "День 5", title: "Виды тестирования", icon: Layers, desc: "Функциональное, регрессионное, smoke и другие" },
-  { day: "День 6", title: "Тест-дизайн и техники", icon: Sparkles, desc: "Классы эквивалентности, граничные значения" },
-  { day: "День 7", title: "Клиент-серверная архитектура", icon: Globe, desc: "Как устроены приложения изнутри" },
-  { day: "День 8", title: "Основы API тестирования", icon: Code2, desc: "REST, методы, статусы ответов" },
-  { day: "День 9", title: "Postman для новичков", icon: PlayCircle, desc: "Первые запросы и коллекции" },
-  { day: "День 10", title: "SQL для тестировщика", icon: Database, desc: "SELECT, JOIN, проверка данных в БД" },
-  { day: "День 11", title: "Работа с DevTools", icon: Search, desc: "Network, Console, проверка фронтенда" },
-  { day: "День 12", title: "Agile / Scrum / Jira", icon: Briefcase, desc: "Командные процессы и трекеры задач" },
-  { day: "День 13", title: "Повторение и разбор ошибок", icon: FileText, desc: "Закрепляем сложные темы на примерах" },
-  { day: "День 14", title: "Итоговая практика", icon: Target, desc: "Собираем всё вместе на мини-проекте" },
+  {
+    day: "День 1",
+    title: "Что такое тестирование",
+    icon: BookOpen,
+    desc: "Знакомство с профессией QA, базовые понятия",
+  },
+  {
+    day: "День 2",
+    title: "Как работает IT-команда",
+    icon: Users,
+    desc: "Роли, процессы, где в команде QA",
+  },
+  {
+    day: "День 3",
+    title: "Тест-кейсы и чек-листы",
+    icon: ClipboardCheck,
+    desc: "Учимся описывать проверки понятно",
+  },
+  {
+    day: "День 4",
+    title: "Баг-репорты",
+    icon: Bug,
+    desc: "Как правильно оформить найденную ошибку",
+  },
+  {
+    day: "День 5",
+    title: "Виды тестирования",
+    icon: Layers,
+    desc: "Функциональное, регрессионное, smoke и другие",
+  },
+  {
+    day: "День 6",
+    title: "Тест-дизайн и техники",
+    icon: Sparkles,
+    desc: "Классы эквивалентности, граничные значения",
+  },
+  {
+    day: "День 7",
+    title: "Клиент-серверная архитектура",
+    icon: Globe,
+    desc: "Как устроены приложения изнутри",
+  },
+  {
+    day: "День 8",
+    title: "Основы API тестирования",
+    icon: Code2,
+    desc: "REST, методы, статусы ответов",
+  },
+  {
+    day: "День 9",
+    title: "Postman для новичков",
+    icon: PlayCircle,
+    desc: "Первые запросы и коллекции",
+  },
+  {
+    day: "День 10",
+    title: "SQL для тестировщика",
+    icon: Database,
+    desc: "SELECT, JOIN, проверка данных в БД",
+  },
+  {
+    day: "День 11",
+    title: "Работа с DevTools",
+    icon: Search,
+    desc: "Network, Console, проверка фронтенда",
+  },
+  {
+    day: "День 12",
+    title: "Agile / Scrum / Jira",
+    icon: Briefcase,
+    desc: "Командные процессы и трекеры задач",
+  },
+  {
+    day: "День 13",
+    title: "Повторение и разбор ошибок",
+    icon: FileText,
+    desc: "Закрепляем сложные темы на примерах",
+  },
+  {
+    day: "День 14",
+    title: "Итоговая практика",
+    icon: Target,
+    desc: "Собираем всё вместе на мини-проекте",
+  },
 ];
 
 const benefits = [
   { icon: PlayCircle, title: "14 понятных уроков", desc: "Короткие видео без воды" },
   { icon: ClipboardCheck, title: "Практические задания", desc: "Закрепляешь теорию руками" },
   { icon: Video, title: "2 групповые встречи", desc: "Живая практика и разбор вопросов" },
-  { icon: MessageSquare, title: "Поддержка в чате", desc: "Ответы на вопросы и помощь по заданиям" },
+  {
+    icon: MessageSquare,
+    title: "Поддержка в чате",
+    desc: "Ответы на вопросы и помощь по заданиям",
+  },
   { icon: Target, title: "Итоговый мини-проект", desc: "Пробуешь себя в роли тестировщика" },
 ];
 
 function LandingPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const name = user
     ? ((user.user_metadata?.full_name as string | undefined) ?? user.email?.split("@")[0] ?? "друг")
     : null;
+
+  useEffect(() => {
+    if (!user) return;
+
+    const search = new URLSearchParams(window.location.search);
+    const hasOAuthParams =
+      search.has("code") ||
+      search.has("state") ||
+      window.location.hash.includes("access_token") ||
+      window.location.hash.includes("refresh_token");
+
+    if (hasOAuthParams) {
+      window.history.replaceState(null, "", "/");
+      void navigate({ to: "/dashboard", replace: true });
+    }
+  }, [navigate, user]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -57,33 +175,34 @@ function LandingPage() {
               {user ? `Рад видеть тебя, ${name} 👋` : "Интенсивный курс QA Start"}
             </div>
             <h1 className="mt-6 text-4xl md:text-6xl font-extrabold leading-[1.05] tracking-tight">
-              <span className="text-gradient-brand">Твой путь в тестирование</span><br />
+              <span className="text-gradient-brand">Твой путь в тестирование</span>
+              <br />
               начинается здесь
             </h1>
             <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-xl">
-              14 дней практики, видеоуроки, поддержка наставника и итоговый проект. Всё, чтобы попробовать себя в QA.
+              14 дней видеоуроков, домашних заданий, обратной связи наставника и итоговый
+              сертификат. Всё, чтобы спокойно познакомиться с QA.
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5"><Sprout className="h-4 w-4 text-primary" /> Для новичков</span>
+              <span className="inline-flex items-center gap-1.5">
+                <Sprout className="h-4 w-4 text-primary" /> Для новичков
+              </span>
               <span className="text-border">•</span>
-              <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-primary" /> Без опыта</span>
+              <span className="inline-flex items-center gap-1.5">
+                <ShieldCheck className="h-4 w-4 text-primary" /> Без опыта
+              </span>
               <span className="text-border">•</span>
-              <span className="inline-flex items-center gap-1.5"><UserCheck className="h-4 w-4 text-primary" /> С поддержкой наставника</span>
+              <span className="inline-flex items-center gap-1.5">
+                <UserCheck className="h-4 w-4 text-primary" /> С поддержкой наставника
+              </span>
             </div>
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
               {user ? (
-                <>
-                  <Button asChild variant="hero" size="xl">
-                    <Link to="/dashboard">
-                      Продолжить обучение <ArrowRight className="h-5 w-5" />
-                    </Link>
-                  </Button>
-                  <Button asChild variant="soft" size="xl">
-                    <Link to="/dashboard">
-                      <PlayCircle className="h-5 w-5" /> Готов начать первый урок?
-                    </Link>
-                  </Button>
-                </>
+                <Button asChild variant="hero" size="xl">
+                  <Link to="/dashboard">
+                    Продолжить обучение <ArrowRight className="h-5 w-5" />
+                  </Link>
+                </Button>
               ) : (
                 <>
                   <Button asChild variant="hero" size="xl">
@@ -172,7 +291,10 @@ function LandingPage() {
           />
           <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-5 gap-5">
             {benefits.map((s) => (
-              <div key={s.title} className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-soft)] hover:shadow-[var(--shadow-card)] hover:-translate-y-1 transition-all">
+              <div
+                key={s.title}
+                className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-soft)] hover:shadow-[var(--shadow-card)] hover:-translate-y-1 transition-all"
+              >
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-soft text-primary">
                   <s.icon className="h-6 w-6" />
                 </div>
@@ -205,7 +327,9 @@ function LandingPage() {
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-soft text-primary">
                       <p.icon className="h-5 w-5" />
                     </div>
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{p.day}</span>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      {p.day}
+                    </span>
                   </div>
                   <h3 className="mt-4 font-display font-bold text-sm leading-snug">{p.title}</h3>
                   <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">{p.desc}</p>
@@ -217,14 +341,17 @@ function LandingPage() {
               ))}
             </div>
           </div>
-
         </div>
       </section>
 
       {/* MENTOR */}
       <section id="mentor" className="py-20 md:py-24">
         <div className="container-page">
-          <SectionHead badge="Наставник" title="О наставнике" subtitle="Курс ведёт практикующий инженер, который помогал десяткам новичков войти в профессию." />
+          <SectionHead
+            badge="Наставник"
+            title="О наставнике"
+            subtitle="Курс ведёт практикующий инженер, который помогал десяткам новичков войти в профессию."
+          />
           <div className="mt-12 max-w-3xl mx-auto">
             <div className="rounded-3xl border border-border bg-card p-8 md:p-10 shadow-[var(--shadow-card)] flex flex-col md:flex-row items-center md:items-start gap-8">
               <div className="relative shrink-0">
@@ -241,7 +368,9 @@ function LandingPage() {
               </div>
               <div className="flex-1 text-center md:text-left">
                 <h3 className="font-display font-extrabold text-2xl md:text-3xl">Артур Мухайлов</h3>
-                <p className="mt-2 text-muted-foreground">Senior QA Engineer • 8+ лет в тестировании • Ментор</p>
+                <p className="mt-2 text-muted-foreground">
+                  Senior QA Engineer • 8+ лет в тестировании • Ментор
+                </p>
                 <div className="mt-5 flex flex-wrap justify-center md:justify-start gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft text-primary px-3 py-1 text-xs font-semibold">
                     <Award className="h-3.5 w-3.5" /> 8+ лет опыта
@@ -264,7 +393,17 @@ function LandingPage() {
   );
 }
 
-function SectionHead({ badge, title, subtitle, align = "center" }: { badge: string; title: string; subtitle?: string; align?: "center" | "left" }) {
+function SectionHead({
+  badge,
+  title,
+  subtitle,
+  align = "center",
+}: {
+  badge: string;
+  title: string;
+  subtitle?: string;
+  align?: "center" | "left";
+}) {
   return (
     <div className={align === "center" ? "text-center max-w-2xl mx-auto" : ""}>
       <div className="inline-flex items-center gap-2 rounded-full bg-primary-soft text-primary px-3 py-1 text-xs font-semibold uppercase tracking-wider">

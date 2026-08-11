@@ -9,16 +9,16 @@ function NotFoundComponent() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
+        <h2 className="mt-4 text-xl font-semibold text-foreground">Страница не найдена</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          The page you're looking for doesn't exist or has been moved.
+          Такой страницы нет или она была перенесена.
         </p>
         <div className="mt-6">
           <Link
             to="/"
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Go home
+            На главную
           </Link>
         </div>
       </div>
@@ -39,14 +39,17 @@ export const Route = createRootRoute({
       },
       { name: "author", content: "QA школа" },
       { property: "og:title", content: "QA школа — Курс «Инженер по тестированию» с нуля" },
-      { property: "og:description", content: "QA Start is an online platform for learning QA engineering." },
+      {
+        property: "og:description",
+        content: "Онлайн-курс по тестированию ПО с личным наставником и практикой.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "QA школа — Курс «Инженер по тестированию» с нуля" },
-      { name: "description", content: "QA Start is an online platform for learning QA engineering." },
-      { name: "twitter:description", content: "QA Start is an online platform for learning QA engineering." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2e981dc2-0bbf-4d2e-b961-9d4d83ebdf25/id-preview-7dffc9b5--375d1ab7-de5f-4280-92a9-f81ca5cfda11.lovable.app-1777448084508.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2e981dc2-0bbf-4d2e-b961-9d4d83ebdf25/id-preview-7dffc9b5--375d1ab7-de5f-4280-92a9-f81ca5cfda11.lovable.app-1777448084508.png" },
+      {
+        name: "twitter:description",
+        content: "Онлайн-курс по тестированию ПО с личным наставником и практикой.",
+      },
     ],
     links: [
       {
@@ -62,7 +65,7 @@ export const Route = createRootRoute({
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="ru">
       <head>
         <HeadContent />
       </head>
@@ -78,7 +81,7 @@ function RootComponent() {
   return (
     <AuthProvider>
       <Outlet />
-      <Toaster richColors position="top-right" />
+      <Toaster richColors position="top-center" />
     </AuthProvider>
   );
 }

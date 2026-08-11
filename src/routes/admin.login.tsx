@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
-import { ShieldCheck, Mail, Lock, ArrowLeft, Loader2 } from "lucide-react";
+import { ShieldCheck, Mail, Lock, ArrowLeft, Loader2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,7 @@ function AdminLoginPage() {
   const { user, isAdmin, loading, rolesLoading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -51,7 +52,9 @@ function AdminLoginPage() {
       hasAdmin = roles.includes("admin");
     } catch {
       setSubmitting(false);
-      return toast.error("Не удалось проверить права администратора. Попробуйте ещё раз через несколько секунд");
+      return toast.error(
+        "Не удалось проверить права администратора. Попробуйте ещё раз через несколько секунд",
+      );
     }
 
     setSubmitting(false);
@@ -68,9 +71,12 @@ function AdminLoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-[var(--gradient-soft)]">
       <div className="w-full max-w-md">
-        <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground">
+        <a
+          href="/"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground"
+        >
           <ArrowLeft className="h-4 w-4" /> На главную
-        </Link>
+        </a>
 
         <div className="rounded-2xl border border-border bg-card p-8 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-3 mb-6">
@@ -105,13 +111,22 @@ function AdminLoginPage() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="admin-password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="h-12 pl-10"
+                  className="h-12 pl-10 pr-11"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((current) => !current)}
+                  className="absolute right-3 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
+                  title={showPassword ? "Скрыть пароль" : "Показать пароль"}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
             <Button type="submit" variant="hero" size="xl" className="w-full" disabled={submitting}>

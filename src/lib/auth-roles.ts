@@ -17,7 +17,11 @@ export async function fetchUserRolesWithRetry(userId: string, attempts = 5): Pro
   return fetchUserRoles(userId, attempts);
 }
 
-export async function fetchUserRoles(userId: string, attempts = 5, explicitAccessToken?: string): Promise<AppRole[]> {
+export async function fetchUserRoles(
+  userId: string,
+  attempts = 5,
+  explicitAccessToken?: string,
+): Promise<AppRole[]> {
   let lastError: unknown;
 
   const { data: sessionData } = await supabase.auth.getSession();

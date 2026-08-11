@@ -89,7 +89,9 @@ function AdminLessons() {
                 key={l.id}
                 onClick={() => setActiveId(l.id)}
                 className={`w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 transition-colors ${
-                  activeId === l.id ? "bg-primary-soft text-primary font-semibold" : "hover:bg-muted"
+                  activeId === l.id
+                    ? "bg-primary-soft text-primary font-semibold"
+                    : "hover:bg-muted"
                 }`}
               >
                 <span className="h-7 w-7 rounded-md bg-background border border-border flex items-center justify-center text-xs font-bold shrink-0">
@@ -108,7 +110,12 @@ function AdminLessons() {
                 <BookOpen className="h-4 w-4" /> День {active.day_number}
               </div>
               <Button variant="hero" onClick={save} disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Сохранить
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}{" "}
+                Сохранить
               </Button>
             </div>
 
@@ -118,7 +125,10 @@ function AdminLessons() {
             </div>
             <div className="space-y-2">
               <Label>Краткое описание</Label>
-              <Input value={active.description} onChange={(e) => update("description", e.target.value)} />
+              <Input
+                value={active.description}
+                onChange={(e) => update("description", e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label>Ссылка на видео (embed)</Label>
@@ -130,11 +140,19 @@ function AdminLessons() {
             </div>
             <div className="space-y-2">
               <Label>Конспект</Label>
-              <Textarea rows={10} value={active.content_md} onChange={(e) => update("content_md", e.target.value)} />
+              <Textarea
+                rows={10}
+                value={active.content_md}
+                onChange={(e) => update("content_md", e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label>Домашнее задание</Label>
-              <Textarea rows={6} value={active.homework_md} onChange={(e) => update("homework_md", e.target.value)} />
+              <Textarea
+                rows={6}
+                value={active.homework_md}
+                onChange={(e) => update("homework_md", e.target.value)}
+              />
             </div>
           </section>
         ) : (
