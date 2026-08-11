@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { FinalQuiz } from "@/components/final-quiz";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -407,7 +408,15 @@ function LessonPage() {
             {lesson.content_md}
           </div>
           <div className="mt-6 rounded-xl bg-primary-soft p-4 text-sm text-primary">
-            {completed ? (
+            {lesson.day_number === 14 ? (
+              completed ? (
+                <div className="inline-flex items-center gap-2 font-semibold">
+                  <CheckCircle2 className="h-4 w-4" /> Итоговый тест пройден.
+                </div>
+              ) : (
+                "Пройди итоговый тест минимум на 70%, чтобы завершить курс."
+              )
+            ) : completed ? (
               <div className="inline-flex items-center gap-2 font-semibold">
                 <CheckCircle2 className="h-4 w-4" /> Урок зачтен: домашнее задание принято
                 наставником.
@@ -418,135 +427,140 @@ function LessonPage() {
           </div>
         </article>
 
-        {/* Homework */}
-        <section className="rounded-2xl border border-border bg-card p-7 shadow-[var(--shadow-soft)]">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="h-10 w-10 rounded-xl bg-primary-soft text-primary flex items-center justify-center">
-              <ClipboardCheck className="h-5 w-5" />
-            </div>
-            <h2 className="text-xl font-extrabold">Домашнее задание</h2>
-          </div>
-          <p className="text-muted-foreground whitespace-pre-wrap">{lesson.homework_md}</p>
-
-          {submission ? (
-            <div className="mt-6 space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Статус:</span>
-                <Badge
-                  variant={
-                    submission.status === "approved"
-                      ? "default"
-                      : submission.status === "rejected"
-                        ? "destructive"
-                        : "secondary"
-                  }
-                >
-                  {submission.status === "approved"
-                    ? "Принято"
-                    : submission.status === "rejected"
-                      ? "На доработку"
-                      : submission.status === "awaiting_mentor"
-                        ? "Ждёт ответа наставника"
-                        : "На проверке"}
-                </Badge>
+        {lesson.day_number === 14 ? (
+          session?.access_token ? (
+            <FinalQuiz accessToken={session.access_token} />
+          ) : null
+        ) : (
+          <section className="rounded-2xl border border-border bg-card p-7 shadow-[var(--shadow-soft)]">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="h-10 w-10 rounded-xl bg-primary-soft text-primary flex items-center justify-center">
+                <ClipboardCheck className="h-5 w-5" />
               </div>
-              <MessageHistory messages={messages} />
-              {submission.status === "rejected" && (
-                <div className="space-y-5 pt-2">
-                  <div className="space-y-3">
-                    <Textarea
-                      placeholder="Напиши доработанный ответ..."
-                      value={hwText}
-                      onChange={(e) => setHwText(e.target.value)}
-                      rows={6}
-                      className="resize-y"
-                    />
-                    <AttachmentPicker
-                      attachments={attachments}
-                      onFiles={handleFiles}
-                      onRemove={(index) =>
-                        setAttachments((prev) => prev.filter((_, i) => i !== index))
-                      }
-                    />
-                    <Button
-                      variant="hero"
-                      onClick={submitHomework}
-                      disabled={!hwText.trim() || saving}
-                    >
-                      {saving ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4" />
-                      )}
-                      Отправить доработку
-                    </Button>
-                  </div>
+              <h2 className="text-xl font-extrabold">Домашнее задание</h2>
+            </div>
+            <p className="text-muted-foreground whitespace-pre-wrap">{lesson.homework_md}</p>
 
-                  <div className="rounded-xl border border-border bg-muted/40 p-4">
-                    <h3 className="text-sm font-semibold">Нужна помощь наставника?</h3>
-                    <div className="mt-3 space-y-3">
+            {submission ? (
+              <div className="mt-6 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Статус:</span>
+                  <Badge
+                    variant={
+                      submission.status === "approved"
+                        ? "default"
+                        : submission.status === "rejected"
+                          ? "destructive"
+                          : "secondary"
+                    }
+                  >
+                    {submission.status === "approved"
+                      ? "Принято"
+                      : submission.status === "rejected"
+                        ? "На доработку"
+                        : submission.status === "awaiting_mentor"
+                          ? "Ждёт ответа наставника"
+                          : "На проверке"}
+                  </Badge>
+                </div>
+                <MessageHistory messages={messages} />
+                {submission.status === "rejected" && (
+                  <div className="space-y-5 pt-2">
+                    <div className="space-y-3">
                       <Textarea
-                        placeholder="Напиши вопрос по доработке..."
-                        value={questionText}
-                        onChange={(e) => setQuestionText(e.target.value)}
-                        rows={4}
-                        className="resize-y bg-background"
+                        placeholder="Напиши доработанный ответ..."
+                        value={hwText}
+                        onChange={(e) => setHwText(e.target.value)}
+                        rows={6}
+                        className="resize-y"
                       />
                       <AttachmentPicker
-                        attachments={questionAttachments}
-                        onFiles={handleQuestionFiles}
+                        attachments={attachments}
+                        onFiles={handleFiles}
                         onRemove={(index) =>
-                          setQuestionAttachments((prev) => prev.filter((_, i) => i !== index))
+                          setAttachments((prev) => prev.filter((_, i) => i !== index))
                         }
                       />
                       <Button
-                        variant="outline"
-                        onClick={submitQuestion}
-                        disabled={!questionText.trim() || asking}
+                        variant="hero"
+                        onClick={submitHomework}
+                        disabled={!hwText.trim() || saving}
                       >
-                        {asking ? (
+                        {saving ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           <Send className="h-4 w-4" />
                         )}
-                        Задать вопрос наставнику
+                        Отправить доработку
                       </Button>
                     </div>
+
+                    <div className="rounded-xl border border-border bg-muted/40 p-4">
+                      <h3 className="text-sm font-semibold">Нужна помощь наставника?</h3>
+                      <div className="mt-3 space-y-3">
+                        <Textarea
+                          placeholder="Напиши вопрос по доработке..."
+                          value={questionText}
+                          onChange={(e) => setQuestionText(e.target.value)}
+                          rows={4}
+                          className="resize-y bg-background"
+                        />
+                        <AttachmentPicker
+                          attachments={questionAttachments}
+                          onFiles={handleQuestionFiles}
+                          onRemove={(index) =>
+                            setQuestionAttachments((prev) => prev.filter((_, i) => i !== index))
+                          }
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={submitQuestion}
+                          disabled={!questionText.trim() || asking}
+                        >
+                          {asking ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                          Задать вопрос наставнику
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
-              {submission.status === "awaiting_mentor" && (
-                <div className="rounded-xl bg-primary-soft p-4 text-sm text-primary">
-                  Вопрос отправлен наставнику. Когда наставник ответит, здесь появится продолжение
-                  переписки.
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="mt-6 space-y-3">
-              <Textarea
-                placeholder="Твой ответ..."
-                value={hwText}
-                onChange={(e) => setHwText(e.target.value)}
-                rows={6}
-                className="resize-y"
-              />
-              <AttachmentPicker
-                attachments={attachments}
-                onFiles={handleFiles}
-                onRemove={(index) => setAttachments((prev) => prev.filter((_, i) => i !== index))}
-              />
-              <Button variant="hero" onClick={submitHomework} disabled={!hwText.trim() || saving}>
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
                 )}
-                Отправить на проверку
-              </Button>
-            </div>
-          )}
-        </section>
+                {submission.status === "awaiting_mentor" && (
+                  <div className="rounded-xl bg-primary-soft p-4 text-sm text-primary">
+                    Вопрос отправлен наставнику. Когда наставник ответит, здесь появится продолжение
+                    переписки.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="mt-6 space-y-3">
+                <Textarea
+                  placeholder="Твой ответ..."
+                  value={hwText}
+                  onChange={(e) => setHwText(e.target.value)}
+                  rows={6}
+                  className="resize-y"
+                />
+                <AttachmentPicker
+                  attachments={attachments}
+                  onFiles={handleFiles}
+                  onRemove={(index) => setAttachments((prev) => prev.filter((_, i) => i !== index))}
+                />
+                <Button variant="hero" onClick={submitHomework} disabled={!hwText.trim() || saving}>
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  Отправить на проверку
+                </Button>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* Navigation */}
         <div className="flex justify-between gap-3">

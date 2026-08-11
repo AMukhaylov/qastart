@@ -248,6 +248,62 @@ export type Database = {
           },
         ];
       };
+      quiz_attempts: {
+        Row: {
+          answers: Json;
+          created_at: string;
+          finished_at: string | null;
+          id: string;
+          lesson_id: string;
+          passed: boolean | null;
+          percentage: number | null;
+          question_order: Json;
+          score: number | null;
+          started_at: string;
+          timed_out: boolean;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          answers?: Json;
+          created_at?: string;
+          finished_at?: string | null;
+          id?: string;
+          lesson_id: string;
+          passed?: boolean | null;
+          percentage?: number | null;
+          question_order: Json;
+          score?: number | null;
+          started_at?: string;
+          timed_out?: boolean;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          answers?: Json;
+          created_at?: string;
+          finished_at?: string | null;
+          id?: string;
+          lesson_id?: string;
+          passed?: boolean | null;
+          percentage?: number | null;
+          question_order?: Json;
+          score?: number | null;
+          started_at?: string;
+          timed_out?: boolean;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "quiz_attempts_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       lessons: {
         Row: {
           content_md: string;
