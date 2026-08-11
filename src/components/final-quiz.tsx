@@ -22,6 +22,7 @@ type QuizResult = {
   percentage: number;
   passed: boolean;
   timedOut: boolean;
+  disqualified: boolean;
   attemptsUsed: number;
   attemptsLeft: number;
   review: {
@@ -104,7 +105,9 @@ export function FinalQuiz({ accessToken }: { accessToken: string }) {
       await saveFinalQuizAnswers({
         data: { accessToken, attemptId: state.attemptId, answers: state.answers },
       });
-      const result = await finishFinalQuiz({ data: { accessToken, attemptId: state.attemptId } });
+      const result = await finishFinalQuiz({
+        data: { accessToken, attemptId: state.attemptId, disqualified: false },
+      });
       setState({ status: "result", result: result as QuizResult });
       if (timedOut) toast.info("Время вышло, тест завершён автоматически");
     } catch (error) {
@@ -122,6 +125,32 @@ export function FinalQuiz({ accessToken }: { accessToken: string }) {
     // finish intentionally uses current state after the timer expires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remainingMs, state]);
+
+  useEffect(() => {
+    const disqualifyForLeaving = async () => {
+      if (state.status !== "active" || autoFinishRef.current) return;
+      autoFinishRef.current = true;
+      setSaving(true);
+      try {
+        const result = await finishFinalQuiz({
+          data: { accessToken, attemptId: state.attemptId, disqualified: true },
+        });
+        setState({ status: "result", result: result as QuizResult });
+      } catch {
+        void load();
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") void disqualifyForLeaving();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+    // The handler intentionally follows the current active attempt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, accessToken]);
 
   const persistAnswer = async (questionId: string, optionId: string) => {
     if (state.status !== "active" || saving) return;
@@ -254,7 +283,8 @@ function QuizIntro({
           <h2 className="text-xl font-extrabold">Итоговый тест QA Start</h2>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             30 вопросов по всему курсу. На прохождение даётся 30 минут, правильные ответы откроются
-            после завершения.
+            после завершения. Не переключайся на другую вкладку и не сворачивай браузер: попытка
+            будет завершена как не сданная.
           </p>
         </div>
       </div>
@@ -310,9 +340,11 @@ function QuizResultView({ result, onRetry }: { result: QuizResult; onRetry?: () 
                 {result.passed ? "Тест пройден" : "Тест не пройден"}
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {result.timedOut
-                  ? "Время вышло: тест завершён автоматически."
-                  : "Результат сохранён в твоём кабинете."}
+                {result.disqualified
+                  ? "Тест завершён: во время попытки была открыта другая вкладка или браузер был свёрнут."
+                  : result.timedOut
+                    ? "Время вышло: тест завершён автоматически."
+                    : "Результат сохранён в твоём кабинете."}
               </p>
             </div>
           </div>
@@ -327,7 +359,7 @@ function QuizResultView({ result, onRetry }: { result: QuizResult; onRetry?: () 
           <Badge variant={result.passed ? "default" : "destructive"}>
             {result.passed ? "Пройден" : "Не пройден"}
           </Badge>
-          <span className="text-muted-foreground">Попытка {result.attemptsUsed} из 2</span>
+          <span className="text-muted-foreground">Попытка {result.attemptsUsed} из 3</span>
           {onRetry ? (
             <Button variant="outline" size="sm" onClick={onRetry}>
               <RotateCcw className="h-4 w-4" /> Повторить тест

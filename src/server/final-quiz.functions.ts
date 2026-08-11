@@ -7,13 +7,14 @@ import { FINAL_QUIZ_QUESTIONS } from "./final-quiz.questions";
 
 const QUIZ_DURATION_MS = 30 * 60 * 1000;
 const PASSING_PERCENT = 70;
-const MAX_ATTEMPTS = 2;
+const MAX_ATTEMPTS = 3;
 
 const accessTokenInput = z.object({
   accessToken: z.string().min(20),
   startNew: z.boolean().optional().default(false),
 });
 const attemptInput = accessTokenInput.extend({ attemptId: z.string().uuid() });
+const finishInput = attemptInput.extend({ disqualified: z.boolean().optional().default(false) });
 const answersInput = attemptInput.extend({
   answers: z.record(z.string().min(1), z.string().min(1)).default({}),
 });
@@ -30,6 +31,7 @@ type QuizAttempt = {
   started_at: string;
   finished_at: string | null;
   timed_out: boolean;
+  disqualified: boolean;
 };
 
 type QuestionOrder = {
@@ -118,7 +120,7 @@ function isExpired(attempt: QuizAttempt) {
   return Date.now() >= new Date(expiresAt(attempt)).getTime();
 }
 
-async function finalizeAttempt(attempt: QuizAttempt, timedOut: boolean) {
+async function finalizeAttempt(attempt: QuizAttempt, timedOut: boolean, disqualified = false) {
   if (attempt.finished_at) return attempt;
 
   const answers = parseAnswers(attempt.answers);
@@ -127,7 +129,7 @@ async function finalizeAttempt(attempt: QuizAttempt, timedOut: boolean) {
     0,
   );
   const percentage = Math.round((score / FINAL_QUIZ_QUESTIONS.length) * 100);
-  const passed = percentage >= PASSING_PERCENT;
+  const passed = !disqualified && percentage >= PASSING_PERCENT;
   const { data, error } = await supabaseAdmin
     .from("quiz_attempts")
     .update({
@@ -135,6 +137,7 @@ async function finalizeAttempt(attempt: QuizAttempt, timedOut: boolean) {
       percentage,
       passed,
       timed_out: timedOut || isExpired(attempt),
+      disqualified,
       finished_at: new Date().toISOString(),
     })
     .eq("id", attempt.id)
@@ -193,6 +196,7 @@ async function quizResult(attempt: QuizAttempt, attemptsUsed: number) {
     percentage: attempt.percentage ?? 0,
     passed: Boolean(attempt.passed),
     timedOut: attempt.timed_out,
+    disqualified: attempt.disqualified,
     attemptsUsed,
     attemptsLeft: Math.max(0, MAX_ATTEMPTS - attemptsUsed),
     review: order.questionIds.flatMap((questionId) => {
@@ -322,11 +326,13 @@ export const saveFinalQuizAnswers = createServerFn({ method: "POST" })
   });
 
 export const finishFinalQuiz = createServerFn({ method: "POST" })
-  .inputValidator((data) => attemptInput.parse(data))
+  .inputValidator((data) => finishInput.parse(data))
   .handler(async ({ data }) => {
     const userId = await getUserIdForAccessToken(data.accessToken);
     let attempt = await getAttemptForUser(userId, data.attemptId);
-    if (!attempt.finished_at) attempt = await finalizeAttempt(attempt, isExpired(attempt));
+    if (!attempt.finished_at) {
+      attempt = await finalizeAttempt(attempt, isExpired(attempt), data.disqualified);
+    }
 
     const { count, error } = await supabaseAdmin
       .from("quiz_attempts")

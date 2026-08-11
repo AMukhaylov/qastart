@@ -252,6 +252,7 @@ export type Database = {
         Row: {
           answers: Json;
           created_at: string;
+          disqualified: boolean;
           finished_at: string | null;
           id: string;
           lesson_id: string;
@@ -267,6 +268,7 @@ export type Database = {
         Insert: {
           answers?: Json;
           created_at?: string;
+          disqualified?: boolean;
           finished_at?: string | null;
           id?: string;
           lesson_id: string;
@@ -282,6 +284,7 @@ export type Database = {
         Update: {
           answers?: Json;
           created_at?: string;
+          disqualified?: boolean;
           finished_at?: string | null;
           id?: string;
           lesson_id?: string;
