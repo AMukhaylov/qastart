@@ -53,17 +53,22 @@ export const updateAdminStudent = createServerFn({ method: "POST" })
     await assertAdmin(data.accessToken);
 
     const fullName = data.fullName.trim();
-    const authPayload: Parameters<typeof supabaseAdmin.auth.admin.updateUserById>[1] = {
-      email: data.email.trim(),
-      user_metadata: { full_name: fullName },
-    };
+    const email = data.email.trim();
+    const { data: currentUser, error: currentUserError } =
+      await supabaseAdmin.auth.admin.getUserById(data.userId);
+    if (currentUserError) throw currentUserError;
+
+    const authPayload: Parameters<typeof supabaseAdmin.auth.admin.updateUserById>[1] = {};
+    if (currentUser.user.email !== email) authPayload.email = email;
     if (data.password) authPayload.password = data.password;
 
-    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
-      data.userId,
-      authPayload,
-    );
-    if (authError) throw authError;
+    if (Object.keys(authPayload).length > 0) {
+      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
+        data.userId,
+        authPayload,
+      );
+      if (authError) throw authError;
+    }
 
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
