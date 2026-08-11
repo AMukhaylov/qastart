@@ -38,6 +38,7 @@ export const Route = createRootRoute({
           "Индивидуальный 14-дневный онлайн-курс по тестированию ПО. Стань QA-инженером и выйди на первую работу в IT.",
       },
       { name: "author", content: "QA школа" },
+      { name: "app-version", content: "v0.2.1" },
       { property: "og:title", content: "QA школа — Курс «Инженер по тестированию» с нуля" },
       {
         property: "og:description",
