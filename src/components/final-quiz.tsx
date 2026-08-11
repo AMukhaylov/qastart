@@ -69,6 +69,11 @@ export function FinalQuiz({ accessToken }: { accessToken: string }) {
     setState({ status: "loading" });
     try {
       const next = await startFinalQuiz({ data: { accessToken, startNew } });
+      if (next.status === "active") {
+        setRemainingMs(Math.max(0, new Date(next.expiresAt).getTime() - Date.now()));
+      } else {
+        setRemainingMs(0);
+      }
       setState(next as Exclude<QuizState, { status: "loading" }>);
       setCurrentIndex(0);
       autoFinishRef.current = false;
