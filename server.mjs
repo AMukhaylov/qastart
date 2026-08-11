@@ -20,7 +20,12 @@ const contentTypes = {
 };
 
 async function serveStatic(urlPath) {
-  const decoded = decodeURIComponent(urlPath.split("?")[0]);
+  let decoded;
+  try {
+    decoded = decodeURIComponent(urlPath.split("?")[0]);
+  } catch {
+    return new Response("Bad Request", { status: 400 });
+  }
   const safePath = path.normalize(decoded).replace(/^([/\\])+/, "");
   const filePath = path.join(clientDir, safePath);
 
