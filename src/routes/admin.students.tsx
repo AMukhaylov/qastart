@@ -6,6 +6,8 @@ import {
   Check,
   ClipboardCheck,
   Copy,
+  Eye,
+  EyeOff,
   ExternalLink,
   KeyRound,
   Loader2,
@@ -589,6 +591,7 @@ function StudentForm({
   onSave: () => void;
   onResetPassword?: () => void;
 }) {
+  const [showPassword, setShowPassword] = useState(false);
   const field = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ ...form, [key]: e.target.value });
   return (
@@ -610,12 +613,14 @@ function StudentForm({
         <FormInput label="Имя" value={form.firstName} onChange={field("firstName")} />
         <FormInput label="Фамилия" value={form.lastName} onChange={field("lastName")} />
         <FormInput label="Логин" value={form.login} onChange={field("login")} />
-        <FormInput
-          label={form.userId ? "Новый пароль" : "Пароль"}
-          type="text"
+        <PasswordInput
+          label={form.userId ? "Новый пароль (необязательно)" : "Пароль"}
+          type={showPassword ? "text" : "password"}
           value={form.password}
           onChange={field("password")}
-          placeholder={form.userId ? "Оставьте пустым" : "Не менее 10 символов"}
+          placeholder={form.userId ? "Введите, чтобы заменить текущий" : "Не менее 10 символов"}
+          visible={showPassword}
+          onToggle={() => setShowPassword((current) => !current)}
         />
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -653,6 +658,41 @@ function FormInput({
         {...props}
         className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/25"
       />
+    </label>
+  );
+}
+function PasswordInput({
+  label,
+  visible,
+  onToggle,
+  ...props
+}: {
+  label: string;
+  visible: boolean;
+  onToggle: () => void;
+  value: string;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  type: "text" | "password";
+  placeholder: string;
+}) {
+  return (
+    <label className="space-y-1.5 text-sm font-medium">
+      {label}
+      <span className="relative block">
+        <input
+          {...props}
+          className="h-10 w-full rounded-md border border-input bg-background px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-ring/25"
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+          aria-label={visible ? "Скрыть пароль" : "Показать пароль"}
+          title={visible ? "Скрыть пароль" : "Показать пароль"}
+        >
+          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      </span>
     </label>
   );
 }
