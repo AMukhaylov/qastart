@@ -100,8 +100,10 @@ function AuthPage() {
             <ArrowLeft className="h-4 w-4" /> На главную
           </Link>
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight">С возвращением</h1>
-            <p className="mt-2 text-muted-foreground">Войди в личный кабинет.</p>
+            <h1 className="text-3xl font-extrabold tracking-tight">Добро пожаловать в QA Start</h1>
+            <p className="mt-2 text-muted-foreground">
+              Впереди 14 дней практики. Начни путь в тестировании.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="login">Логин</Label>
@@ -145,12 +147,6 @@ function AuthPage() {
           <Button type="submit" variant="hero" size="xl" className="w-full" disabled={submitting}>
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />} Войти
           </Button>
-          <div className="border-t border-border pt-5 text-center text-sm text-muted-foreground">
-            Администраторам:{" "}
-            <Link to="/admin/login" className="font-medium text-primary hover:underline">
-              вход в админ-панель
-            </Link>
-          </div>
         </form>
       </main>
     </div>
