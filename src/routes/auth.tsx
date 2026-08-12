@@ -42,13 +42,13 @@ function AuthPage() {
 
     setSubmitting(true);
     try {
-      const session = await loginWithUsername({ data: { login: normalizedLogin, password } });
+      const result = await loginWithUsername({ data: { login: normalizedLogin, password } });
       const { error } = await supabase.auth.setSession({
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
+        access_token: result.session.access_token,
+        refresh_token: result.session.refresh_token,
       });
       if (error) throw error;
-      toast.success("С возвращением!");
+      toast.success(result.isFirstLogin ? "Добро пожаловать в QA Start!" : "С возвращением!");
       navigate({ to: "/dashboard" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "";

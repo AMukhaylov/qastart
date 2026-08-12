@@ -41,5 +41,5 @@ export const loginWithUsername = createServerFn({ method: "POST" })
       password: data.password,
     });
     if (signInError || !session.session) throw new Error("Неверный логин или пароль");
-    return session.session;
+    return { session: session.session, isFirstLogin: !userResult.user.last_sign_in_at };
   });
