@@ -1,21 +1,33 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import {
+  Award,
   Ban,
   Check,
   ClipboardCheck,
   Copy,
+  ExternalLink,
   KeyRound,
   Loader2,
+  MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
   Save,
+  Trash2,
   Unlock,
-  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { withRetry } from "@/lib/admin-diagnostics";
@@ -27,6 +39,12 @@ import {
   setAdminStudentBlocked,
   updateAdminStudent,
 } from "@/server/students.functions";
+import {
+  deleteAdminCertificate,
+  listAdminCertificates,
+  restoreAdminCertificate,
+  revokeAdminCertificate,
+} from "@/server/certificates.functions";
 
 export const Route = createFileRoute("/admin/students")({ component: AdminStudents });
 
@@ -39,6 +57,20 @@ type Row = {
   completed: number;
   approved: number;
   pending: number;
+  certificate: Certificate | null;
+};
+type Certificate = {
+  id: string;
+  user_id: string;
+  certificate_number: string;
+  verification_code: string;
+  revoked_at: string | null;
+};
+type AuthStudent = {
+  id: string;
+  login: string;
+  banned_until: string | null;
+  full_name: string | null;
 };
 type FormState = {
   userId?: string;
@@ -64,34 +96,40 @@ function AdminStudents() {
   const [totalLessons, setTotalLessons] = useState(14);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingCertificateId, setSavingCertificateId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [issued, setIssued] = useState<Credentials | null>(null);
   const load = useCallback(async () => {
     if (!session?.access_token) return;
     setLoading(true);
-    const [profilesRes, lessonsRes, progressRes, homeworkRes, authRows] = await Promise.all([
-      withRetry("profiles.list", () =>
-        supabase
-          .from("profiles")
-          .select("id,full_name,login,created_at")
-          .order("created_at", { ascending: false }),
-      ),
-      supabase.from("lessons").select("id"),
-      supabase.from("lesson_progress").select("user_id,completed").eq("completed", true),
-      supabase.from("homework_submissions").select("user_id,status"),
-      listAdminStudentsAuth({ data: { accessToken: session.access_token } }),
-    ]);
+    const [profilesRes, lessonsRes, progressRes, homeworkRes, certificates, authRows] =
+      await Promise.all([
+        withRetry("profiles.list", () =>
+          supabase
+            .from("profiles")
+            .select("id,full_name,login,created_at")
+            .order("created_at", { ascending: false }),
+        ),
+        supabase.from("lessons").select("id"),
+        supabase.from("lesson_progress").select("user_id,completed").eq("completed", true),
+        supabase.from("homework_submissions").select("user_id,status"),
+        listAdminCertificates({ data: { accessToken: session.access_token } }),
+        listAdminStudentsAuth({ data: { accessToken: session.access_token } }),
+      ]);
     if (profilesRes.error || lessonsRes.error || progressRes.error || homeworkRes.error) {
       toast.error("Не удалось загрузить учеников");
       setLoading(false);
       return;
     }
-    const authById = new Map(
-      (authRows as { id: string; login: string; banned_until: string | null }[]).map((item) => [
-        item.id,
-        item,
-      ]),
-    );
+    const students = (authRows as AuthStudent[]) ?? [];
+    const profilesById = new Map((profilesRes.data ?? []).map((profile) => [profile.id, profile]));
+    const certificatesByUser = new Map<string, Certificate>();
+    ((certificates as Certificate[]) ?? []).forEach((certificate) => {
+      const current = certificatesByUser.get(certificate.user_id);
+      if (!current || (current.revoked_at && !certificate.revoked_at)) {
+        certificatesByUser.set(certificate.user_id, certificate);
+      }
+    });
     const completed = new Map<string, number>();
     (progressRes.data ?? []).forEach((item) =>
       completed.set(item.user_id, (completed.get(item.user_id) ?? 0) + 1),
@@ -105,21 +143,20 @@ function AdminStudents() {
     });
     setTotalLessons((lessonsRes.data ?? []).length || 14);
     setRows(
-      (
-        (profilesRes.data ?? []) as {
-          id: string;
-          full_name: string | null;
-          login: string;
-          created_at: string;
-        }[]
-      ).map((profile) => ({
-        ...profile,
-        login: authById.get(profile.id)?.login ?? profile.login,
-        blocked: Boolean(authById.get(profile.id)?.banned_until),
-        completed: completed.get(profile.id) ?? 0,
-        approved: approved.get(profile.id) ?? 0,
-        pending: pending.get(profile.id) ?? 0,
-      })),
+      students.map((student) => {
+        const profile = profilesById.get(student.id);
+        return {
+          id: student.id,
+          full_name: profile?.full_name ?? student.full_name,
+          login: student.login,
+          created_at: profile?.created_at ?? "",
+          blocked: Boolean(student.banned_until),
+          completed: completed.get(student.id) ?? 0,
+          approved: approved.get(student.id) ?? 0,
+          pending: pending.get(student.id) ?? 0,
+          certificate: certificatesByUser.get(student.id) ?? null,
+        };
+      }),
     );
     setLoading(false);
   }, [session?.access_token]);
@@ -226,6 +263,59 @@ function AdminStudents() {
       setSaving(false);
     }
   }
+  async function revokeCertificate(certificate: Certificate) {
+    if (!session?.access_token) return;
+    if (!window.confirm(`Аннулировать сертификат ${certificate.certificate_number}?`)) return;
+    setSavingCertificateId(certificate.id);
+    try {
+      await revokeAdminCertificate({
+        data: { accessToken: session.access_token, certificateId: certificate.id },
+      });
+      toast.success("Сертификат аннулирован");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось аннулировать сертификат");
+    } finally {
+      setSavingCertificateId(null);
+    }
+  }
+  async function restoreCertificate(certificate: Certificate) {
+    if (!session?.access_token) return;
+    if (!window.confirm(`Возобновить сертификат ${certificate.certificate_number}?`)) return;
+    setSavingCertificateId(certificate.id);
+    try {
+      await restoreAdminCertificate({
+        data: { accessToken: session.access_token, certificateId: certificate.id },
+      });
+      toast.success("Сертификат возобновлён");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось возобновить сертификат");
+    } finally {
+      setSavingCertificateId(null);
+    }
+  }
+  async function deleteCertificate(certificate: Certificate) {
+    if (!session?.access_token) return;
+    if (
+      !window.confirm(
+        `Удалить сертификат ${certificate.certificate_number}? Это действие нельзя отменить.`,
+      )
+    )
+      return;
+    setSavingCertificateId(certificate.id);
+    try {
+      await deleteAdminCertificate({
+        data: { accessToken: session.access_token, certificateId: certificate.id },
+      });
+      toast.success("Сертификат удалён");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось удалить сертификат");
+    } finally {
+      setSavingCertificateId(null);
+    }
+  }
   async function copyIssued() {
     if (!issued) return;
     await navigator.clipboard.writeText(credentialsText(issued));
@@ -277,6 +367,7 @@ function AdminStudents() {
                 <th className="px-4 py-3">Статус</th>
                 <th className="px-4 py-3">Прогресс</th>
                 <th className="px-4 py-3">ДЗ</th>
+                <th className="px-4 py-3">Сертификат</th>
                 <th className="px-4 py-3">Действия</th>
               </tr>
             </thead>
@@ -307,32 +398,28 @@ function AdminStudents() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <IconButton
-                        title="Изменить"
-                        onClick={() => {
-                          const name = splitName(row.full_name);
-                          setForm({ userId: row.id, ...name, login: row.login, password: "" });
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </IconButton>
-                      <IconButton title="Сбросить пароль" onClick={() => void resetPassword(row)}>
-                        <KeyRound className="h-4 w-4" />
-                      </IconButton>
-                      <IconButton
-                        title={row.blocked ? "Разблокировать" : "Заблокировать"}
-                        onClick={() => void toggleBlocked(row)}
-                      >
-                        {row.blocked ? <Unlock className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
-                      </IconButton>
-                    </div>
+                    <CertificateStatus certificate={row.certificate} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <StudentActions
+                      row={row}
+                      saving={saving || savingCertificateId === row.certificate?.id}
+                      onEdit={() => {
+                        const name = splitName(row.full_name);
+                        setForm({ userId: row.id, ...name, login: row.login, password: "" });
+                      }}
+                      onResetPassword={() => void resetPassword(row)}
+                      onToggleBlocked={() => void toggleBlocked(row)}
+                      onRevoke={() => row.certificate && void revokeCertificate(row.certificate)}
+                      onRestore={() => row.certificate && void restoreCertificate(row.certificate)}
+                      onDelete={() => row.certificate && void deleteCertificate(row.certificate)}
+                    />
                   </td>
                 </tr>
               ))}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                     Учеников пока нет
                   </td>
                 </tr>
@@ -344,26 +431,104 @@ function AdminStudents() {
     </div>
   );
 }
-function IconButton({
-  title,
-  onClick,
-  children,
-}: {
-  title: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function CertificateStatus({ certificate }: { certificate: Certificate | null }) {
+  if (!certificate) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        <Award className="h-3.5 w-3.5" /> Нет
+      </span>
+    );
+  }
   return (
-    <Button
-      variant="outline"
-      size="icon"
-      className="h-8 w-8"
-      title={title}
-      aria-label={title}
-      onClick={onClick}
+    <span
+      className={certificate.revoked_at ? "text-xs text-destructive" : "text-xs text-emerald-700"}
     >
-      {children}
-    </Button>
+      {certificate.revoked_at ? "Аннулирован" : "Действителен"}
+    </span>
+  );
+}
+function StudentActions({
+  row,
+  saving,
+  onEdit,
+  onResetPassword,
+  onToggleBlocked,
+  onRevoke,
+  onRestore,
+  onDelete,
+}: {
+  row: Row;
+  saving: boolean;
+  onEdit: () => void;
+  onResetPassword: () => void;
+  onToggleBlocked: () => void;
+  onRevoke: () => void;
+  onRestore: () => void;
+  onDelete: () => void;
+}) {
+  const certificate = row.certificate;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
+          aria-label="Действия ученика"
+          title="Действия ученика"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-56">
+        <DropdownMenuItem onSelect={onEdit}>
+          <Pencil /> Изменить данные
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={saving} onSelect={onResetPassword}>
+          <KeyRound /> Сбросить пароль
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={saving} onSelect={onToggleBlocked}>
+          {row.blocked ? <Unlock /> : <Ban />} {row.blocked ? "Разблокировать" : "Заблокировать"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Сертификат</DropdownMenuLabel>
+        {certificate ? (
+          <>
+            <DropdownMenuItem
+              onSelect={() =>
+                window.open(
+                  `/certificates/${certificate.verification_code}`,
+                  "_blank",
+                  "noopener,noreferrer",
+                )
+              }
+            >
+              <ExternalLink /> Открыть сертификат
+            </DropdownMenuItem>
+            {certificate.revoked_at ? (
+              <DropdownMenuItem disabled={saving} onSelect={onRestore}>
+                <RotateCcw /> Возобновить
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem disabled={saving} onSelect={onRevoke}>
+                <Ban /> Аннулировать
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              disabled={saving}
+              onSelect={onDelete}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 /> Удалить сертификат
+            </DropdownMenuItem>
+          </>
+        ) : (
+          <DropdownMenuItem disabled>
+            <Award /> Сертификат ещё не выдан
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 function StudentForm({
