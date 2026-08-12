@@ -26,7 +26,7 @@ function AuthPage() {
     const normalizedLogin = login.trim();
 
     if (normalizedLogin.includes("@")) {
-      toast.error("Для входа администратора используйте отдельную админ-панель.");
+      toast.error("Ученик с таким логином не найден.");
       return;
     }
 
