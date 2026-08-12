@@ -33,6 +33,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { withRetry } from "@/lib/admin-diagnostics";
 import {
   createAdminStudent,
+  deleteAdminStudent,
   generateAdminStudentCredentials,
   listAdminStudentsAuth,
   resetAdminStudentPassword,
@@ -241,6 +242,20 @@ function AdminStudents() {
       setSaving(false);
     }
   }
+  async function resetPasswordForForm() {
+    if (!form?.userId) return;
+    await resetPassword({
+      id: form.userId,
+      full_name: `${form.firstName} ${form.lastName}`.trim(),
+      login: form.login,
+      created_at: "",
+      blocked: false,
+      completed: 0,
+      approved: 0,
+      pending: 0,
+      certificate: null,
+    });
+  }
   async function toggleBlocked(row: Row) {
     if (!session?.access_token) return;
     const next = !row.blocked;
@@ -259,6 +274,27 @@ function AdminStudents() {
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось изменить статус");
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function deleteStudent(row: Row) {
+    if (!session?.access_token) return;
+    if (
+      !window.confirm(
+        `Полностью удалить ученика ${row.full_name ?? row.login}? Его доступ, прогресс и данные аккаунта будут удалены без возможности восстановления.`,
+      )
+    )
+      return;
+    setSaving(true);
+    try {
+      await deleteAdminStudent({
+        data: { accessToken: session.access_token, userId: row.id },
+      });
+      toast.success("Ученик полностью удалён");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось удалить ученика");
     } finally {
       setSaving(false);
     }
@@ -348,6 +384,7 @@ function AdminStudents() {
           onGenerate={() => void generate()}
           onClose={() => setForm(null)}
           onSave={() => void save()}
+          onResetPassword={form.userId ? () => void resetPasswordForForm() : undefined}
         />
       )}
       {issued && (
@@ -408,8 +445,8 @@ function AdminStudents() {
                         const name = splitName(row.full_name);
                         setForm({ userId: row.id, ...name, login: row.login, password: "" });
                       }}
-                      onResetPassword={() => void resetPassword(row)}
                       onToggleBlocked={() => void toggleBlocked(row)}
+                      onDeleteStudent={() => void deleteStudent(row)}
                       onRevoke={() => row.certificate && void revokeCertificate(row.certificate)}
                       onRestore={() => row.certificate && void restoreCertificate(row.certificate)}
                       onDelete={() => row.certificate && void deleteCertificate(row.certificate)}
@@ -451,8 +488,8 @@ function StudentActions({
   row,
   saving,
   onEdit,
-  onResetPassword,
   onToggleBlocked,
+  onDeleteStudent,
   onRevoke,
   onRestore,
   onDelete,
@@ -460,8 +497,8 @@ function StudentActions({
   row: Row;
   saving: boolean;
   onEdit: () => void;
-  onResetPassword: () => void;
   onToggleBlocked: () => void;
+  onDeleteStudent: () => void;
   onRevoke: () => void;
   onRestore: () => void;
   onDelete: () => void;
@@ -484,11 +521,15 @@ function StudentActions({
         <DropdownMenuItem onSelect={onEdit}>
           <Pencil /> Изменить данные
         </DropdownMenuItem>
-        <DropdownMenuItem disabled={saving} onSelect={onResetPassword}>
-          <KeyRound /> Сбросить пароль
-        </DropdownMenuItem>
         <DropdownMenuItem disabled={saving} onSelect={onToggleBlocked}>
           {row.blocked ? <Unlock /> : <Ban />} {row.blocked ? "Разблокировать" : "Заблокировать"}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={saving}
+          onSelect={onDeleteStudent}
+          className="text-destructive focus:text-destructive"
+        >
+          <Trash2 /> Удалить ученика
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Сертификат</DropdownMenuLabel>
@@ -538,6 +579,7 @@ function StudentForm({
   onGenerate,
   onClose,
   onSave,
+  onResetPassword,
 }: {
   form: FormState;
   saving: boolean;
@@ -545,11 +587,12 @@ function StudentForm({
   onGenerate: () => void;
   onClose: () => void;
   onSave: () => void;
+  onResetPassword?: () => void;
 }) {
   const field = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ ...form, [key]: e.target.value });
   return (
-    <section className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
+    <section className="max-w-5xl rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
       <div className="flex justify-between gap-3">
         <div>
           <h2 className="font-extrabold">
@@ -563,7 +606,7 @@ function StudentForm({
           Закрыть
         </Button>
       </div>
-      <div className="mt-5 grid gap-3 md:grid-cols-4">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <FormInput label="Имя" value={form.firstName} onChange={field("firstName")} />
         <FormInput label="Фамилия" value={form.lastName} onChange={field("lastName")} />
         <FormInput label="Логин" value={form.login} onChange={field("login")} />
@@ -575,10 +618,15 @@ function StudentForm({
           placeholder={form.userId ? "Оставьте пустым" : "Не менее 10 символов"}
         />
       </div>
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={onGenerate}>
           Сгенерировать логин и пароль
         </Button>
+        {form.userId && onResetPassword && (
+          <Button variant="outline" size="sm" onClick={onResetPassword} disabled={saving}>
+            <KeyRound className="h-4 w-4" /> Сбросить пароль
+          </Button>
+        )}
         <Button variant="hero" size="sm" onClick={onSave} disabled={saving}>
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           <Save className="h-4 w-4" />

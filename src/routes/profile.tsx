@@ -80,10 +80,10 @@ function ProfilePage() {
             <ArrowLeft className="h-4 w-4" /> Вернуться к урокам
           </Link>
         </Button>
-        <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
-          <section className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-soft)]">
+        <div className="grid max-w-5xl gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+          <section className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
             <div className="flex flex-col items-center text-center">
-              <Avatar className="h-32 w-32 border border-primary/10 bg-primary-soft shadow-[var(--shadow-soft)]">
+              <Avatar className="h-28 w-28 border border-primary/10 bg-primary-soft shadow-[var(--shadow-soft)]">
                 {profile?.avatar_url && (
                   <AvatarImage
                     src={profile.avatar_url}
@@ -95,11 +95,11 @@ function ProfilePage() {
                   {initial}
                 </AvatarFallback>
               </Avatar>
-              <h1 className="mt-5 font-display text-2xl font-extrabold tracking-tight">Профиль</h1>
+              <h1 className="mt-4 font-display text-2xl font-extrabold tracking-tight">Профиль</h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 Выберите готовый аватар для личного кабинета.
               </p>
-              <div className="mt-5 grid grid-cols-5 gap-3">
+              <div className="mt-4 grid grid-cols-5 gap-2">
                 {AVATAR_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
@@ -107,7 +107,7 @@ function ProfilePage() {
                     onClick={() => void selectAvatar(preset)}
                     disabled={avatarSaving}
                     className={cn(
-                      "h-14 w-14 rounded-full border bg-background p-1 transition hover:-translate-y-0.5 hover:border-primary disabled:cursor-not-allowed disabled:opacity-70",
+                      "h-12 w-12 rounded-full border bg-background p-1 transition hover:-translate-y-0.5 hover:border-primary disabled:cursor-not-allowed disabled:opacity-70",
                       profile?.avatar_url === preset.dataUrl
                         ? "border-primary ring-2 ring-primary/20"
                         : "border-border",
@@ -129,12 +129,12 @@ function ProfilePage() {
               )}
             </div>
           </section>
-          <section className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-soft)]">
-            <h2 className="font-display text-2xl font-extrabold tracking-tight">Данные аккаунта</h2>
+          <section className="h-fit rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
+            <h2 className="font-display text-xl font-extrabold tracking-tight">Данные аккаунта</h2>
             <p className="mt-2 text-muted-foreground">
               Данные для входа выдаёт администратор. Для смены пароля обратитесь к нему.
             </p>
-            <dl className="mt-6 grid gap-5 sm:grid-cols-2">
+            <dl className="mt-5 grid gap-4 sm:grid-cols-2">
               <DataRow label="Имя" value={firstName || "Не указано"} />
               <DataRow label="Фамилия" value={lastName || "Не указано"} />
               <DataRow label="Логин" value={profile?.login ?? "Загрузка..."} mono />

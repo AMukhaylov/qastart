@@ -101,9 +101,7 @@ function AuthPage() {
           </Link>
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight">Добро пожаловать в QA Start</h1>
-            <p className="mt-2 text-muted-foreground">
-              Впереди 14 дней практики. Начни путь в тестировании.
-            </p>
+            <p className="mt-2 text-muted-foreground">Попробуй профессию QA за 14 дней.</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="login">Логин</Label>
