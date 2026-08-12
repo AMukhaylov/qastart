@@ -68,6 +68,25 @@ function AdminLoginPage() {
     navigate({ to: "/admin/homework" });
   }
 
+  async function handlePasswordRecovery() {
+    try {
+      emailSchema.parse(email);
+    } catch (err) {
+      if (err instanceof z.ZodError)
+        toast.error("Укажите email администратора для восстановления пароля.");
+      return;
+    }
+
+    setSubmitting(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setSubmitting(false);
+
+    if (error) return toast.error("Не удалось отправить письмо для восстановления.");
+    toast.success("Ссылка для восстановления отправлена на email.");
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-[var(--gradient-soft)]">
       <div className="w-full max-w-md">
@@ -133,6 +152,15 @@ function AdminLoginPage() {
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />} Войти в админку
             </Button>
           </form>
+
+          <button
+            type="button"
+            className="mt-4 text-sm font-medium text-primary hover:underline disabled:text-muted-foreground"
+            onClick={handlePasswordRecovery}
+            disabled={submitting}
+          >
+            Забыли пароль?
+          </button>
 
           <div className="mt-6 pt-6 border-t border-border text-center text-sm text-muted-foreground">
             Студентам сюда:{" "}

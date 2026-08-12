@@ -23,9 +23,26 @@ function AuthPage() {
   }, [loading, user, navigate]);
   async function handleLogin(event: React.FormEvent) {
     event.preventDefault();
+    const normalizedLogin = login.trim();
+
+    if (normalizedLogin.includes("@")) {
+      toast.error("Для входа администратора используйте отдельную админ-панель.");
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]{3,40}$/.test(normalizedLogin)) {
+      toast.error("Логин содержит латинские буквы, цифры и символ _.");
+      return;
+    }
+
+    if (!password) {
+      toast.error("Введите пароль.");
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const session = await loginWithUsername({ data: { login, password } });
+      const session = await loginWithUsername({ data: { login: normalizedLogin, password } });
       const { error } = await supabase.auth.setSession({
         access_token: session.access_token,
         refresh_token: session.refresh_token,
@@ -34,7 +51,10 @@ function AuthPage() {
       toast.success("С возвращением!");
       navigate({ to: "/dashboard" });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Не удалось войти");
+      const message = error instanceof Error ? error.message : "";
+      toast.error(
+        message.startsWith("[") ? "Неверный логин или пароль." : message || "Не удалось войти",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -81,9 +101,7 @@ function AuthPage() {
           </Link>
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight">С возвращением</h1>
-            <p className="mt-2 text-muted-foreground">
-              Войди в личный кабинет по данным от администратора.
-            </p>
+            <p className="mt-2 text-muted-foreground">Войди в личный кабинет.</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="login">Логин</Label>
@@ -95,6 +113,8 @@ function AuthPage() {
                 onChange={(e) => setLogin(e.target.value)}
                 className="h-12 pl-10"
                 autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
                 required
               />
             </div>
@@ -125,6 +145,12 @@ function AuthPage() {
           <Button type="submit" variant="hero" size="xl" className="w-full" disabled={submitting}>
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />} Войти
           </Button>
+          <div className="border-t border-border pt-5 text-center text-sm text-muted-foreground">
+            Администраторам:{" "}
+            <Link to="/admin/login" className="font-medium text-primary hover:underline">
+              вход в админ-панель
+            </Link>
+          </div>
         </form>
       </main>
     </div>

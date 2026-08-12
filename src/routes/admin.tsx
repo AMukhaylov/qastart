@@ -1,10 +1,11 @@
 import { createFileRoute, Link, Outlet, useNavigate, useLocation } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ClipboardCheck, BookOpen, Users, ArrowLeft, CalendarDays } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { AdminDiagnosticsPanel } from "@/components/admin-diagnostics-panel";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/admin")({
   component: AdminLayout,
@@ -14,12 +15,23 @@ function AdminLayout() {
   const { user, loading, rolesLoading, isAdmin, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [login, setLogin] = useState<string | null>(null);
 
   useEffect(() => {
     if (loading || rolesLoading) return;
     if (location.pathname === "/admin/login") return;
     if (!user || !isAdmin) navigate({ to: "/admin/login" });
   }, [user, isAdmin, loading, rolesLoading, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!user || !isAdmin) return;
+    void supabase
+      .from("profiles")
+      .select("login")
+      .eq("id", user.id)
+      .maybeSingle()
+      .then(({ data }) => setLogin(data?.login ?? null));
+  }, [user, isAdmin]);
 
   if (location.pathname === "/admin/login") {
     return <Outlet />;
@@ -54,6 +66,9 @@ function AdminLayout() {
         <div className="container-page h-16 flex items-center justify-between gap-4">
           <BrandLogo subtitle="Админ-панель" admin />
           <div className="flex items-center gap-2">
+            {login && (
+              <span className="hidden text-sm text-muted-foreground md:inline">Логин: {login}</span>
+            )}
             <Button asChild variant="ghost" size="sm">
               <Link to="/dashboard">
                 <ArrowLeft className="h-4 w-4" /> В кабинет
