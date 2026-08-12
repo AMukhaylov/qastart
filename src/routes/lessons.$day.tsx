@@ -189,10 +189,7 @@ function LessonPage() {
         { full_name: profile.full_name, avatar_url: profile.avatar_url },
       ]),
     );
-    const fallbackStudentName =
-      (user?.user_metadata?.full_name as string | undefined) ??
-      user?.email?.split("@")[0] ??
-      "Ученик";
+    const fallbackStudentName = (user?.user_metadata?.full_name as string | undefined) ?? "Ученик";
 
     return rawMessages.map((message) => ({
       ...message,

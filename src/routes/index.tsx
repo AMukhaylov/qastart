@@ -140,9 +140,7 @@ const benefits = [
 function LandingPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const name = user
-    ? ((user.user_metadata?.full_name as string | undefined) ?? user.email?.split("@")[0] ?? "друг")
-    : null;
+  const name = user ? ((user.user_metadata?.full_name as string | undefined) ?? "друг") : null;
 
   useEffect(() => {
     if (!user) return;
@@ -204,18 +202,11 @@ function LandingPage() {
                   </Link>
                 </Button>
               ) : (
-                <>
-                  <Button asChild variant="hero" size="xl">
-                    <Link to="/auth">
-                      Регистрация <ArrowRight className="h-5 w-5" />
-                    </Link>
-                  </Button>
-                  <Button asChild variant="soft" size="xl">
-                    <Link to="/auth">
-                      <LogIn className="h-5 w-5" /> Войти
-                    </Link>
-                  </Button>
-                </>
+                <Button asChild variant="hero" size="xl">
+                  <Link to="/auth">
+                    <LogIn className="h-5 w-5" /> Войти в кабинет
+                  </Link>
+                </Button>
               )}
             </div>
           </div>

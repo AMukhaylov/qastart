@@ -134,10 +134,7 @@ function Dashboard() {
   }
 
   const name =
-    profile?.full_name ??
-    (user.user_metadata?.full_name as string | undefined) ??
-    user.email?.split("@")[0] ??
-    "друг";
+    profile?.full_name ?? (user.user_metadata?.full_name as string | undefined) ?? "друг";
   const totalDays = lessons.length || 14;
   const completedCount = completedIds.size;
   const progressPct = totalDays ? Math.round((completedCount / totalDays) * 100) : 0;
