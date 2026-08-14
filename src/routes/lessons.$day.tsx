@@ -337,8 +337,18 @@ function LessonPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin" />
+      <div className="min-h-screen bg-[var(--gradient-soft)] px-6 flex items-center justify-center">
+        <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl border border-border bg-card p-8 text-center shadow-[var(--shadow-soft)]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-primary">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+          <div>
+            <p className="font-semibold text-foreground">Загружаем урок</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Подготавливаем материалы и твой прогресс.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }

@@ -1,5 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowRight,
   Sparkles,
@@ -139,24 +138,7 @@ const benefits = [
 
 function LandingPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const name = user ? ((user.user_metadata?.full_name as string | undefined) ?? "друг") : null;
-
-  useEffect(() => {
-    if (!user) return;
-
-    const search = new URLSearchParams(window.location.search);
-    const hasOAuthParams =
-      search.has("code") ||
-      search.has("state") ||
-      window.location.hash.includes("access_token") ||
-      window.location.hash.includes("refresh_token");
-
-    if (hasOAuthParams) {
-      window.history.replaceState(null, "", "/");
-      void navigate({ to: "/dashboard", replace: true });
-    }
-  }, [navigate, user]);
 
   return (
     <div className="min-h-screen flex flex-col">

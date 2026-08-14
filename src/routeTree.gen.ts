@@ -21,13 +21,11 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as LessonsDayRouteImport } from './routes/lessons.$day'
 import { Route as CertificatesCodeRouteImport } from './routes/certificates.$code'
-import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as ApiAvatarRouteImport } from './routes/api.avatar'
 import { Route as AdminStudentsRouteImport } from './routes/admin.students'
 import { Route as AdminMeetingsRouteImport } from './routes/admin.meetings'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminLessonsRouteImport } from './routes/admin.lessons'
-import { Route as AdminInvitesRouteImport } from './routes/admin.invites'
 import { Route as AdminHomeworkRouteImport } from './routes/admin.homework'
 
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -90,11 +88,6 @@ const CertificatesCodeRoute = CertificatesCodeRouteImport.update({
   path: '/certificates/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthCallbackRoute = AuthCallbackRouteImport.update({
-  id: '/callback',
-  path: '/callback',
-  getParentRoute: () => AuthRoute,
-} as any)
 const ApiAvatarRoute = ApiAvatarRouteImport.update({
   id: '/api/avatar',
   path: '/api/avatar',
@@ -120,11 +113,6 @@ const AdminLessonsRoute = AdminLessonsRouteImport.update({
   path: '/lessons',
   getParentRoute: () => AdminRoute,
 } as any)
-const AdminInvitesRoute = AdminInvitesRouteImport.update({
-  id: '/invites',
-  path: '/invites',
-  getParentRoute: () => AdminRoute,
-} as any)
 const AdminHomeworkRoute = AdminHomeworkRouteImport.update({
   id: '/homework',
   path: '/homework',
@@ -134,7 +122,7 @@ const AdminHomeworkRoute = AdminHomeworkRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
-  '/auth': typeof AuthRouteWithChildren
+  '/auth': typeof AuthRoute
   '/contacts': typeof ContactsRoute
   '/dashboard': typeof DashboardRoute
   '/offer': typeof OfferRoute
@@ -142,20 +130,18 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/homework': typeof AdminHomeworkRoute
-  '/admin/invites': typeof AdminInvitesRoute
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/meetings': typeof AdminMeetingsRoute
   '/admin/students': typeof AdminStudentsRoute
   '/api/avatar': typeof ApiAvatarRoute
-  '/auth/callback': typeof AuthCallbackRoute
   '/certificates/$code': typeof CertificatesCodeRoute
   '/lessons/$day': typeof LessonsDayRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/auth': typeof AuthRouteWithChildren
+  '/auth': typeof AuthRoute
   '/contacts': typeof ContactsRoute
   '/dashboard': typeof DashboardRoute
   '/offer': typeof OfferRoute
@@ -163,13 +149,11 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/homework': typeof AdminHomeworkRoute
-  '/admin/invites': typeof AdminInvitesRoute
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/meetings': typeof AdminMeetingsRoute
   '/admin/students': typeof AdminStudentsRoute
   '/api/avatar': typeof ApiAvatarRoute
-  '/auth/callback': typeof AuthCallbackRoute
   '/certificates/$code': typeof CertificatesCodeRoute
   '/lessons/$day': typeof LessonsDayRoute
   '/admin': typeof AdminIndexRoute
@@ -178,7 +162,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
-  '/auth': typeof AuthRouteWithChildren
+  '/auth': typeof AuthRoute
   '/contacts': typeof ContactsRoute
   '/dashboard': typeof DashboardRoute
   '/offer': typeof OfferRoute
@@ -186,13 +170,11 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/homework': typeof AdminHomeworkRoute
-  '/admin/invites': typeof AdminInvitesRoute
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/meetings': typeof AdminMeetingsRoute
   '/admin/students': typeof AdminStudentsRoute
   '/api/avatar': typeof ApiAvatarRoute
-  '/auth/callback': typeof AuthCallbackRoute
   '/certificates/$code': typeof CertificatesCodeRoute
   '/lessons/$day': typeof LessonsDayRoute
   '/admin/': typeof AdminIndexRoute
@@ -210,13 +192,11 @@ export interface FileRouteTypes {
     | '/profile'
     | '/reset-password'
     | '/admin/homework'
-    | '/admin/invites'
     | '/admin/lessons'
     | '/admin/login'
     | '/admin/meetings'
     | '/admin/students'
     | '/api/avatar'
-    | '/auth/callback'
     | '/certificates/$code'
     | '/lessons/$day'
     | '/admin/'
@@ -231,13 +211,11 @@ export interface FileRouteTypes {
     | '/profile'
     | '/reset-password'
     | '/admin/homework'
-    | '/admin/invites'
     | '/admin/lessons'
     | '/admin/login'
     | '/admin/meetings'
     | '/admin/students'
     | '/api/avatar'
-    | '/auth/callback'
     | '/certificates/$code'
     | '/lessons/$day'
     | '/admin'
@@ -253,13 +231,11 @@ export interface FileRouteTypes {
     | '/profile'
     | '/reset-password'
     | '/admin/homework'
-    | '/admin/invites'
     | '/admin/lessons'
     | '/admin/login'
     | '/admin/meetings'
     | '/admin/students'
     | '/api/avatar'
-    | '/auth/callback'
     | '/certificates/$code'
     | '/lessons/$day'
     | '/admin/'
@@ -268,7 +244,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
-  AuthRoute: typeof AuthRouteWithChildren
+  AuthRoute: typeof AuthRoute
   ContactsRoute: typeof ContactsRoute
   DashboardRoute: typeof DashboardRoute
   OfferRoute: typeof OfferRoute
@@ -366,13 +342,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CertificatesCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/auth/callback': {
-      id: '/auth/callback'
-      path: '/callback'
-      fullPath: '/auth/callback'
-      preLoaderRoute: typeof AuthCallbackRouteImport
-      parentRoute: typeof AuthRoute
-    }
     '/api/avatar': {
       id: '/api/avatar'
       path: '/api/avatar'
@@ -408,13 +377,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLessonsRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/admin/invites': {
-      id: '/admin/invites'
-      path: '/invites'
-      fullPath: '/admin/invites'
-      preLoaderRoute: typeof AdminInvitesRouteImport
-      parentRoute: typeof AdminRoute
-    }
     '/admin/homework': {
       id: '/admin/homework'
       path: '/homework'
@@ -427,7 +389,6 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminHomeworkRoute: typeof AdminHomeworkRoute
-  AdminInvitesRoute: typeof AdminInvitesRoute
   AdminLessonsRoute: typeof AdminLessonsRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AdminMeetingsRoute: typeof AdminMeetingsRoute
@@ -437,7 +398,6 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminHomeworkRoute: AdminHomeworkRoute,
-  AdminInvitesRoute: AdminInvitesRoute,
   AdminLessonsRoute: AdminLessonsRoute,
   AdminLoginRoute: AdminLoginRoute,
   AdminMeetingsRoute: AdminMeetingsRoute,
@@ -447,20 +407,10 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
-interface AuthRouteChildren {
-  AuthCallbackRoute: typeof AuthCallbackRoute
-}
-
-const AuthRouteChildren: AuthRouteChildren = {
-  AuthCallbackRoute: AuthCallbackRoute,
-}
-
-const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
-  AuthRoute: AuthRouteWithChildren,
+  AuthRoute: AuthRoute,
   ContactsRoute: ContactsRoute,
   DashboardRoute: DashboardRoute,
   OfferRoute: OfferRoute,
