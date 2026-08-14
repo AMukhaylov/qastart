@@ -22,7 +22,8 @@ const checks = [
   ["Главная", () => expectHtml("/")],
   ["Вход", () => expectHtml("/auth")],
   ["Админ-вход", () => expectHtml("/admin/login")],
-  ["OAuth callback route", () => expectHtml("/auth/callback")],
+  ["Удалённый OAuth callback", () => expectStatus("/auth/callback", 404)],
+  ["Удалённые приглашения", () => expectStatus("/admin/invites", 404)],
   ["Политика", () => expectHtml("/privacy")],
   ["Оферта", () => expectHtml("/offer")],
   ["Контакты", () => expectHtml("/contacts")],
@@ -63,6 +64,17 @@ async function expectHtml(path) {
 
   if (!text.includes("<!DOCTYPE html>") && !text.includes("<html")) {
     throw new Error("ответ не похож на HTML-страницу");
+  }
+
+  return `HTTP ${response.status}`;
+}
+
+async function expectStatus(path, expectedStatus) {
+  const response = await fetchWithTimeout(`${baseUrl}${path}`);
+  await response.arrayBuffer();
+
+  if (response.status !== expectedStatus) {
+    throw new Error(`ожидался HTTP ${expectedStatus}, получен HTTP ${response.status}`);
   }
 
   return `HTTP ${response.status}`;
