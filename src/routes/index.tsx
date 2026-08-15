@@ -191,13 +191,11 @@ function LandingPage() {
                   </Link>
                 </Button>
               )}
-              {!user && (
-                <Button asChild variant="outline" size="xl">
-                  <a href="https://vk.ru/qa_school" target="_blank" rel="noopener noreferrer">
-                    <FaVk className="h-5 w-5 text-[#0077ff]" /> Есть вопросы? Написать в VK
-                  </a>
-                </Button>
-              )}
+              <Button asChild variant="outline" size="xl">
+                <a href="https://vk.ru/qa_school" target="_blank" rel="noopener noreferrer">
+                  <FaVk className="h-5 w-5 text-[#0077ff]" /> Написать в VK
+                </a>
+              </Button>
             </div>
           </div>
 
