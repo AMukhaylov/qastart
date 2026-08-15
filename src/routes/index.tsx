@@ -30,6 +30,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { FaVk } from "react-icons/fa6";
 import heroQa from "@/assets/hero-qa.png";
 import mentorPhoto from "@/assets/mentor-mukhailov.jpg";
 
@@ -188,6 +189,13 @@ function LandingPage() {
                   <Link to="/auth">
                     <LogIn className="h-5 w-5" /> Войти в кабинет
                   </Link>
+                </Button>
+              )}
+              {!user && (
+                <Button asChild variant="outline" size="xl">
+                  <a href="https://vk.ru/qa_school" target="_blank" rel="noopener noreferrer">
+                    <FaVk className="h-5 w-5 text-[#0077ff]" /> Есть вопросы? Написать в VK
+                  </a>
                 </Button>
               )}
             </div>
