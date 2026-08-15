@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { LessonRichTextEditor } from "@/components/lesson-rich-text-editor";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -140,10 +141,9 @@ function AdminLessons() {
             </div>
             <div className="space-y-2">
               <Label>Конспект</Label>
-              <Textarea
-                rows={10}
+              <LessonRichTextEditor
                 value={active.content_md}
-                onChange={(e) => update("content_md", e.target.value)}
+                onChange={(value) => update("content_md", value)}
               />
             </div>
             <div className="space-y-2">

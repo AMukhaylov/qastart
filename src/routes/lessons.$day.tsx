@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { FinalQuiz } from "@/components/final-quiz";
+import { LessonRichContent } from "@/components/lesson-rich-content";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -411,9 +412,7 @@ function LessonPage() {
         {/* Content */}
         <article className="rounded-2xl border border-border bg-card p-7 shadow-[var(--shadow-soft)]">
           <h2 className="text-xl font-extrabold mb-4">Конспект</h2>
-          <div className="prose prose-slate max-w-none whitespace-pre-wrap text-[15px] leading-relaxed">
-            {lesson.content_md}
-          </div>
+          <LessonRichContent content={lesson.content_md} />
           <div className="mt-6 rounded-xl bg-primary-soft p-4 text-sm text-primary">
             {lesson.day_number === 14 ? (
               completed ? (
