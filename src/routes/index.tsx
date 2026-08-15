@@ -181,7 +181,7 @@ function LandingPage() {
               {user ? (
                 <Button asChild variant="hero" size="xl">
                   <Link to="/dashboard">
-                    Продолжить обучение <ArrowRight className="h-5 w-5" />
+                    <BookOpen className="h-5 w-5" /> Продолжить обучение
                   </Link>
                 </Button>
               ) : (
@@ -329,7 +329,7 @@ function LandingPage() {
           <SectionHead
             badge="Наставник"
             title="О наставнике"
-            subtitle="Курс ведёт практикующий инженер, который помогал десяткам новичков войти в профессию."
+            subtitle="Курс ведёт практикующий инженер, который помогал сотням новичков войти в профессию."
           />
           <div className="mt-12 max-w-3xl mx-auto">
             <div className="rounded-3xl border border-border bg-card p-8 md:p-10 shadow-[var(--shadow-card)] flex flex-col md:flex-row items-center md:items-start gap-8">
@@ -355,7 +355,7 @@ function LandingPage() {
                     <Award className="h-3.5 w-3.5" /> 8+ лет опыта
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft text-primary px-3 py-1 text-xs font-semibold">
-                    <Users className="h-3.5 w-3.5" /> Тысячи студентов
+                    <Users className="h-3.5 w-3.5" /> Сотни студентов
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft text-primary px-3 py-1 text-xs font-semibold">
                     <MessageSquare className="h-3.5 w-3.5" /> На связи в чате
