@@ -147,14 +147,14 @@ function AuthPage() {
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />} Войти
           </Button>
           <div className="border-t border-border pt-5 text-center text-sm text-muted-foreground">
-            <p>Хочешь попасть на обучение? Напиши мне в VK.</p>
+            <p>Доступ к обучению выдаёт наставник. Чтобы получить его, напиши мне в VK.</p>
             <a
               href="https://vk.ru/qa_school"
               target="_blank"
               rel="noopener noreferrer"
               className="mt-2 inline-flex items-center gap-2 font-semibold text-[#0077ff] transition-colors hover:text-[#0066dd]"
             >
-              <FaVk className="h-4 w-4" /> Написать наставнику
+              <FaVk className="h-4 w-4" /> Написать в VK
             </a>
           </div>
         </form>
