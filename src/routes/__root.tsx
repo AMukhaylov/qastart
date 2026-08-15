@@ -31,22 +31,22 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "QA школа — Курс «Инженер по тестированию» с нуля" },
+      { title: "QA Start — интенсивный курс по тестированию ПО с нуля" },
       {
         name: "description",
         content:
           "Индивидуальный 14-дневный онлайн-курс по тестированию ПО. Стань QA-инженером и выйди на первую работу в IT.",
       },
       { name: "author", content: "QA школа" },
-      { name: "app-version", content: "v0.3.4" },
-      { property: "og:title", content: "QA школа — Курс «Инженер по тестированию» с нуля" },
+      { name: "app-version", content: "v0.3.5" },
+      { property: "og:title", content: "QA Start — интенсивный курс по тестированию ПО с нуля" },
       {
         property: "og:description",
         content: "Онлайн-курс по тестированию ПО с личным наставником и практикой.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:title", content: "QA школа — Курс «Инженер по тестированию» с нуля" },
+      { name: "twitter:title", content: "QA Start — интенсивный курс по тестированию ПО с нуля" },
       {
         name: "twitter:description",
         content: "Онлайн-курс по тестированию ПО с личным наставником и практикой.",
