@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { loginWithUsername } from "@/server/login.functions";
-import { FaVk } from "react-icons/fa6";
 
 export const Route = createFileRoute("/auth")({ component: AuthPage });
 
@@ -147,15 +146,18 @@ function AuthPage() {
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />} Войти
           </Button>
           <div className="border-t border-border pt-5 text-center text-sm text-muted-foreground">
-            <p>Доступ к обучению выдаёт наставник. Чтобы получить его, напиши мне в VK.</p>
-            <a
-              href="https://vk.ru/qa_school"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center gap-2 font-semibold text-[#0077ff] transition-colors hover:text-[#0066dd]"
-            >
-              <FaVk className="h-4 w-4" /> Написать в VK
-            </a>
+            <p>
+              Доступ к обучению выдаёт наставник. Чтобы получить его,{" "}
+              <a
+                href="https://vk.ru/qa_school"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-[#0077ff] underline decoration-[#0077ff]/30 underline-offset-2 transition-colors hover:text-[#0066dd]"
+              >
+                напиши мне в VK
+              </a>
+              .
+            </p>
           </div>
         </form>
       </main>
