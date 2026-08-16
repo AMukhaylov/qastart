@@ -79,7 +79,7 @@ export function FinalQuiz({ accessToken }: { accessToken: string }) {
       setCurrentIndex(0);
       autoFinishRef.current = false;
     } catch (error) {
-      setState({ status: "ready", attemptsUsed: 0, maxAttempts: 2 });
+      setState({ status: "ready", attemptsUsed: 0, maxAttempts: 3 });
       toast.error(error instanceof Error ? error.message : "Не удалось загрузить тест");
     }
   };

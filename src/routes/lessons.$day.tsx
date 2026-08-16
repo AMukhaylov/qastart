@@ -77,7 +77,7 @@ type ProfileMini = { id: string; full_name: string | null; avatar_url: string | 
 function LessonPage() {
   const { day } = Route.useParams();
   const dayNum = parseInt(day, 10);
-  const { user, session, loading: authLoading } = useAuth();
+  const { user, session, loading: authLoading, isAdmin, rolesLoading } = useAuth();
   const navigate = useNavigate();
 
   const [lesson, setLesson] = useState<Lesson | null>(null);
@@ -89,6 +89,7 @@ function LessonPage() {
   const [questionText, setQuestionText] = useState("");
   const [questionAttachments, setQuestionAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [locked, setLocked] = useState(false);
   const [saving, setSaving] = useState(false);
   const [asking, setAsking] = useState(false);
 
@@ -97,10 +98,10 @@ function LessonPage() {
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    if (!user || isNaN(dayNum)) return;
+    if (!user || isNaN(dayNum) || rolesLoading) return;
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, dayNum]);
+  }, [user, dayNum, isAdmin, rolesLoading]);
 
   async function load() {
     setLoading(true);
@@ -109,6 +110,33 @@ function LessonPage() {
     setAttachments([]);
     setQuestionAttachments([]);
     setQuestionText("");
+    setLocked(false);
+
+    if (dayNum > 1 && !isAdmin) {
+      const { data: previousLesson } = await supabase
+        .from("lessons")
+        .select("id")
+        .eq("day_number", dayNum - 1)
+        .maybeSingle();
+      const { data: previousProgress } = previousLesson
+        ? await supabase
+            .from("lesson_progress")
+            .select("completed")
+            .eq("user_id", user!.id)
+            .eq("lesson_id", previousLesson.id)
+            .eq("completed", true)
+            .maybeSingle()
+        : { data: null };
+
+      if (!previousProgress?.completed) {
+        setLesson(null);
+        setCompleted(false);
+        setLocked(true);
+        setLoading(false);
+        return;
+      }
+    }
+
     const { data: l } = await supabase
       .from("lessons")
       .select("*")
@@ -336,7 +364,7 @@ function LessonPage() {
     }
   }
 
-  if (authLoading || loading) {
+  if (authLoading || rolesLoading || loading) {
     return (
       <div className="min-h-screen bg-[var(--gradient-soft)] px-6 flex items-center justify-center">
         <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl border border-border bg-card p-8 text-center shadow-[var(--shadow-soft)]">
@@ -355,6 +383,21 @@ function LessonPage() {
   }
 
   if (!lesson) {
+    if (locked) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="max-w-md rounded-2xl border border-border bg-card p-8 shadow-[var(--shadow-soft)]">
+            <h1 className="text-xl font-extrabold">Урок пока закрыт</h1>
+            <p className="mt-2 text-muted-foreground">
+              Сначала заверши предыдущий урок, чтобы открыть следующий материал.
+            </p>
+            <Button asChild variant="soft" className="mt-6">
+              <Link to="/dashboard">Вернуться к урокам</Link>
+            </Button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4">
         <p className="text-muted-foreground">Урок не найден</p>

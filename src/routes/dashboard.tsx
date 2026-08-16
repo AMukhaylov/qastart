@@ -60,6 +60,7 @@ function Dashboard() {
   const [certificate, setCertificate] = useState<Certificate | null>(null);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth" });
@@ -67,65 +68,75 @@ function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
+    setDataLoading(true);
     void (async () => {
-      const [
-        { data: ls },
-        { data: prog },
-        { data: hw },
-        { data: cert },
-        { data: profileRow },
-        publishedMeetings,
-      ] = await Promise.all([
-        supabase.from("lessons").select("id,day_number,title,description").order("day_number"),
-        supabase
-          .from("lesson_progress")
-          .select("lesson_id,completed")
-          .eq("user_id", user.id)
-          .eq("completed", true),
-        supabase
-          .from("homework_submissions")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("status", "approved"),
-        supabase
-          .from("certificates")
-          .select(
-            "certificate_number,verification_code,course_title,issued_at,mentor_name,revoked_at",
-          )
-          .eq("user_id", user.id)
-          .order("issued_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase.from("profiles").select("full_name,avatar_url").eq("id", user.id).maybeSingle(),
-        session?.access_token
-          ? listPublishedMeetings({ data: { accessToken: session.access_token } })
-          : Promise.resolve([]),
-      ]);
-      const loadedLessons = (ls ?? []) as Lesson[];
-      const loadedCompleted = new Set((prog ?? []).map((p) => p.lesson_id as string));
-      let loadedCertificate = (cert ?? null) as Certificate | null;
+      try {
+        const [
+          { data: ls },
+          { data: prog },
+          { data: hw },
+          { data: cert },
+          { data: profileRow },
+          publishedMeetings,
+        ] = await Promise.all([
+          supabase.from("lessons").select("id,day_number,title,description").order("day_number"),
+          supabase
+            .from("lesson_progress")
+            .select("lesson_id,completed")
+            .eq("user_id", user.id)
+            .eq("completed", true),
+          supabase
+            .from("homework_submissions")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("status", "approved"),
+          supabase
+            .from("certificates")
+            .select(
+              "certificate_number,verification_code,course_title,issued_at,mentor_name,revoked_at",
+            )
+            .eq("user_id", user.id)
+            .order("issued_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase.from("profiles").select("full_name,avatar_url").eq("id", user.id).maybeSingle(),
+          session?.access_token
+            ? listPublishedMeetings({ data: { accessToken: session.access_token } })
+            : Promise.resolve([]),
+        ]);
+        const loadedLessons = (ls ?? []) as Lesson[];
+        const loadedCompleted = new Set((prog ?? []).map((p) => p.lesson_id as string));
+        let loadedCertificate = (cert ?? null) as Certificate | null;
 
-      if (
-        !loadedCertificate &&
-        session?.access_token &&
-        loadedLessons.length > 0 &&
-        loadedCompleted.size >= loadedLessons.length
-      ) {
-        loadedCertificate = (await ensureCurrentUserCertificate({
-          data: { accessToken: session.access_token },
-        })) as Certificate | null;
+        if (
+          !loadedCertificate &&
+          session?.access_token &&
+          loadedLessons.length > 0 &&
+          loadedCompleted.size >= loadedLessons.length
+        ) {
+          loadedCertificate = (await ensureCurrentUserCertificate({
+            data: { accessToken: session.access_token },
+          })) as Certificate | null;
+        }
+
+        if (cancelled) return;
+        setLessons(loadedLessons);
+        setCompletedIds(loadedCompleted);
+        setHwApproved((hw ?? []).length);
+        setCertificate(loadedCertificate);
+        setMeetings((publishedMeetings ?? []) as Meeting[]);
+        setProfile((profileRow ?? null) as Profile | null);
+      } finally {
+        if (!cancelled) setDataLoading(false);
       }
-
-      setLessons(loadedLessons);
-      setCompletedIds(loadedCompleted);
-      setHwApproved((hw ?? []).length);
-      setCertificate(loadedCertificate);
-      setMeetings((publishedMeetings ?? []) as Meeting[]);
-      setProfile((profileRow ?? null) as Profile | null);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [session?.access_token, user]);
 
-  if (loading || !user) {
+  if (loading || !user || dataLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-muted-foreground">
         Загрузка…
