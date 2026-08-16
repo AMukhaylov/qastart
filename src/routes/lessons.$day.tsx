@@ -108,10 +108,10 @@ function LessonPage() {
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    if (!user || isNaN(dayNum) || rolesLoading) return;
+    if (!user?.id || isNaN(dayNum) || rolesLoading) return;
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, dayNum, isAdmin, rolesLoading]);
+  }, [user?.id, dayNum, isAdmin, rolesLoading]);
 
   async function load() {
     setLoading(true);
