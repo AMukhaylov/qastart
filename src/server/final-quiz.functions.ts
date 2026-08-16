@@ -9,6 +9,7 @@ const QUIZ_DURATION_MS = 30 * 60 * 1000;
 const PASSING_PERCENT = 70;
 const BASE_MAX_ATTEMPTS = 3;
 const QUESTIONS_PER_ATTEMPT = 30;
+const RESERVED_ATTEMPT_KEY = "__reserved_final_quiz_attempt";
 
 const accessTokenInput = z.object({
   accessToken: z.string().min(20),
@@ -95,6 +96,10 @@ function parseAnswers(value: unknown) {
   );
 }
 
+function isReservedAttempt(attempt: QuizAttempt) {
+  return !attempt.finished_at && parseAnswers(attempt.answers)[RESERVED_ATTEMPT_KEY] === "true";
+}
+
 function visibleQuestions(order: QuestionOrder) {
   const byId = new Map(FINAL_QUIZ_QUESTIONS.map((question) => [question.id, question]));
   return order.questionIds.flatMap((questionId) => {
@@ -176,7 +181,7 @@ async function closeExpiredAttempts(userId: string) {
     .is("finished_at", null);
   if (error) throw error;
   for (const row of (data ?? []) as QuizAttempt[]) {
-    if (isExpired(row)) await finalizeAttempt(row, true);
+    if (!isReservedAttempt(row) && isExpired(row)) await finalizeAttempt(row, true);
   }
 }
 
@@ -250,7 +255,9 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
       .order("started_at", { ascending: false });
     if (attemptsError) throw attemptsError;
     const allAttempts = (attempts ?? []) as QuizAttempt[];
-    const active = allAttempts.find((attempt) => !attempt.finished_at);
+    const active = allAttempts.find(
+      (attempt) => !attempt.finished_at && !isReservedAttempt(attempt),
+    );
     if (active) {
       return {
         status: "active" as const,
@@ -283,12 +290,33 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
     }
 
     const questionOrder = makeQuestionOrder();
-    const { data: created, error: createError } = await supabaseAdmin
-      .from("quiz_attempts")
-      .insert({ user_id: userId, lesson_id: lesson.id, question_order: questionOrder, answers: {} })
-      .select("*")
-      .single();
-    if (createError) throw createError;
+    const reserved = allAttempts.find(isReservedAttempt);
+    const attemptPayload = {
+      question_order: questionOrder,
+      answers: {},
+      score: null,
+      percentage: null,
+      passed: null,
+      started_at: new Date().toISOString(),
+      finished_at: null,
+      timed_out: false,
+      disqualified: false,
+    };
+    const request = reserved
+      ? supabaseAdmin
+          .from("quiz_attempts")
+          .update(attemptPayload)
+          .eq("id", reserved.id)
+          .eq("user_id", userId)
+          .select("*")
+          .single()
+      : supabaseAdmin
+          .from("quiz_attempts")
+          .insert({ user_id: userId, lesson_id: lesson.id, ...attemptPayload })
+          .select("*")
+          .single();
+    const { data: created, error: createError } = await request;
+    if (createError || !created) throw createError ?? new Error("Не удалось начать тест");
     const attempt = created as QuizAttempt;
     return {
       status: "active" as const,
@@ -380,7 +408,7 @@ export const grantAdditionalFinalQuizAttempt = createServerFn({ method: "POST" }
       .from("quiz_attempts")
       .update({
         question_order: makeQuestionOrder(),
-        answers: {},
+        answers: { [RESERVED_ATTEMPT_KEY]: "true" },
         score: null,
         percentage: null,
         passed: null,
