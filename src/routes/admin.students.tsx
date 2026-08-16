@@ -48,7 +48,10 @@ import {
   restoreAdminCertificate,
   revokeAdminCertificate,
 } from "@/server/certificates.functions";
-import { grantAdditionalFinalQuizAttempt } from "@/server/final-quiz.functions";
+import {
+  grantAdditionalFinalQuizAttempt,
+  listAdminFinalQuizEligibility,
+} from "@/server/final-quiz.functions";
 
 export const Route = createFileRoute("/admin/students")({ component: AdminStudents });
 
@@ -61,6 +64,7 @@ type Row = {
   completed: number;
   approved: number;
   pending: number;
+  canGrantQuizAttempt: boolean;
   certificate: Certificate | null;
 };
 type Certificate = {
@@ -106,20 +110,28 @@ function AdminStudents() {
   const load = useCallback(async () => {
     if (!session?.access_token) return;
     setLoading(true);
-    const [profilesRes, lessonsRes, progressRes, homeworkRes, certificates, authRows] =
-      await Promise.all([
-        withRetry("profiles.list", () =>
-          supabase
-            .from("profiles")
-            .select("id,full_name,login,created_at")
-            .order("created_at", { ascending: false }),
-        ),
-        supabase.from("lessons").select("id"),
-        supabase.from("lesson_progress").select("user_id,completed").eq("completed", true),
-        supabase.from("homework_submissions").select("user_id,status"),
-        listAdminCertificates({ data: { accessToken: session.access_token } }),
-        listAdminStudentsAuth({ data: { accessToken: session.access_token } }),
-      ]);
+    const [
+      profilesRes,
+      lessonsRes,
+      progressRes,
+      homeworkRes,
+      certificates,
+      authRows,
+      quizEligibility,
+    ] = await Promise.all([
+      withRetry("profiles.list", () =>
+        supabase
+          .from("profiles")
+          .select("id,full_name,login,created_at")
+          .order("created_at", { ascending: false }),
+      ),
+      supabase.from("lessons").select("id"),
+      supabase.from("lesson_progress").select("user_id,completed").eq("completed", true),
+      supabase.from("homework_submissions").select("user_id,status"),
+      listAdminCertificates({ data: { accessToken: session.access_token } }),
+      listAdminStudentsAuth({ data: { accessToken: session.access_token } }),
+      listAdminFinalQuizEligibility({ data: { accessToken: session.access_token } }),
+    ]);
     if (profilesRes.error || lessonsRes.error || progressRes.error || homeworkRes.error) {
       toast.error("Не удалось загрузить учеников");
       setLoading(false);
@@ -158,6 +170,7 @@ function AdminStudents() {
           completed: completed.get(student.id) ?? 0,
           approved: approved.get(student.id) ?? 0,
           pending: pending.get(student.id) ?? 0,
+          canGrantQuizAttempt: Boolean(quizEligibility?.[student.id]),
           certificate: certificatesByUser.get(student.id) ?? null,
         };
       }),
@@ -256,6 +269,7 @@ function AdminStudents() {
       completed: 0,
       approved: 0,
       pending: 0,
+      canGrantQuizAttempt: false,
       certificate: null,
     });
   }
@@ -544,9 +558,11 @@ function StudentActions({
         <DropdownMenuItem disabled={saving} onSelect={onToggleBlocked}>
           {row.blocked ? <Unlock /> : <Ban />} {row.blocked ? "Разблокировать" : "Заблокировать"}
         </DropdownMenuItem>
-        <DropdownMenuItem disabled={saving} onSelect={onGrantQuizAttempt}>
-          <RotateCcw /> Добавить попытку теста
-        </DropdownMenuItem>
+        {row.canGrantQuizAttempt && (
+          <DropdownMenuItem disabled={saving} onSelect={onGrantQuizAttempt}>
+            <RotateCcw /> Добавить попытку теста
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem
           disabled={saving}
           onSelect={onDeleteStudent}

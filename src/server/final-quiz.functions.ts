@@ -380,3 +380,35 @@ export const grantAdditionalFinalQuizAttempt = createServerFn({ method: "POST" }
     if (error) throw error;
     return { maxAttempts: BASE_MAX_ATTEMPTS };
   });
+
+export const listAdminFinalQuizEligibility = createServerFn({ method: "POST" })
+  .inputValidator((data) => z.object({ accessToken: z.string().min(20) }).parse(data))
+  .handler(async ({ data }) => {
+    const roles = await getRolesForAccessToken(data.accessToken);
+    if (!roles.includes("admin")) throw new Error("Недостаточно прав");
+    const { data: lesson, error: lessonError } = await supabaseAdmin
+      .from("lessons")
+      .select("id")
+      .eq("day_number", 14)
+      .single();
+    if (lessonError || !lesson) throw new Error("Итоговый урок не найден");
+    const { data: attempts, error } = await supabaseAdmin
+      .from("quiz_attempts")
+      .select("user_id, finished_at, passed")
+      .eq("lesson_id", lesson.id);
+    if (error) throw error;
+    const byUser = new Map<string, { failed: number; passed: boolean }>();
+    for (const attempt of attempts ?? []) {
+      if (!attempt.finished_at) continue;
+      const current = byUser.get(attempt.user_id) ?? { failed: 0, passed: false };
+      current.passed ||= Boolean(attempt.passed);
+      if (!attempt.passed) current.failed += 1;
+      byUser.set(attempt.user_id, current);
+    }
+    return Object.fromEntries(
+      [...byUser].map(([userId, result]) => [
+        userId,
+        result.failed >= BASE_MAX_ATTEMPTS && !result.passed,
+      ]),
+    );
+  });
