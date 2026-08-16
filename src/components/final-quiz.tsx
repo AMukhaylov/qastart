@@ -59,7 +59,17 @@ function formatTime(ms: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function FinalQuiz({ accessToken }: { accessToken: string }) {
+export function FinalQuiz({
+  accessToken,
+  exitRequest = 0,
+  onActiveChange,
+  onExitComplete,
+}: {
+  accessToken: string;
+  exitRequest?: number;
+  onActiveChange?: (active: boolean) => void;
+  onExitComplete?: () => void;
+}) {
   const [state, setState] = useState<QuizState>({ status: "loading" });
   const [currentIndex, setCurrentIndex] = useState(0);
   const [remainingMs, setRemainingMs] = useState(0);
@@ -97,6 +107,11 @@ export function FinalQuiz({ accessToken }: { accessToken: string }) {
     const timer = window.setInterval(updateTimer, 1000);
     return () => window.clearInterval(timer);
   }, [state]);
+
+  useEffect(() => {
+    onActiveChange?.(state.status === "active");
+    return () => onActiveChange?.(false);
+  }, [state.status, onActiveChange]);
 
   const finish = async (timedOut = false) => {
     if (state.status !== "active" || saving) return;
@@ -151,6 +166,36 @@ export function FinalQuiz({ accessToken }: { accessToken: string }) {
     // The handler intentionally follows the current active attempt.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, accessToken]);
+
+  const handledExitRequest = useRef(0);
+  useEffect(() => {
+    if (
+      !exitRequest ||
+      exitRequest === handledExitRequest.current ||
+      state.status !== "active" ||
+      saving
+    )
+      return;
+
+    handledExitRequest.current = exitRequest;
+    const exitQuiz = async () => {
+      setSaving(true);
+      try {
+        await saveFinalQuizAnswers({
+          data: { accessToken, attemptId: state.attemptId, answers: state.answers },
+        });
+        await finishFinalQuiz({
+          data: { accessToken, attemptId: state.attemptId, disqualified: true },
+        });
+        onExitComplete?.();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Не удалось завершить тест");
+      } finally {
+        setSaving(false);
+      }
+    };
+    void exitQuiz();
+  }, [accessToken, exitRequest, onExitComplete, saving, state]);
 
   const persistAnswer = async (questionId: string, optionId: string) => {
     if (state.status !== "active" || saving) return;
@@ -282,9 +327,9 @@ function QuizIntro({
         <div>
           <h2 className="text-xl font-extrabold">Итоговый тест</h2>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Ответь на вопросы по всему курсу. На прохождение даётся 30 минут, правильные ответы
-            откроются после завершения. Не переключайся на другую вкладку и не сворачивай браузер:
-            попытка будет завершена как не сданная.
+            Тебе предстоит 30 вопросов по всему курсу. На выполнение даётся 30 минут. Не
+            переключайся на другую вкладку и не сворачивай браузер: попытка будет завершена как не
+            сданная.
           </p>
         </div>
       </div>
@@ -368,47 +413,49 @@ function QuizResultView({ result, onRetry }: { result: QuizResult; onRetry?: () 
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7">
-        <h2 className="text-xl font-extrabold">Разбор ответов</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Ошибок: {mistakes.length}. Здесь показаны все вопросы, чтобы закрепить материал.
-        </p>
-        <div className="mt-6 space-y-4">
-          {result.review.map((question, index) => (
-            <article
-              key={question.id}
-              className={`rounded-xl border p-4 ${question.correct ? "border-primary/20 bg-primary-soft/40" : "border-destructive/20 bg-destructive/5"}`}
-            >
-              <div className="flex gap-3">
-                <span
-                  className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${question.correct ? "bg-primary text-primary-foreground" : "bg-destructive text-destructive-foreground"}`}
-                >
-                  {question.correct ? (
-                    <CheckCircle2 className="h-4 w-4" />
-                  ) : (
-                    <XCircle className="h-4 w-4" />
-                  )}
-                </span>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {index + 1}. {question.topic}
-                  </p>
-                  <h3 className="mt-1 font-bold">{question.text}</h3>
-                  <p className="mt-3 text-sm">
-                    Твой ответ: <strong>{question.selectedOptionText}</strong>
-                  </p>
-                  {!question.correct ? (
-                    <p className="mt-1 text-sm">
-                      Верный ответ: <strong>{question.correctOptionText}</strong>
+      {result.passed ? (
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7">
+          <h2 className="text-xl font-extrabold">Разбор ответов</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Ошибок: {mistakes.length}. Здесь показаны все вопросы, чтобы закрепить материал.
+          </p>
+          <div className="mt-6 space-y-4">
+            {result.review.map((question, index) => (
+              <article
+                key={question.id}
+                className={`rounded-xl border p-4 ${question.correct ? "border-primary/20 bg-primary-soft/40" : "border-destructive/20 bg-destructive/5"}`}
+              >
+                <div className="flex gap-3">
+                  <span
+                    className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${question.correct ? "bg-primary text-primary-foreground" : "bg-destructive text-destructive-foreground"}`}
+                  >
+                    {question.correct ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : (
+                      <XCircle className="h-4 w-4" />
+                    )}
+                  </span>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {index + 1}. {question.topic}
                     </p>
-                  ) : null}
-                  <p className="mt-3 text-sm text-muted-foreground">{question.explanation}</p>
+                    <h3 className="mt-1 font-bold">{question.text}</h3>
+                    <p className="mt-3 text-sm">
+                      Твой ответ: <strong>{question.selectedOptionText}</strong>
+                    </p>
+                    {!question.correct ? (
+                      <p className="mt-1 text-sm">
+                        Верный ответ: <strong>{question.correctOptionText}</strong>
+                      </p>
+                    ) : null}
+                    <p className="mt-3 text-sm text-muted-foreground">{question.explanation}</p>
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }

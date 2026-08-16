@@ -280,9 +280,19 @@ function AdminStudents() {
       const result = await grantAdditionalFinalQuizAttempt({
         data: { accessToken: session.access_token, userId: row.id },
       });
-      toast.success(`Дополнительная попытка добавлена. Доступно попыток: ${result.maxAttempts}`);
+      toast.success(`Дополнительная попытка добавлена. Всего попыток: ${result.maxAttempts}`);
+      await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Не удалось добавить попытку");
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === "object" &&
+              error &&
+              "message" in error &&
+              typeof error.message === "string"
+            ? error.message
+            : "Не удалось добавить попытку";
+      toast.error(message);
     } finally {
       setSaving(false);
     }

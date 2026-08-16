@@ -376,7 +376,21 @@ export const grantAdditionalFinalQuizAttempt = createServerFn({ method: "POST" }
       .filter((attempt) => !attempt.passed)
       .sort((left, right) => String(left.finished_at).localeCompare(String(right.finished_at)))[0];
     if (!oldestFailed) throw new Error("Не удалось подготовить дополнительную попытку");
-    const { error } = await supabaseAdmin.from("quiz_attempts").delete().eq("id", oldestFailed.id);
+    const { error } = await supabaseAdmin
+      .from("quiz_attempts")
+      .update({
+        question_order: makeQuestionOrder(),
+        answers: {},
+        score: null,
+        percentage: null,
+        passed: null,
+        started_at: new Date().toISOString(),
+        finished_at: null,
+        timed_out: false,
+        disqualified: false,
+      })
+      .eq("id", oldestFailed.id)
+      .eq("user_id", data.userId);
     if (error) throw error;
     return { maxAttempts: BASE_MAX_ATTEMPTS };
   });

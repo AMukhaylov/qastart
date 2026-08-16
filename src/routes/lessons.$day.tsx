@@ -92,6 +92,16 @@ function LessonPage() {
   const [locked, setLocked] = useState(false);
   const [saving, setSaving] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [finalQuizActive, setFinalQuizActive] = useState(false);
+  const [finalQuizExitRequest, setFinalQuizExitRequest] = useState(0);
+
+  const returnToDashboard = () => {
+    if (dayNum === 14 && finalQuizActive) {
+      setFinalQuizExitRequest((request) => request + 1);
+      return;
+    }
+    navigate({ to: "/dashboard" });
+  };
 
   useEffect(() => {
     if (!authLoading && !user) navigate({ to: "/auth" });
@@ -415,10 +425,8 @@ function LessonPage() {
     <div className="min-h-screen bg-[var(--gradient-soft)]">
       <header className="border-b border-border bg-background">
         <div className="container-page h-16 flex items-center justify-between">
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/dashboard">
-              <ArrowLeft className="h-4 w-4" /> В кабинет
-            </Link>
+          <Button variant="ghost" size="sm" onClick={returnToDashboard}>
+            <ArrowLeft className="h-4 w-4" /> В кабинет
           </Button>
           <div className="text-sm text-muted-foreground">День {lesson.day_number} из 14</div>
         </div>
@@ -478,7 +486,12 @@ function LessonPage() {
 
         {lesson.day_number === 14 ? (
           session?.access_token ? (
-            <FinalQuiz accessToken={session.access_token} />
+            <FinalQuiz
+              accessToken={session.access_token}
+              exitRequest={finalQuizExitRequest}
+              onActiveChange={setFinalQuizActive}
+              onExitComplete={() => navigate({ to: "/dashboard" })}
+            />
           ) : null
         ) : (
           <section className="rounded-2xl border border-border bg-card p-7 shadow-[var(--shadow-soft)]">
@@ -629,10 +642,8 @@ function LessonPage() {
               </Link>
             </Button>
           ) : (
-            <Button asChild variant="hero" size="lg">
-              <Link to="/dashboard">
-                Завершить курс <CheckCircle2 className="h-4 w-4" />
-              </Link>
+            <Button variant="hero" size="lg" onClick={returnToDashboard}>
+              Завершить курс <CheckCircle2 className="h-4 w-4" />
             </Button>
           )}
         </div>
