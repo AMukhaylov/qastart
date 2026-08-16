@@ -280,7 +280,7 @@ function QuizIntro({
           <Trophy className="h-6 w-6" />
         </div>
         <div>
-          <h2 className="text-xl font-extrabold">Итоговый тест QA Start</h2>
+          <h2 className="text-xl font-extrabold">Итоговый тест</h2>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             30 вопросов по всему курсу. На прохождение даётся 30 минут, правильные ответы откроются
             после завершения. Не переключайся на другую вкладку и не сворачивай браузер: попытка
