@@ -2,12 +2,13 @@ import { randomInt } from "node:crypto";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { getUserIdForAccessToken } from "./admin-auth.server";
+import { getRolesForAccessToken, getUserIdForAccessToken } from "./admin-auth.server";
 import { FINAL_QUIZ_QUESTIONS } from "./final-quiz.questions";
 
 const QUIZ_DURATION_MS = 30 * 60 * 1000;
 const PASSING_PERCENT = 70;
-const MAX_ATTEMPTS = 3;
+const BASE_MAX_ATTEMPTS = 3;
+const QUESTIONS_PER_ATTEMPT = 30;
 
 const accessTokenInput = z.object({
   accessToken: z.string().min(20),
@@ -18,6 +19,7 @@ const finishInput = attemptInput.extend({ disqualified: z.boolean().optional().d
 const answersInput = attemptInput.extend({
   answers: z.record(z.string().min(1), z.string().min(1)).default({}),
 });
+const grantAttemptInput = z.object({ accessToken: z.string().min(20), userId: z.string().uuid() });
 
 type QuizAttempt = {
   id: string;
@@ -49,11 +51,12 @@ function shuffle<T>(items: T[]) {
 }
 
 function makeQuestionOrder(): QuestionOrder {
-  const questionIds = shuffle(FINAL_QUIZ_QUESTIONS.map((question) => question.id));
+  const selectedQuestions = shuffle(FINAL_QUIZ_QUESTIONS).slice(0, QUESTIONS_PER_ATTEMPT);
+  const questionIds = selectedQuestions.map((question) => question.id);
   return {
     questionIds,
     optionIdsByQuestion: Object.fromEntries(
-      FINAL_QUIZ_QUESTIONS.map((question) => [
+      selectedQuestions.map((question) => [
         question.id,
         shuffle(question.options.map((option) => option.id)),
       ]),
@@ -66,7 +69,8 @@ function parseQuestionOrder(value: unknown): QuestionOrder {
   if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
   const parsed = value as Partial<QuestionOrder>;
   if (!Array.isArray(parsed.questionIds) || !parsed.optionIdsByQuestion) return fallback;
-  if (parsed.questionIds.length !== FINAL_QUIZ_QUESTIONS.length) return fallback;
+  if (parsed.questionIds.length !== QUESTIONS_PER_ATTEMPT) return fallback;
+  if (new Set(parsed.questionIds).size !== QUESTIONS_PER_ATTEMPT) return fallback;
   return {
     questionIds: parsed.questionIds.filter((id): id is string => typeof id === "string"),
     optionIdsByQuestion: Object.fromEntries(
@@ -124,11 +128,13 @@ async function finalizeAttempt(attempt: QuizAttempt, timedOut: boolean, disquali
   if (attempt.finished_at) return attempt;
 
   const answers = parseAnswers(attempt.answers);
-  const score = FINAL_QUIZ_QUESTIONS.reduce(
-    (total, question) => total + Number(answers[question.id] === question.correctOptionId),
-    0,
-  );
-  const percentage = Math.round((score / FINAL_QUIZ_QUESTIONS.length) * 100);
+  const order = parseQuestionOrder(attempt.question_order);
+  const questionsById = new Map(FINAL_QUIZ_QUESTIONS.map((question) => [question.id, question]));
+  const score = order.questionIds.reduce((total, questionId) => {
+    const question = questionsById.get(questionId);
+    return total + Number(Boolean(question && answers[questionId] === question.correctOptionId));
+  }, 0);
+  const percentage = Math.round((score / order.questionIds.length) * 100);
   const passed = !disqualified && percentage >= PASSING_PERCENT;
   const { data, error } = await supabaseAdmin
     .from("quiz_attempts")
@@ -185,20 +191,20 @@ async function getAttemptForUser(userId: string, attemptId: string) {
   return data as QuizAttempt;
 }
 
-async function quizResult(attempt: QuizAttempt, attemptsUsed: number) {
+async function quizResult(attempt: QuizAttempt, attemptsUsed: number, maxAttempts: number) {
   const answers = parseAnswers(attempt.answers);
   const order = parseQuestionOrder(attempt.question_order);
   const byId = new Map(FINAL_QUIZ_QUESTIONS.map((question) => [question.id, question]));
   return {
     attemptId: attempt.id,
     score: attempt.score ?? 0,
-    total: FINAL_QUIZ_QUESTIONS.length,
+    total: order.questionIds.length,
     percentage: attempt.percentage ?? 0,
     passed: Boolean(attempt.passed),
     timedOut: attempt.timed_out,
     disqualified: attempt.disqualified,
     attemptsUsed,
-    attemptsLeft: Math.max(0, MAX_ATTEMPTS - attemptsUsed),
+    attemptsLeft: Math.max(0, maxAttempts - attemptsUsed),
     review: order.questionIds.flatMap((questionId) => {
       const question = byId.get(questionId);
       if (!question) return [];
@@ -234,6 +240,7 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
       .eq("day_number", 14)
       .single();
     if (lessonError || !lesson) throw new Error("Итоговый урок не найден");
+    const maxAttempts = BASE_MAX_ATTEMPTS;
 
     const { data: attempts, error: attemptsError } = await supabaseAdmin
       .from("quiz_attempts")
@@ -252,18 +259,18 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
         answers: parseAnswers(active.answers),
         questions: visibleQuestions(parseQuestionOrder(active.question_order)),
         attemptsUsed: allAttempts.filter((attempt) => attempt.finished_at).length,
-        maxAttempts: MAX_ATTEMPTS,
+        maxAttempts,
       };
     }
 
     const completedAttempts = allAttempts.filter((attempt) => attempt.finished_at);
     if (
-      completedAttempts.length >= MAX_ATTEMPTS ||
+      completedAttempts.length >= maxAttempts ||
       (completedAttempts.length > 0 && !data.startNew)
     ) {
       return {
         status: "result" as const,
-        result: await quizResult(completedAttempts[0], completedAttempts.length),
+        result: await quizResult(completedAttempts[0], completedAttempts.length, maxAttempts),
       };
     }
 
@@ -271,7 +278,7 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
       return {
         status: "ready" as const,
         attemptsUsed: completedAttempts.length,
-        maxAttempts: MAX_ATTEMPTS,
+        maxAttempts,
       };
     }
 
@@ -290,7 +297,7 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
       answers: {},
       questions: visibleQuestions(questionOrder),
       attemptsUsed: completedAttempts.length,
-      maxAttempts: MAX_ATTEMPTS,
+      maxAttempts,
     };
   });
 
@@ -305,7 +312,7 @@ export const saveFinalQuizAnswers = createServerFn({ method: "POST" })
       throw new Error("Время теста истекло");
     }
 
-    const allowedQuestionIds = new Set(FINAL_QUIZ_QUESTIONS.map((question) => question.id));
+    const allowedQuestionIds = new Set(parseQuestionOrder(attempt.question_order).questionIds);
     const allowedAnswers = Object.fromEntries(
       Object.entries(data.answers).filter(([questionId, optionId]) => {
         const question = FINAL_QUIZ_QUESTIONS.find((item) => item.id === questionId);
@@ -341,5 +348,35 @@ export const finishFinalQuiz = createServerFn({ method: "POST" })
       .eq("lesson_id", attempt.lesson_id)
       .not("finished_at", "is", null);
     if (error) throw error;
-    return quizResult(attempt, count ?? 1);
+    return quizResult(attempt, count ?? 1, BASE_MAX_ATTEMPTS);
+  });
+
+export const grantAdditionalFinalQuizAttempt = createServerFn({ method: "POST" })
+  .inputValidator((data) => grantAttemptInput.parse(data))
+  .handler(async ({ data }) => {
+    const roles = await getRolesForAccessToken(data.accessToken);
+    if (!roles.includes("admin")) throw new Error("Недостаточно прав");
+    const { data: lesson, error: lessonError } = await supabaseAdmin
+      .from("lessons")
+      .select("id")
+      .eq("day_number", 14)
+      .single();
+    if (lessonError || !lesson) throw new Error("Итоговый урок не найден");
+    const { data: attempts, error: attemptsError } = await supabaseAdmin
+      .from("quiz_attempts")
+      .select("id, finished_at, passed")
+      .eq("user_id", data.userId)
+      .eq("lesson_id", lesson.id);
+    if (attemptsError) throw attemptsError;
+    const completed = (attempts ?? []).filter((attempt) => attempt.finished_at);
+    if (completed.length < BASE_MAX_ATTEMPTS || completed.some((attempt) => attempt.passed)) {
+      throw new Error("Дополнительную попытку можно выдать после трёх неуспешных попыток");
+    }
+    const oldestFailed = completed
+      .filter((attempt) => !attempt.passed)
+      .sort((left, right) => String(left.finished_at).localeCompare(String(right.finished_at)))[0];
+    if (!oldestFailed) throw new Error("Не удалось подготовить дополнительную попытку");
+    const { error } = await supabaseAdmin.from("quiz_attempts").delete().eq("id", oldestFailed.id);
+    if (error) throw error;
+    return { maxAttempts: BASE_MAX_ATTEMPTS };
   });

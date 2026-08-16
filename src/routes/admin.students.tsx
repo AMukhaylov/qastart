@@ -48,6 +48,7 @@ import {
   restoreAdminCertificate,
   revokeAdminCertificate,
 } from "@/server/certificates.functions";
+import { grantAdditionalFinalQuizAttempt } from "@/server/final-quiz.functions";
 
 export const Route = createFileRoute("/admin/students")({ component: AdminStudents });
 
@@ -258,6 +259,20 @@ function AdminStudents() {
       certificate: null,
     });
   }
+  async function grantQuizAttempt(row: Row) {
+    if (!session?.access_token) return;
+    setSaving(true);
+    try {
+      const result = await grantAdditionalFinalQuizAttempt({
+        data: { accessToken: session.access_token, userId: row.id },
+      });
+      toast.success(`Дополнительная попытка добавлена. Доступно попыток: ${result.maxAttempts}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось добавить попытку");
+    } finally {
+      setSaving(false);
+    }
+  }
   async function toggleBlocked(row: Row) {
     if (!session?.access_token) return;
     const next = !row.blocked;
@@ -448,6 +463,7 @@ function AdminStudents() {
                         setForm({ userId: row.id, ...name, login: row.login, password: "" });
                       }}
                       onToggleBlocked={() => void toggleBlocked(row)}
+                      onGrantQuizAttempt={() => void grantQuizAttempt(row)}
                       onDeleteStudent={() => void deleteStudent(row)}
                       onRevoke={() => row.certificate && void revokeCertificate(row.certificate)}
                       onRestore={() => row.certificate && void restoreCertificate(row.certificate)}
@@ -491,6 +507,7 @@ function StudentActions({
   saving,
   onEdit,
   onToggleBlocked,
+  onGrantQuizAttempt,
   onDeleteStudent,
   onRevoke,
   onRestore,
@@ -500,6 +517,7 @@ function StudentActions({
   saving: boolean;
   onEdit: () => void;
   onToggleBlocked: () => void;
+  onGrantQuizAttempt: () => void;
   onDeleteStudent: () => void;
   onRevoke: () => void;
   onRestore: () => void;
@@ -525,6 +543,9 @@ function StudentActions({
         </DropdownMenuItem>
         <DropdownMenuItem disabled={saving} onSelect={onToggleBlocked}>
           {row.blocked ? <Unlock /> : <Ban />} {row.blocked ? "Разблокировать" : "Заблокировать"}
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={saving} onSelect={onGrantQuizAttempt}>
+          <RotateCcw /> Добавить попытку теста
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={saving}
