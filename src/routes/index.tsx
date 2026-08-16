@@ -134,7 +134,7 @@ const benefits = [
     desc: "Ответы на вопросы и помощь по заданиям",
   },
   { icon: ClipboardCheck, title: "Практическое задание", desc: "Закрепляешь теорию руками" },
-  { icon: Target, title: "Итоговый тест QA Start", desc: "Проверишь знания по всему курсу" },
+  { icon: Target, title: "Итоговый тест", desc: "Проверишь знания по всему курсу" },
 ];
 
 function LandingPage() {
