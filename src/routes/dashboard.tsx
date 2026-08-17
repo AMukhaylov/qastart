@@ -134,7 +134,9 @@ function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [session?.access_token, user]);
+    // Refreshing a Supabase token must not remount the student's dashboard.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   if (loading || !user || dataLoading) {
     return (

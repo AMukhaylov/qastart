@@ -59,6 +59,14 @@ function formatTime(ms: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function quizErrorMessage(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : "";
+  if (/<(?:!doctype|html)|\b504\b|gateway time-?out/i.test(message)) {
+    return "Сервис теста временно недоступен. Попробуй ещё раз через несколько секунд.";
+  }
+  return message || fallback;
+}
+
 export function FinalQuiz({
   accessToken,
   exitRequest = 0,
@@ -90,7 +98,7 @@ export function FinalQuiz({
       autoFinishRef.current = false;
     } catch (error) {
       setState({ status: "ready", attemptsUsed: 0, maxAttempts: 3 });
-      toast.error(error instanceof Error ? error.message : "Не удалось загрузить тест");
+      toast.error(quizErrorMessage(error, "Не удалось загрузить тест"));
     }
   };
 
@@ -126,7 +134,7 @@ export function FinalQuiz({
       setState({ status: "result", result: result as QuizResult });
       if (timedOut) toast.info("Время вышло, тест завершён автоматически");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Не удалось завершить тест");
+      toast.error(quizErrorMessage(error, "Не удалось завершить тест"));
       void load();
     } finally {
       setSaving(false);
@@ -189,7 +197,7 @@ export function FinalQuiz({
         });
         onExitComplete?.();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Не удалось завершить тест");
+        toast.error(quizErrorMessage(error, "Не удалось завершить тест"));
       } finally {
         setSaving(false);
       }
@@ -204,7 +212,7 @@ export function FinalQuiz({
     try {
       await saveFinalQuizAnswers({ data: { accessToken, attemptId: state.attemptId, answers } });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Не удалось сохранить ответ");
+      toast.error(quizErrorMessage(error, "Не удалось сохранить ответ"));
     }
   };
 
@@ -280,14 +288,7 @@ export function FinalQuiz({
         </div>
       </div>
 
-      <div className="mt-8 flex flex-wrap justify-between gap-3 border-t border-border pt-5">
-        <Button
-          variant="soft"
-          onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
-          disabled={currentIndex === 0 || saving}
-        >
-          Назад
-        </Button>
+      <div className="mt-8 flex flex-wrap justify-end gap-3 border-t border-border pt-5">
         {currentIndex < state.questions.length - 1 ? (
           <Button
             variant="hero"
@@ -404,7 +405,9 @@ function QuizResultView({ result, onRetry }: { result: QuizResult; onRetry?: () 
           <Badge variant={result.passed ? "default" : "destructive"}>
             {result.passed ? "Пройден" : "Не пройден"}
           </Badge>
-          <span className="text-muted-foreground">Попытка {result.attemptsUsed} из 3</span>
+          <span className="text-muted-foreground">
+            Попытка {result.attemptsUsed} из {result.attemptsUsed + result.attemptsLeft}
+          </span>
           {onRetry ? (
             <Button variant="outline" size="sm" onClick={onRetry}>
               <RotateCcw className="h-4 w-4" /> Повторить тест

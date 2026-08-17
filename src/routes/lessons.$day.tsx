@@ -94,10 +94,18 @@ function LessonPage() {
   const [asking, setAsking] = useState(false);
   const [finalQuizActive, setFinalQuizActive] = useState(false);
   const [finalQuizExitRequest, setFinalQuizExitRequest] = useState(0);
+  const [finalQuizExitDestination, setFinalQuizExitDestination] = useState<
+    "dashboard" | number | null
+  >(null);
+
+  const leaveFinalQuiz = (destination: "dashboard" | number) => {
+    setFinalQuizExitDestination(destination);
+    setFinalQuizExitRequest((request) => request + 1);
+  };
 
   const returnToDashboard = () => {
     if (dayNum === 14 && finalQuizActive) {
-      setFinalQuizExitRequest((request) => request + 1);
+      leaveFinalQuiz("dashboard");
       return;
     }
     navigate({ to: "/dashboard" });
@@ -490,7 +498,15 @@ function LessonPage() {
               accessToken={session.access_token}
               exitRequest={finalQuizExitRequest}
               onActiveChange={setFinalQuizActive}
-              onExitComplete={() => navigate({ to: "/dashboard" })}
+              onExitComplete={() => {
+                const destination = finalQuizExitDestination;
+                setFinalQuizExitDestination(null);
+                if (typeof destination === "number") {
+                  navigate({ to: "/lessons/$day", params: { day: String(destination) } });
+                  return;
+                }
+                navigate({ to: "/dashboard" });
+              }}
             />
           ) : null
         ) : (
@@ -627,11 +643,25 @@ function LessonPage() {
         {/* Navigation */}
         <div className="flex justify-between gap-3">
           {prevDay ? (
-            <Button asChild variant="soft" size="lg">
-              <Link to="/lessons/$day" params={{ day: String(prevDay) }}>
+            dayNum === 14 ? (
+              <Button
+                variant="soft"
+                size="lg"
+                onClick={() =>
+                  finalQuizActive
+                    ? leaveFinalQuiz(prevDay)
+                    : navigate({ to: "/lessons/$day", params: { day: String(prevDay) } })
+                }
+              >
                 <ArrowLeft className="h-4 w-4" /> День {prevDay}
-              </Link>
-            </Button>
+              </Button>
+            ) : (
+              <Button asChild variant="soft" size="lg">
+                <Link to="/lessons/$day" params={{ day: String(prevDay) }}>
+                  <ArrowLeft className="h-4 w-4" /> День {prevDay}
+                </Link>
+              </Button>
+            )
           ) : (
             <div />
           )}

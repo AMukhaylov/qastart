@@ -245,8 +245,6 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
       .eq("day_number", 14)
       .single();
     if (lessonError || !lesson) throw new Error("Итоговый урок не найден");
-    const maxAttempts = BASE_MAX_ATTEMPTS;
-
     const { data: attempts, error: attemptsError } = await supabaseAdmin
       .from("quiz_attempts")
       .select("*")
@@ -255,6 +253,7 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
       .order("started_at", { ascending: false });
     if (attemptsError) throw attemptsError;
     const allAttempts = (attempts ?? []) as QuizAttempt[];
+    const maxAttempts = Math.max(BASE_MAX_ATTEMPTS, allAttempts.length);
     const active = allAttempts.find(
       (attempt) => !attempt.finished_at && !isReservedAttempt(attempt),
     );
@@ -376,7 +375,8 @@ export const finishFinalQuiz = createServerFn({ method: "POST" })
       .eq("lesson_id", attempt.lesson_id)
       .not("finished_at", "is", null);
     if (error) throw error;
-    return quizResult(attempt, count ?? 1, BASE_MAX_ATTEMPTS);
+    const attemptsUsed = count ?? 1;
+    return quizResult(attempt, attemptsUsed, Math.max(BASE_MAX_ATTEMPTS, attemptsUsed));
   });
 
 export const grantAdditionalFinalQuizAttempt = createServerFn({ method: "POST" })
@@ -392,35 +392,34 @@ export const grantAdditionalFinalQuizAttempt = createServerFn({ method: "POST" }
     if (lessonError || !lesson) throw new Error("Итоговый урок не найден");
     const { data: attempts, error: attemptsError } = await supabaseAdmin
       .from("quiz_attempts")
-      .select("id, finished_at, passed")
+      .select("id, finished_at, passed, answers")
       .eq("user_id", data.userId)
       .eq("lesson_id", lesson.id);
     if (attemptsError) throw attemptsError;
     const completed = (attempts ?? []).filter((attempt) => attempt.finished_at);
-    if (completed.length < BASE_MAX_ATTEMPTS || completed.some((attempt) => attempt.passed)) {
+    const hasAvailableAttempt = (attempts ?? []).some((attempt) => !attempt.finished_at);
+    if (
+      completed.length < BASE_MAX_ATTEMPTS ||
+      completed.some((attempt) => attempt.passed) ||
+      hasAvailableAttempt
+    ) {
       throw new Error("Дополнительную попытку можно выдать после трёх неуспешных попыток");
     }
-    const oldestFailed = completed
-      .filter((attempt) => !attempt.passed)
-      .sort((left, right) => String(left.finished_at).localeCompare(String(right.finished_at)))[0];
-    if (!oldestFailed) throw new Error("Не удалось подготовить дополнительную попытку");
-    const { error } = await supabaseAdmin
-      .from("quiz_attempts")
-      .update({
-        question_order: makeQuestionOrder(),
-        answers: { [RESERVED_ATTEMPT_KEY]: "true" },
-        score: null,
-        percentage: null,
-        passed: null,
-        started_at: new Date().toISOString(),
-        finished_at: null,
-        timed_out: false,
-        disqualified: false,
-      })
-      .eq("id", oldestFailed.id)
-      .eq("user_id", data.userId);
+    const { error } = await supabaseAdmin.from("quiz_attempts").insert({
+      user_id: data.userId,
+      lesson_id: lesson.id,
+      question_order: makeQuestionOrder(),
+      answers: { [RESERVED_ATTEMPT_KEY]: "true" },
+      score: null,
+      percentage: null,
+      passed: null,
+      started_at: new Date().toISOString(),
+      finished_at: null,
+      timed_out: false,
+      disqualified: false,
+    });
     if (error) throw error;
-    return { maxAttempts: BASE_MAX_ATTEMPTS };
+    return { availableAttempts: 1, maxAttempts: completed.length + 1 };
   });
 
 export const listAdminFinalQuizEligibility = createServerFn({ method: "POST" })
@@ -439,10 +438,14 @@ export const listAdminFinalQuizEligibility = createServerFn({ method: "POST" })
       .select("user_id, finished_at, passed")
       .eq("lesson_id", lesson.id);
     if (error) throw error;
-    const byUser = new Map<string, { failed: number; passed: boolean }>();
+    const byUser = new Map<string, { failed: number; passed: boolean; active: boolean }>();
     for (const attempt of attempts ?? []) {
-      if (!attempt.finished_at) continue;
-      const current = byUser.get(attempt.user_id) ?? { failed: 0, passed: false };
+      const current = byUser.get(attempt.user_id) ?? { failed: 0, passed: false, active: false };
+      if (!attempt.finished_at) {
+        current.active = true;
+        byUser.set(attempt.user_id, current);
+        continue;
+      }
       current.passed ||= Boolean(attempt.passed);
       if (!attempt.passed) current.failed += 1;
       byUser.set(attempt.user_id, current);
@@ -450,7 +453,7 @@ export const listAdminFinalQuizEligibility = createServerFn({ method: "POST" })
     return Object.fromEntries(
       [...byUser].map(([userId, result]) => [
         userId,
-        result.failed >= BASE_MAX_ATTEMPTS && !result.passed,
+        result.failed >= BASE_MAX_ATTEMPTS && !result.passed && !result.active,
       ]),
     );
   });
