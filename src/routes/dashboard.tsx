@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   PlayCircle,
   Trophy,
@@ -61,6 +61,7 @@ function Dashboard() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
+  const loadedUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth" });
@@ -68,6 +69,7 @@ function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
+    if (loadedUserIdRef.current === user.id) return;
     let cancelled = false;
     setDataLoading(true);
     void (async () => {
@@ -127,6 +129,7 @@ function Dashboard() {
         setCertificate(loadedCertificate);
         setMeetings((publishedMeetings ?? []) as Meeting[]);
         setProfile((profileRow ?? null) as Profile | null);
+        loadedUserIdRef.current = user.id;
       } finally {
         if (!cancelled) setDataLoading(false);
       }
