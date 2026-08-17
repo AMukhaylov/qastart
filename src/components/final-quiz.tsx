@@ -347,10 +347,10 @@ function QuizIntro({
         </div>
         <div className="rounded-xl bg-muted p-4">
           <strong>
-            {maxAttempts - attemptsUsed} из {maxAttempts}
+            {attemptsUsed} из {maxAttempts}
           </strong>
           <br />
-          <span className="text-muted-foreground">попыток осталось</span>
+          <span className="text-muted-foreground">попыток использовано</span>
         </div>
       </div>
       <Button className="mt-6" variant="hero" size="lg" onClick={onStart}>
