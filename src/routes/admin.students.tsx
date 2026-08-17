@@ -280,9 +280,7 @@ function AdminStudents() {
       const result = await grantAdditionalFinalQuizAttempt({
         data: { accessToken: session.access_token, userId: row.id },
       });
-      toast.success(
-        `Дополнительная попытка добавлена. Новых попыток доступно: ${result.availableAttempts}`,
-      );
+      toast.success(`${result.availableAttempts} из ${result.maxAttempts}`);
       await load();
     } catch (error) {
       const message =

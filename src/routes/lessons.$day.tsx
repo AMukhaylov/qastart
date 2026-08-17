@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -97,6 +97,7 @@ function LessonPage() {
   const [finalQuizExitDestination, setFinalQuizExitDestination] = useState<
     "dashboard" | number | null
   >(null);
+  const loadedLessonKeyRef = useRef<string | null>(null);
 
   const leaveFinalQuiz = (destination: "dashboard" | number) => {
     setFinalQuizExitDestination(destination);
@@ -117,6 +118,9 @@ function LessonPage() {
 
   useEffect(() => {
     if (!user?.id || isNaN(dayNum) || rolesLoading) return;
+    const lessonKey = `${user.id}:${dayNum}:${isAdmin}`;
+    if (loadedLessonKeyRef.current === lessonKey) return;
+    loadedLessonKeyRef.current = lessonKey;
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, dayNum, isAdmin, rolesLoading]);
