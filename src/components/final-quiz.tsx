@@ -84,6 +84,7 @@ export function FinalQuiz({
   const [saving, setSaving] = useState(false);
   const autoFinishRef = useRef(false);
   const accessTokenRef = useRef(accessToken);
+  const resultRef = useRef<HTMLDivElement>(null);
 
   // Supabase periodically refreshes a valid session. The refreshed token must be
   // used by later requests, but it must not restart an active examination.
@@ -129,6 +130,14 @@ export function FinalQuiz({
     onActiveChange?.(state.status === "active");
     return () => onActiveChange?.(false);
   }, [state.status, onActiveChange]);
+
+  useEffect(() => {
+    if (state.status !== "result") return;
+    const frame = window.requestAnimationFrame(() => {
+      resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [state.status]);
 
   const finish = async (timedOut = false) => {
     if (state.status !== "active" || saving) return;
@@ -266,10 +275,12 @@ export function FinalQuiz({
 
   if (state.status === "result") {
     return (
-      <QuizResultView
-        result={state.result}
-        onRetry={state.result.attemptsLeft > 0 ? () => void load(true) : undefined}
-      />
+      <div ref={resultRef} tabIndex={-1}>
+        <QuizResultView
+          result={state.result}
+          onRetry={state.result.attemptsLeft > 0 ? () => void load(true) : undefined}
+        />
+      </div>
     );
   }
 
