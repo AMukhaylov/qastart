@@ -9,6 +9,8 @@ lerna-debug.log*
 
 node_modules
 dist
+autotests/artifacts/
+__pycache__/
 dist-ssr
 .deploy/
 .output
@@ -19,6 +21,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
+!.env.autotests.example
 supabase/.temp/
 
 # Wrangler / Cloudflare

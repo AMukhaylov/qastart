@@ -83,11 +83,20 @@ export function FinalQuiz({
   const [remainingMs, setRemainingMs] = useState(0);
   const [saving, setSaving] = useState(false);
   const autoFinishRef = useRef(false);
+  const accessTokenRef = useRef(accessToken);
+
+  // Supabase periodically refreshes a valid session. The refreshed token must be
+  // used by later requests, but it must not restart an active examination.
+  useEffect(() => {
+    accessTokenRef.current = accessToken;
+  }, [accessToken]);
 
   const load = async (startNew = false) => {
     setState({ status: "loading" });
     try {
-      const next = await startFinalQuiz({ data: { accessToken, startNew } });
+      const next = await startFinalQuiz({
+        data: { accessToken: accessTokenRef.current, startNew },
+      });
       if (next.status === "active") {
         setRemainingMs(Math.max(0, new Date(next.expiresAt).getTime() - Date.now()));
       } else {
@@ -104,9 +113,9 @@ export function FinalQuiz({
 
   useEffect(() => {
     void load();
-    // The session token changes only after the parent lesson is reloaded.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]);
+    // A refreshed Supabase token is stored in accessTokenRef and must not reset
+    // the currently shown question or the countdown.
+  }, []);
 
   useEffect(() => {
     if (state.status !== "active") return;
@@ -126,10 +135,18 @@ export function FinalQuiz({
     setSaving(true);
     try {
       await saveFinalQuizAnswers({
-        data: { accessToken, attemptId: state.attemptId, answers: state.answers },
+        data: {
+          accessToken: accessTokenRef.current,
+          attemptId: state.attemptId,
+          answers: state.answers,
+        },
       });
       const result = await finishFinalQuiz({
-        data: { accessToken, attemptId: state.attemptId, disqualified: false },
+        data: {
+          accessToken: accessTokenRef.current,
+          attemptId: state.attemptId,
+          disqualified: false,
+        },
       });
       setState({ status: "result", result: result as QuizResult });
       if (timedOut) toast.info("Время вышло, тест завершён автоматически");
@@ -156,7 +173,11 @@ export function FinalQuiz({
       setSaving(true);
       try {
         const result = await finishFinalQuiz({
-          data: { accessToken, attemptId: state.attemptId, disqualified: true },
+          data: {
+            accessToken: accessTokenRef.current,
+            attemptId: state.attemptId,
+            disqualified: true,
+          },
         });
         setState({ status: "result", result: result as QuizResult });
       } catch {
@@ -172,7 +193,6 @@ export function FinalQuiz({
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
     // The handler intentionally follows the current active attempt.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, accessToken]);
 
   const handledExitRequest = useRef(0);
@@ -190,10 +210,18 @@ export function FinalQuiz({
       setSaving(true);
       try {
         await saveFinalQuizAnswers({
-          data: { accessToken, attemptId: state.attemptId, answers: state.answers },
+          data: {
+            accessToken: accessTokenRef.current,
+            attemptId: state.attemptId,
+            answers: state.answers,
+          },
         });
         await finishFinalQuiz({
-          data: { accessToken, attemptId: state.attemptId, disqualified: true },
+          data: {
+            accessToken: accessTokenRef.current,
+            attemptId: state.attemptId,
+            disqualified: true,
+          },
         });
         onExitComplete?.();
       } catch (error) {
@@ -210,7 +238,9 @@ export function FinalQuiz({
     const answers = { ...state.answers, [questionId]: optionId };
     setState({ ...state, answers });
     try {
-      await saveFinalQuizAnswers({ data: { accessToken, attemptId: state.attemptId, answers } });
+      await saveFinalQuizAnswers({
+        data: { accessToken: accessTokenRef.current, attemptId: state.attemptId, answers },
+      });
     } catch (error) {
       toast.error(quizErrorMessage(error, "Не удалось сохранить ответ"));
     }

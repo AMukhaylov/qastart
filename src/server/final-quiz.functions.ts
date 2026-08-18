@@ -185,6 +185,30 @@ async function closeExpiredAttempts(userId: string) {
   }
 }
 
+async function assertFinalQuizUnlocked(userId: string) {
+  const { data: previousLessons, error: lessonsError } = await supabaseAdmin
+    .from("lessons")
+    .select("id")
+    .lt("day_number", 14);
+  if (lessonsError) throw lessonsError;
+
+  const lessonIds = (previousLessons ?? []).map((lesson) => lesson.id);
+  if (!lessonIds.length) throw new Error("Не удалось определить программу курса");
+
+  const { data: progress, error: progressError } = await supabaseAdmin
+    .from("lesson_progress")
+    .select("lesson_id")
+    .eq("user_id", userId)
+    .eq("completed", true)
+    .in("lesson_id", lessonIds);
+  if (progressError) throw progressError;
+
+  const completedLessonIds = new Set((progress ?? []).map((item) => item.lesson_id));
+  if (completedLessonIds.size !== lessonIds.length) {
+    throw new Error("Итоговый тест доступен после прохождения первых 13 уроков");
+  }
+}
+
 async function getAttemptForUser(userId: string, attemptId: string) {
   const { data, error } = await supabaseAdmin
     .from("quiz_attempts")
@@ -237,6 +261,7 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
   .inputValidator((data) => accessTokenInput.parse(data))
   .handler(async ({ data }) => {
     const userId = await getUserIdForAccessToken(data.accessToken);
+    await assertFinalQuizUnlocked(userId);
     await closeExpiredAttempts(userId);
 
     const { data: lesson, error: lessonError } = await supabaseAdmin

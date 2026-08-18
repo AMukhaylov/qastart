@@ -21,8 +21,7 @@ function AuthPage() {
   useEffect(() => {
     if (!loading && user) navigate({ to: "/dashboard" });
   }, [loading, user, navigate]);
-  async function handleLogin(event: React.FormEvent) {
-    event.preventDefault();
+  async function handleLogin() {
     const normalizedLogin = login.trim();
 
     if (normalizedLogin.includes("@")) {
@@ -59,6 +58,13 @@ function AuthPage() {
       setSubmitting(false);
     }
   }
+
+  function handleLoginKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+
+    event.preventDefault();
+    void handleLogin();
+  }
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       <div
@@ -92,7 +98,7 @@ function AuthPage() {
         </div>
       </div>
       <main className="flex items-center justify-center p-6 md:p-12">
-        <form onSubmit={handleLogin} className="w-full max-w-md space-y-5">
+        <div className="w-full max-w-md space-y-5" role="form">
           <Link
             to="/"
             className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground lg:hidden"
@@ -111,6 +117,7 @@ function AuthPage() {
                 id="login"
                 value={login}
                 onChange={(e) => setLogin(e.target.value)}
+                onKeyDown={handleLoginKeyDown}
                 className="h-12 pl-10"
                 autoComplete="username"
                 autoCapitalize="none"
@@ -128,6 +135,7 @@ function AuthPage() {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={handleLoginKeyDown}
                 className="h-12 pl-10 pr-11"
                 autoComplete="current-password"
                 required
@@ -136,13 +144,20 @@ function AuthPage() {
                 type="button"
                 onClick={() => setShowPassword((current) => !current)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                aria-label="Показать пароль"
+                aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
           </div>
-          <Button type="submit" variant="hero" size="xl" className="w-full" disabled={submitting}>
+          <Button
+            type="button"
+            variant="hero"
+            size="xl"
+            className="w-full"
+            disabled={submitting}
+            onClick={() => void handleLogin()}
+          >
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />} Войти
           </Button>
           <div className="border-t border-border pt-5 text-center text-sm text-muted-foreground">
@@ -159,7 +174,7 @@ function AuthPage() {
               .
             </p>
           </div>
-        </form>
+        </div>
       </main>
     </div>
   );

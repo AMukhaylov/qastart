@@ -13,15 +13,11 @@ $localDeployDir = Join-Path $repoRoot ".deploy"
 $archive = Join-Path $localDeployDir "qastart-src.tgz"
 
 Write-Host "Checking SSH ${HostName}:${Port}..."
-$tcpClient = [System.Net.Sockets.TcpClient]::new()
-try {
-  $connect = $tcpClient.BeginConnect($HostName, $Port, $null, $null)
-  if (-not $connect.AsyncWaitHandle.WaitOne(10000, $false)) {
-    throw "SSH port ${HostName}:${Port} is not reachable. Open SSH on the VPS or pass -Port if it was changed."
-  }
-  $tcpClient.EndConnect($connect)
-} finally {
-  $tcpClient.Close()
+# The operating system TCP probe can be routed through a VPN while ssh.exe is
+# explicitly excluded from it. Verify the actual deployment path instead.
+ssh -i $KeyPath -p $Port -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${User}@${HostName}" "true"
+if ($LASTEXITCODE -ne 0) {
+  throw "SSH ${HostName}:${Port} is not reachable with the deployment key."
 }
 
 New-Item -ItemType Directory -Force -Path $localDeployDir | Out-Null
