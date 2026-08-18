@@ -109,9 +109,6 @@ function LessonPage() {
       leaveFinalQuiz("dashboard");
       return;
     }
-    if (dayNum === 14 && completed && user?.id) {
-      window.sessionStorage.setItem(`startqa:completion-confetti:${user.id}:force`, "pending");
-    }
     navigate({ to: "/dashboard" });
   };
 

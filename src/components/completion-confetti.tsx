@@ -30,11 +30,8 @@ export function CompletionConfetti({
   useEffect(() => {
     if (!enabled) return;
     const key = `startqa:completion-confetti:${storageKey}`;
-    const forceKey = `${key}:force`;
-    const forceReplay = window.sessionStorage.getItem(forceKey) === "pending";
-    if (!forceReplay && window.sessionStorage.getItem(key) === "shown") return;
+    if (window.sessionStorage.getItem(key) === "shown") return;
 
-    if (forceReplay) window.sessionStorage.removeItem(forceKey);
     window.sessionStorage.setItem(key, "shown");
     setVisible(true);
     const timer = window.setTimeout(() => setVisible(false), 3200);

@@ -112,7 +112,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (userId) {
       const completionKey = `startqa:completion-confetti:${userId}`;
       window.sessionStorage.removeItem(completionKey);
-      window.sessionStorage.removeItem(`${completionKey}:force`);
     }
     await supabase.auth.signOut();
   }
