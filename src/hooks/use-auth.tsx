@@ -108,6 +108,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [applyRoles, fetchRoles]);
 
   async function signOut() {
+    const userId = userIdRef.current;
+    if (userId) {
+      const completionKey = `startqa:completion-confetti:${userId}`;
+      window.sessionStorage.removeItem(completionKey);
+      window.sessionStorage.removeItem(`${completionKey}:force`);
+    }
     await supabase.auth.signOut();
   }
 

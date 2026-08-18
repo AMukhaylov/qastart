@@ -32,10 +32,10 @@ export function CompletionConfetti({
     const key = `startqa:completion-confetti:${storageKey}`;
     const forceKey = `${key}:force`;
     const forceReplay = window.sessionStorage.getItem(forceKey) === "pending";
-    if (!forceReplay && window.localStorage.getItem(key) === "shown") return;
+    if (!forceReplay && window.sessionStorage.getItem(key) === "shown") return;
 
     if (forceReplay) window.sessionStorage.removeItem(forceKey);
-    window.localStorage.setItem(key, "shown");
+    window.sessionStorage.setItem(key, "shown");
     setVisible(true);
     const timer = window.setTimeout(() => setVisible(false), 3200);
     return () => window.clearTimeout(timer);
