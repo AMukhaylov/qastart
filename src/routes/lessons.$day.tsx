@@ -109,6 +109,9 @@ function LessonPage() {
       leaveFinalQuiz("dashboard");
       return;
     }
+    if (dayNum === 14 && completed && user?.id) {
+      window.sessionStorage.setItem(`startqa:completion-confetti:${user.id}:force`, "pending");
+    }
     navigate({ to: "/dashboard" });
   };
 
@@ -502,6 +505,7 @@ function LessonPage() {
               accessToken={session.access_token}
               exitRequest={finalQuizExitRequest}
               onActiveChange={setFinalQuizActive}
+              onPassed={() => setCompleted(true)}
               onExitComplete={() => {
                 const destination = finalQuizExitDestination;
                 setFinalQuizExitDestination(null);

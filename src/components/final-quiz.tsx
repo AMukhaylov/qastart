@@ -72,11 +72,13 @@ export function FinalQuiz({
   exitRequest = 0,
   onActiveChange,
   onExitComplete,
+  onPassed,
 }: {
   accessToken: string;
   exitRequest?: number;
   onActiveChange?: (active: boolean) => void;
   onExitComplete?: () => void;
+  onPassed?: () => void;
 }) {
   const [state, setState] = useState<QuizState>({ status: "loading" });
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -158,6 +160,7 @@ export function FinalQuiz({
         },
       });
       setState({ status: "result", result: result as QuizResult });
+      if ((result as QuizResult).passed) onPassed?.();
       if (timedOut) toast.info("Время вышло, тест завершён автоматически");
     } catch (error) {
       toast.error(quizErrorMessage(error, "Не удалось завершить тест"));
