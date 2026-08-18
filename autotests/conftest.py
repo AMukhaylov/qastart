@@ -125,7 +125,7 @@ def require_mutation(settings: TestSettings) -> None:
 def student_page(page, settings: TestSettings):
     if not settings.student_login or not settings.student_password:
         pytest.skip("Set QA_STUDENT_LOGIN and QA_STUDENT_PASSWORD to run student scenarios.")
-    page.goto("/auth", wait_until="domcontentloaded")
+    page.goto("/auth", wait_until="networkidle")
     page.locator("#login").fill(settings.student_login)
     page.locator("#password").fill(settings.student_password)
     page.get_by_role("button", name="Войти", exact=True).click()
@@ -137,7 +137,7 @@ def student_page(page, settings: TestSettings):
 def admin_page(page, settings: TestSettings):
     if not settings.admin_email or not settings.admin_password:
         pytest.skip("Set QA_ADMIN_EMAIL and QA_ADMIN_PASSWORD to run administrator scenarios.")
-    page.goto("/admin/login", wait_until="domcontentloaded")
+    page.goto("/admin/login", wait_until="networkidle")
     page.locator("#admin-email").fill(settings.admin_email)
     page.locator("#admin-password").fill(settings.admin_password)
     page.get_by_role("button", name="Войти в админку", exact=True).click()

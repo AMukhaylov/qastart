@@ -8,7 +8,7 @@ def test_student_can_open_dashboard_and_first_lesson(student_page):
     expect(student_page.get_by_text("Прогресс курса", exact=True)).to_be_visible()
 
     student_page.goto("/lessons/1", wait_until="domcontentloaded")
-    expect(student_page.get_by_role("heading", name="Что такое тестирование")).to_be_visible()
+    expect(student_page.locator("h1", has_text="Что такое тестирование")).to_be_visible()
 
 
 @pytest.mark.authenticated

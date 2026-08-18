@@ -9,8 +9,8 @@ def test_admin_students_list_is_available(admin_page):
 
     expect(admin_page.get_by_role("heading", name="Ученики")).to_be_visible()
     expect(admin_page.get_by_role("button", name="Создать ученика", exact=True)).to_be_visible()
-    for header in ["УЧЕНИК", "ЛОГИН", "СТАТУС", "ПРОГРЕСС", "ДЗ", "СЕРТИФИКАТ", "ДЕЙСТВИЯ"]:
-        expect(admin_page.get_by_text(header, exact=True).first).to_be_visible()
+    for header in ["Ученик", "Логин", "Статус", "Прогресс", "ДЗ", "Сертификат", "Действия"]:
+        expect(admin_page.get_by_role("columnheader", name=header, exact=True)).to_be_visible()
 
 
 @pytest.mark.authenticated
