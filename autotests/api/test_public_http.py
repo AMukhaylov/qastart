@@ -34,3 +34,22 @@ def test_production_security_headers(http, settings):
 
     assert headers.get("x-content-type-options") == "nosniff"
     assert "max-age=" in headers.get("strict-transport-security", "")
+    assert "content-security-policy" in headers
+    assert headers.get("cross-origin-opener-policy") == "same-origin"
+    assert headers.get("cross-origin-resource-policy") == "same-origin"
+
+
+def test_avatar_endpoint_requires_authentication(http, settings):
+    response = http.get(settings.url("/api/avatar?userId=00000000-0000-0000-0000-000000000000"), timeout=20)
+
+    assert response.status_code == 401
+
+
+def test_avatar_upload_requires_authentication(http, settings):
+    response = http.post(
+        settings.url("/api/avatar"),
+        json={"presetId": "avatar-1"},
+        timeout=20,
+    )
+
+    assert response.status_code == 401

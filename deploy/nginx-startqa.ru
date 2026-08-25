@@ -8,6 +8,12 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+    # TanStack Start emits the SSR hydration and scroll-restoration bootstrap inline.
+    # A nonce is not available at this Nginx layer, so keep inline scripts enabled until
+    # the application owns nonce generation. The remaining directives stay restrictive.
+    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' wss://startqa.ru; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; font-src 'self' data: https://fonts.gstatic.com; media-src 'self'" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cross-Origin-Resource-Policy "same-origin" always;
 
     location ^~ /supabase/ {
         proxy_pass https://bhvbydcddoxjfpcschzw.supabase.co/;
@@ -42,15 +48,7 @@ server {
 }
 
 server {
-    if ($host = www.startqa.ru) {
-        return 301 https://$host$request_uri;
-    }
-
-    if ($host = startqa.ru) {
-        return 301 https://$host$request_uri;
-    }
-
     listen 80;
     server_name startqa.ru www.startqa.ru 89.108.78.48;
-    return 404;
+    return 301 https://startqa.ru$request_uri;
 }

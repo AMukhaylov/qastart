@@ -9,6 +9,7 @@ from urllib.parse import urljoin, urlparse
 import pytest
 import requests
 from dotenv import load_dotenv
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env.autotests")
@@ -125,11 +126,23 @@ def require_mutation(settings: TestSettings) -> None:
 def student_page(page, settings: TestSettings):
     if not settings.student_login or not settings.student_password:
         pytest.skip("Set QA_STUDENT_LOGIN and QA_STUDENT_PASSWORD to run student scenarios.")
-    page.goto("/auth", wait_until="networkidle")
-    page.locator("#login").fill(settings.student_login)
-    page.locator("#password").fill(settings.student_password)
-    page.get_by_role("button", name="Войти", exact=True).click()
-    page.wait_for_url("**/dashboard")
+    # The app keeps background requests alive, so networkidle makes a healthy
+    # login page look unavailable. The form itself is the contract under test.
+    for attempt in range(2):
+        page.goto("/auth", wait_until="commit")
+        # Let React hydrate before filling controlled inputs. Filling the server-
+        # rendered fields earlier is lost when the client takes ownership of them.
+        page.wait_for_timeout(2_500)
+        page.locator("#login").fill(settings.student_login)
+        page.locator("#password").fill(settings.student_password)
+        page.get_by_role("button", name="Войти", exact=True).click()
+        try:
+            page.get_by_text("Прогресс курса", exact=True).wait_for(timeout=10_000)
+            break
+        except PlaywrightTimeoutError:
+            if attempt:
+                raise
+            page.wait_for_timeout(1_000)
     return page
 
 
@@ -137,9 +150,10 @@ def student_page(page, settings: TestSettings):
 def admin_page(page, settings: TestSettings):
     if not settings.admin_email or not settings.admin_password:
         pytest.skip("Set QA_ADMIN_EMAIL and QA_ADMIN_PASSWORD to run administrator scenarios.")
-    page.goto("/admin/login", wait_until="networkidle")
+    page.goto("/admin/login", wait_until="commit")
+    page.wait_for_timeout(2_500)
     page.locator("#admin-email").fill(settings.admin_email)
     page.locator("#admin-password").fill(settings.admin_password)
     page.get_by_role("button", name="Войти в админку", exact=True).click()
-    page.wait_for_url("**/admin/homework")
+    page.get_by_text("Проверка ДЗ", exact=True).wait_for()
     return page
