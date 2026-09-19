@@ -8,7 +8,6 @@ import {
   Download,
   Loader2,
   Paperclip,
-  PlayCircle,
   Send,
   X,
 } from "lucide-react";
@@ -17,7 +16,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { FinalQuiz } from "@/components/final-quiz";
-import { LessonRichContent } from "@/components/lesson-rich-content";
+import { InteractiveLesson } from "@/components/interactive-lesson";
+import { LessonBlock, stringValue } from "@/lib/interactive-lesson";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -82,6 +82,9 @@ function LessonPage() {
 
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [completed, setCompleted] = useState(false);
+  const [blocks, setBlocks] = useState<LessonBlock[]>([]);
+  const [viewedBlockIds, setViewedBlockIds] = useState<string[]>([]);
+  const [completingLesson, setCompletingLesson] = useState(false);
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [messages, setMessages] = useState<HomeworkMessage[]>([]);
   const [hwText, setHwText] = useState("");
@@ -133,6 +136,8 @@ function LessonPage() {
     setQuestionAttachments([]);
     setQuestionText("");
     setLocked(false);
+    setBlocks([]);
+    setViewedBlockIds([]);
 
     if (dayNum > 1 && !isAdmin) {
       const { data: previousLesson } = await supabase
@@ -173,23 +178,32 @@ function LessonPage() {
     }
     setLesson(l as Lesson);
 
-    const [{ data: prog }, { data: sub }] = await Promise.all([
-      supabase
-        .from("lesson_progress")
-        .select("completed")
-        .eq("user_id", user!.id)
-        .eq("lesson_id", l.id)
-        .maybeSingle(),
-      supabase
-        .from("homework_submissions")
-        .select("id,user_id,content,status,feedback,created_at,reviewed_at,reviewed_by")
-        .eq("user_id", user!.id)
-        .eq("lesson_id", l.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
+    const [{ data: prog }, { data: sub }, { data: blockRows }, { data: blockProgressRows }] =
+      await Promise.all([
+        supabase
+          .from("lesson_progress")
+          .select("completed")
+          .eq("user_id", user!.id)
+          .eq("lesson_id", l.id)
+          .maybeSingle(),
+        supabase
+          .from("homework_submissions")
+          .select("id,user_id,content,status,feedback,created_at,reviewed_at,reviewed_by")
+          .eq("user_id", user!.id)
+          .eq("lesson_id", l.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase.from("lesson_blocks").select("*").eq("lesson_id", l.id).order("position"),
+        supabase
+          .from("lesson_block_progress")
+          .select("block_id")
+          .eq("user_id", user!.id)
+          .eq("lesson_id", l.id),
+      ]);
     setCompleted(!!prog?.completed);
+    setBlocks((blockRows ?? []) as LessonBlock[]);
+    setViewedBlockIds((blockProgressRows ?? []).map((row) => row.block_id));
     if (sub) {
       const currentSubmission = sub as Submission;
       setSubmission(currentSubmission);
@@ -199,6 +213,39 @@ function LessonPage() {
       setHwText("");
     }
     setLoading(false);
+  }
+
+  async function markBlockViewed(blockId: string) {
+    if (!lesson || !user || viewedBlockIds.includes(blockId)) return;
+    setViewedBlockIds((ids) => [...ids, blockId]);
+    const { error } = await supabase
+      .from("lesson_block_progress")
+      .upsert(
+        { user_id: user.id, lesson_id: lesson.id, block_id: blockId },
+        { onConflict: "user_id,block_id" },
+      );
+    if (error) setViewedBlockIds((ids) => ids.filter((id) => id !== blockId));
+  }
+
+  async function completeLesson() {
+    if (!lesson || !user || lesson.day_number === 14 || completed) return;
+    setCompletingLesson(true);
+    const { error } = await supabase.from("lesson_progress").upsert(
+      {
+        user_id: user.id,
+        lesson_id: lesson.id,
+        completed: true,
+        completed_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,lesson_id" },
+    );
+    setCompletingLesson(false);
+    if (error) {
+      toast.error("Не удалось завершить урок. Попробуйте ещё раз.");
+      return;
+    }
+    setCompleted(true);
+    toast.success("Урок завершён. Следующий день открыт.");
   }
 
   async function loadMessages(currentSubmission: Submission) {
@@ -432,6 +479,13 @@ function LessonPage() {
 
   const prevDay = dayNum > 1 ? dayNum - 1 : null;
   const nextDay = dayNum < 14 ? dayNum + 1 : null;
+  const viewedCount = blocks.filter((block) => viewedBlockIds.includes(block.id)).length;
+  const lessonProgress =
+    blocks.length > 0 ? Math.round((viewedCount / blocks.length) * 100) : completed ? 100 : 0;
+  const homeworkBlock = blocks.find((block) => block.block_type === "homework");
+  const homeworkInstruction = homeworkBlock
+    ? stringValue(homeworkBlock.content, "instruction")
+    : lesson.homework_md;
 
   return (
     <div className="min-h-screen bg-[var(--gradient-soft)]">
@@ -451,50 +505,65 @@ function LessonPage() {
           </Badge>
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">{lesson.title}</h1>
           <p className="mt-3 text-lg text-muted-foreground">{lesson.description}</p>
+          <div className="mt-5 max-w-xl">
+            <div className="mb-2 flex justify-between text-sm">
+              <span className="font-semibold">Прогресс урока</span>
+              <span className="text-muted-foreground">{lessonProgress}%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{ width: `${lessonProgress}%` }}
+              />
+            </div>
+          </div>
         </div>
 
-        {/* Video */}
-        <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-[var(--shadow-soft)]">
-          <div className="aspect-video bg-[var(--gradient-hero)] flex items-center justify-center text-primary-foreground">
-            {lesson.video_url ? (
+        {blocks.length === 0 && lesson.video_url && (
+          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-soft)]">
+            <div className="aspect-video bg-muted">
               <iframe
                 src={lesson.video_url}
-                className="w-full h-full"
+                className="h-full w-full"
                 allow="autoplay; encrypted-media"
                 allowFullScreen
+                title="Дополнительное видео"
               />
-            ) : (
-              <div className="text-center">
-                <PlayCircle className="h-16 w-16 mx-auto mb-3 opacity-90" />
-                <p className="opacity-90">Видео-урок появится здесь</p>
-              </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Content */}
-        <article className="rounded-2xl border border-border bg-card p-7 shadow-[var(--shadow-soft)]">
-          <h2 className="text-xl font-extrabold mb-4">Конспект</h2>
-          <LessonRichContent content={lesson.content_md} />
-          <div className="mt-6 rounded-xl bg-primary-soft p-4 text-sm text-primary">
-            {lesson.day_number === 14 ? (
-              completed ? (
-                <div className="inline-flex items-center gap-2 font-semibold">
-                  <CheckCircle2 className="h-4 w-4" /> Итоговый тест пройден.
-                </div>
-              ) : (
-                "Пройди итоговый тест минимум на 70%, чтобы завершить курс."
-              )
-            ) : completed ? (
-              <div className="inline-flex items-center gap-2 font-semibold">
-                <CheckCircle2 className="h-4 w-4" /> Урок зачтен: домашнее задание принято
-                наставником.
+        <InteractiveLesson
+          blocks={blocks}
+          viewedBlockIds={new Set(viewedBlockIds)}
+          onBlockViewed={markBlockViewed}
+          legacyContent={lesson.content_md}
+        />
+
+        {lesson.day_number !== 14 && (
+          <section className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] md:p-7">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-xl font-extrabold">Завершение урока</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Материал можно перечитать в любой момент. Завершение откроет следующий день.
+                </p>
               </div>
-            ) : (
-              "Урок будет засчитан автоматически после того, как наставник примет домашнее задание."
-            )}
-          </div>
-        </article>
+              <Button
+                variant="hero"
+                onClick={completeLesson}
+                disabled={completed || completingLesson}
+              >
+                {completingLesson ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                {completed ? "Урок завершён" : "Завершить урок"}
+              </Button>
+            </div>
+          </section>
+        )}
 
         {lesson.day_number === 14 ? (
           session?.access_token ? (
@@ -522,7 +591,7 @@ function LessonPage() {
               </div>
               <h2 className="text-xl font-extrabold">Домашнее задание</h2>
             </div>
-            <p className="text-muted-foreground whitespace-pre-wrap">{lesson.homework_md}</p>
+            <p className="text-muted-foreground whitespace-pre-wrap">{homeworkInstruction}</p>
 
             {submission ? (
               <div className="mt-6 space-y-3">

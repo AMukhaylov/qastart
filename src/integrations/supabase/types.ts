@@ -210,6 +210,86 @@ export type Database = {
           },
         ];
       };
+      lesson_blocks: {
+        Row: {
+          block_type: string;
+          content: Json;
+          created_at: string;
+          id: string;
+          lesson_id: string;
+          position: number;
+          updated_at: string;
+        };
+        Insert: {
+          block_type: string;
+          content?: Json;
+          created_at?: string;
+          id?: string;
+          lesson_id: string;
+          position: number;
+          updated_at?: string;
+        };
+        Update: {
+          block_type?: string;
+          content?: Json;
+          created_at?: string;
+          id?: string;
+          lesson_id?: string;
+          position?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lesson_blocks_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      lesson_block_progress: {
+        Row: {
+          block_id: string;
+          completed_at: string;
+          id: string;
+          lesson_id: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          block_id: string;
+          completed_at?: string;
+          id?: string;
+          lesson_id: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          block_id?: string;
+          completed_at?: string;
+          id?: string;
+          lesson_id?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lesson_block_progress_block_id_fkey";
+            columns: ["block_id"];
+            isOneToOne: false;
+            referencedRelation: "lesson_blocks";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lesson_block_progress_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       lesson_progress: {
         Row: {
           completed: boolean;

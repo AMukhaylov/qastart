@@ -126,7 +126,11 @@ const program = [
 ];
 
 const benefits = [
-  { icon: PlayCircle, title: "14 понятных уроков", desc: "Короткие видео без воды" },
+  {
+    icon: PlayCircle,
+    title: "14 понятных уроков",
+    desc: "Текст, примеры, схемы и интерактивные задания",
+  },
   { icon: Video, title: "2 групповые встречи", desc: "Живая практика и разбор вопросов" },
   {
     icon: MessageSquare,
@@ -161,7 +165,7 @@ function LandingPage() {
               начинается здесь
             </h1>
             <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-xl">
-              14 дней видеоуроков, домашних заданий, обратной связи наставника и итоговый
+              14 дней интерактивных уроков, домашних заданий, обратной связи наставника и итоговый
               сертификат. Всё, чтобы спокойно познакомиться с QA.
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
@@ -247,7 +251,7 @@ function LandingPage() {
                   <PlayCircle className="h-4 w-4" />
                 </div>
                 <div className="leading-tight">
-                  <div className="text-[11px] text-muted-foreground">Видео</div>
+                  <div className="text-[11px] text-muted-foreground">Формат</div>
                   <div className="font-display font-bold text-sm">14 уроков</div>
                 </div>
               </div>
@@ -291,7 +295,7 @@ function LandingPage() {
           <SectionHead
             badge="14 дней"
             title="Твой маршрут обучения"
-            subtitle="Каждый день — новая тема, короткое видео и небольшая практика. Двигайся последовательно — и через две недели соберётся полная картина профессии."
+            subtitle="Каждый день — новая тема: понятная теория, примеры, интерактивные задания и небольшая практика. Двигайся последовательно — и через две недели соберётся полная картина профессии."
           />
           <div className="mt-12 relative">
             {/* roadmap line on lg+ */}
