@@ -128,24 +128,24 @@ const program = [
 const benefits = [
   {
     icon: PlayCircle,
-    title: "14 интерактивных уроков",
-    desc: "Понятная теория, примеры, схемы и вопросы прямо внутри урока.",
+    title: "14 уроков",
+    desc: "Теория, примеры, схемы и вопросы по ходу урока.",
   },
-  { icon: Video, title: "2 групповые встречи", desc: "Разбираем вопросы и сложные темы вместе." },
+  { icon: Video, title: "2 встречи", desc: "Разберём вопросы и сложные темы вместе." },
   {
     icon: MessageSquare,
     title: "Поддержка наставника",
-    desc: "Можно задать вопрос, если что-то осталось непонятным.",
+    desc: "Поможем, если что-то останется непонятным.",
   },
   {
     icon: ClipboardCheck,
     title: "Практическое задание",
-    desc: "На 13-й день получишь задачу и попробуешь протестировать её на учебном стенде.",
+    desc: "На 13-й день протестируешь задачу на учебном стенде.",
   },
   {
     icon: Target,
     title: "Итоговый тест",
-    desc: "Проверишь знания по всему курсу и получишь сертификат после успешного завершения.",
+    desc: "Проверишь знания и получишь сертификат.",
   },
 ];
 
@@ -277,20 +277,22 @@ function LandingPage() {
         <div className="container-page">
           <SectionHead
             badge="Что внутри"
-            title="Всё, чтобы попробовать себя в QA"
-            subtitle="Всё сделано для того, чтобы ты уверенно попробовал себя в QA — от первого урока до итогового проекта."
+            title="Всё для старта в QA"
+            subtitle="Понятный путь от первого урока до итоговой проверки знаний."
           />
           <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-5 gap-5">
             {benefits.map((s) => (
               <div
                 key={s.title}
-                className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-soft)] hover:shadow-[var(--shadow-card)] hover:-translate-y-1 transition-all"
+                className="flex min-h-[270px] flex-col rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-soft)] transition-all hover:-translate-y-1 hover:shadow-[var(--shadow-card)]"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-soft text-primary">
                   <s.icon className="h-6 w-6" />
                 </div>
-                <h3 className="mt-5 font-display font-bold text-base">{s.title}</h3>
-                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{s.desc}</p>
+                <h3 className="mt-5 min-h-12 font-display text-base font-bold leading-snug">
+                  {s.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{s.desc}</p>
               </div>
             ))}
           </div>
