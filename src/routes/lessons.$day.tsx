@@ -215,16 +215,19 @@ function LessonPage() {
     setLoading(false);
   }
 
-  async function markBlockViewed(blockId: string) {
-    if (!lesson || !user || viewedBlockIds.includes(blockId)) return;
-    setViewedBlockIds((ids) => [...ids, blockId]);
-    const { error } = await supabase
-      .from("lesson_block_progress")
-      .upsert(
-        { user_id: user.id, lesson_id: lesson.id, block_id: blockId },
-        { onConflict: "user_id,block_id" },
-      );
-    if (error) setViewedBlockIds((ids) => ids.filter((id) => id !== blockId));
+  async function markBlocksCompleted(blockIds: string[]) {
+    if (!lesson || !user) return;
+    const pendingIds = Array.from(new Set(blockIds)).filter((id) => !viewedBlockIds.includes(id));
+    if (pendingIds.length === 0) return;
+    const { error } = await supabase.from("lesson_block_progress").upsert(
+      pendingIds.map((blockId) => ({ user_id: user.id, lesson_id: lesson.id, block_id: blockId })),
+      { onConflict: "user_id,block_id" },
+    );
+    if (error) {
+      toast.error("Не удалось сохранить прогресс. Попробуйте ещё раз.");
+      return;
+    }
+    setViewedBlockIds((ids) => Array.from(new Set([...ids, ...pendingIds])));
   }
 
   async function completeLesson() {
@@ -247,6 +250,23 @@ function LessonPage() {
     setCompleted(true);
     toast.success("Урок завершён. Следующий день открыт.");
   }
+
+  useEffect(() => {
+    if (
+      !lesson ||
+      !user ||
+      lesson.day_number === 14 ||
+      completed ||
+      completingLesson ||
+      blocks.length === 0 ||
+      !blocks.every((block) => viewedBlockIds.includes(block.id))
+    ) {
+      return;
+    }
+    void completeLesson();
+    // completeLesson deliberately reads the current lesson and user from this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks, completed, completingLesson, lesson, user, viewedBlockIds]);
 
   async function loadMessages(currentSubmission: Submission) {
     if (!session?.access_token) {
@@ -396,6 +416,8 @@ function LessonPage() {
       setHwText(savedSubmission.content);
       setAttachments([]);
       await loadMessages(savedSubmission);
+      const homeworkBlock = blocks.find((block) => block.block_type === "homework");
+      if (homeworkBlock) await markBlocksCompleted([homeworkBlock.id]);
       toast.success("Домашка отправлена на проверку");
     } catch {
       toast.error("Не удалось отправить ДЗ");
@@ -484,7 +506,13 @@ function LessonPage() {
     blocks.length > 0 ? Math.round((viewedCount / blocks.length) * 100) : completed ? 100 : 0;
   const homeworkBlock = blocks.find((block) => block.block_type === "homework");
   const hasLegacyHomework = blocks.length === 0 && Boolean(lesson.homework_md.trim());
-  const showHomework = Boolean(homeworkBlock) || hasLegacyHomework;
+  const homeworkUnlocked =
+    Boolean(homeworkBlock) &&
+    blocks
+      .filter((block) => block.position < (homeworkBlock?.position ?? Number.MAX_SAFE_INTEGER))
+      .every((block) => viewedBlockIds.includes(block.id));
+  const showHomework =
+    (Boolean(homeworkBlock) && (homeworkUnlocked || Boolean(submission))) || hasLegacyHomework;
   const homeworkInstruction = homeworkBlock
     ? stringValue(homeworkBlock.content, "instruction")
     : lesson.homework_md;
@@ -537,35 +565,10 @@ function LessonPage() {
 
         <InteractiveLesson
           blocks={blocks}
-          viewedBlockIds={new Set(viewedBlockIds)}
-          onBlockViewed={markBlockViewed}
+          completedBlockIds={new Set(viewedBlockIds)}
+          onBlocksCompleted={markBlocksCompleted}
           legacyContent={lesson.content_md}
         />
-
-        {lesson.day_number !== 14 && (
-          <section className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] md:p-7">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-xl font-extrabold">Завершение урока</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Материал можно перечитать в любой момент. Завершение откроет следующий день.
-                </p>
-              </div>
-              <Button
-                variant="hero"
-                onClick={completeLesson}
-                disabled={completed || completingLesson}
-              >
-                {completingLesson ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4" />
-                )}
-                {completed ? "Урок завершён" : "Завершить урок"}
-              </Button>
-            </div>
-          </section>
-        )}
 
         {lesson.day_number === 14 ? (
           session?.access_token ? (

@@ -7,7 +7,9 @@ DAY_ONE_UPDATE = ROOT / "supabase/migrations/20260920090000_day1_video_and_check
 ASSESSMENT_FORMAT = ROOT / "supabase/migrations/20260920100000_course_assessment_format.sql"
 INTERACTIVE_LESSONS = ROOT / "supabase/migrations/20260920110000_seed_interactive_lessons_2_to_13.sql"
 EXPANDED_LESSONS = ROOT / "supabase/migrations/20260920120000_expand_interactive_lessons_2_and_3.sql"
+DAY_THREE_ORDER = ROOT / "supabase/migrations/20260920130000_reorder_day3_question_after_material.sql"
 RENDERER = ROOT / "src/components/interactive-lesson.tsx"
+LESSON_PAGE = ROOT / "src/routes/lessons.$day.tsx"
 ADMIN = ROOT / "src/routes/admin.lessons.tsx"
 
 
@@ -53,6 +55,19 @@ def test_student_question_supports_feedback_and_retry():
     assert "Попробовать ещё раз" in source
 
 
+def test_lesson_steps_unlock_in_order_and_progress_is_saved_automatically():
+    renderer = RENDERER.read_text(encoding="utf-8")
+    page = LESSON_PAGE.read_text(encoding="utf-8")
+
+    assert "createSteps" in renderer
+    assert "steps.slice(0, visibleThrough + 1)" in renderer
+    assert "onBlocksCompleted" in renderer
+    assert "Я посмотрел видео — продолжить" in renderer
+    assert "markBlocksCompleted" in page
+    assert "!blocks.every((block) => viewedBlockIds.includes(block.id))" in page
+    assert "Завершить урок" not in page
+
+
 def test_admin_builder_exposes_all_block_types_and_order_controls():
     source = ADMIN.read_text(encoding="utf-8")
 
@@ -95,3 +110,10 @@ def test_days_two_and_three_have_expanded_interactive_material():
     assert "Структура тест-кейса" in sql
     assert sql.count("'question'") >= 3
     assert "'video'" not in sql
+
+
+def test_day_three_question_follows_the_test_case_explanation():
+    sql = DAY_THREE_ORDER.read_text(encoding="utf-8")
+
+    assert "Что обычно содержит тест-кейс?" in sql
+    assert "position = 9" in sql

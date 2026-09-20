@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   BookOpen,
@@ -7,6 +7,7 @@ import {
   Code2,
   Lightbulb,
   ListChecks,
+  LockKeyhole,
   PlayCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,17 +16,67 @@ import { LessonBlock, stringList, stringValue } from "@/lib/interactive-lesson";
 
 type InteractiveLessonProps = {
   blocks: LessonBlock[];
-  viewedBlockIds: Set<string>;
-  onBlockViewed: (blockId: string) => void;
+  completedBlockIds: Set<string>;
+  onBlocksCompleted: (blockIds: string[]) => Promise<void> | void;
   legacyContent?: string;
 };
 
+type StepKind = "material" | "question" | "video" | "homework";
+type LessonStep = { kind: StepKind; blocks: LessonBlock[] };
+
+function isRequiredVideo(block: LessonBlock) {
+  return block.block_type === "video" && block.content.required === true;
+}
+
+function createSteps(blocks: LessonBlock[]): LessonStep[] {
+  const steps: LessonStep[] = [];
+  let material: LessonBlock[] = [];
+  const flushMaterial = () => {
+    if (material.length > 0) steps.push({ kind: "material", blocks: material });
+    material = [];
+  };
+
+  for (const block of blocks) {
+    if (
+      block.block_type === "question" ||
+      block.block_type === "homework" ||
+      isRequiredVideo(block)
+    ) {
+      flushMaterial();
+      steps.push({
+        kind:
+          block.block_type === "question"
+            ? "question"
+            : block.block_type === "homework"
+              ? "homework"
+              : "video",
+        blocks: [block],
+      });
+    } else {
+      material.push(block);
+    }
+  }
+  flushMaterial();
+  return steps;
+}
+
 export function InteractiveLesson({
   blocks,
-  viewedBlockIds,
-  onBlockViewed,
+  completedBlockIds,
+  onBlocksCompleted,
   legacyContent,
 }: InteractiveLessonProps) {
+  const steps = useMemo(() => createSteps(blocks), [blocks]);
+  const activeIndex = steps.findIndex((step) =>
+    step.blocks.some((block) => !completedBlockIds.has(block.id)),
+  );
+  const visibleThrough = activeIndex === -1 ? steps.length - 1 : activeIndex;
+  const activeRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [activeIndex]);
+
   if (blocks.length === 0) {
     return legacyContent ? (
       <article className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-soft)] md:p-8">
@@ -36,50 +87,83 @@ export function InteractiveLesson({
   }
 
   return (
-    <div className="space-y-5">
-      {blocks.map((block) => (
-        <LessonBlockView
-          key={block.id}
-          block={block}
-          viewed={viewedBlockIds.has(block.id)}
-          onViewed={onBlockViewed}
-        />
-      ))}
+    <div className="space-y-8">
+      {steps.slice(0, visibleThrough + 1).map((step, index) => {
+        const stepCompleted = step.blocks.every((block) => completedBlockIds.has(block.id));
+        const active = index === activeIndex;
+        return (
+          <section
+            key={step.blocks.map((block) => block.id).join("-")}
+            ref={active ? activeRef : undefined}
+            data-lesson-step={index}
+            className="scroll-mt-6"
+          >
+            <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+              <span className="font-semibold text-muted-foreground">
+                Часть {index + 1} из {steps.length}
+              </span>
+              {stepCompleted ? (
+                <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" /> Пройдено
+                </span>
+              ) : active ? (
+                <span className="inline-flex items-center gap-1.5 font-semibold text-primary">
+                  <LockKeyhole className="h-4 w-4" /> Текущий шаг
+                </span>
+              ) : null}
+            </div>
+            {step.blocks.map((block) => (
+              <LessonBlockView
+                key={block.id}
+                block={block}
+                completed={completedBlockIds.has(block.id)}
+                onComplete={() => onBlocksCompleted([block.id])}
+              />
+            ))}
+            {step.kind === "material" && !stepCompleted && (
+              <Button
+                className="mt-5"
+                variant="hero"
+                onClick={() => onBlocksCompleted(step.blocks.map((block) => block.id))}
+              >
+                Продолжить
+              </Button>
+            )}
+            {step.kind === "video" && !stepCompleted && (
+              <Button
+                className="mt-5"
+                variant="hero"
+                onClick={() => onBlocksCompleted(step.blocks.map((block) => block.id))}
+              >
+                Я посмотрел видео — продолжить
+              </Button>
+            )}
+            {step.kind === "homework" && !stepCompleted && (
+              <p className="mt-4 text-sm text-muted-foreground">
+                Отправьте выполненное задание в форме ниже, чтобы открыть следующий шаг.
+              </p>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
 
 function LessonBlockView({
   block,
-  viewed,
-  onViewed,
+  completed,
+  onComplete,
 }: {
   block: LessonBlock;
-  viewed: boolean;
-  onViewed: (id: string) => void;
+  completed: boolean;
+  onComplete: () => Promise<void> | void;
 }) {
-  const ref = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (viewed || !ref.current) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          onViewed(block.id);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.35 },
-    );
-    observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, [block.id, onViewed, viewed]);
-
   const c = block.content;
   const cardClass =
     "rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)] md:p-7";
-
   let content: React.ReactNode;
+
   switch (block.block_type) {
     case "heading":
       content = (
@@ -184,7 +268,7 @@ function LessonBlockView({
       content = url ? (
         <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-2 px-5 py-4 font-bold">
-            <PlayCircle className="h-5 w-5 text-primary" />{" "}
+            <PlayCircle className="h-5 w-5 text-primary" />
             {stringValue(c, "title", "Дополнительное видео")}
           </div>
           <div className="aspect-video bg-muted">
@@ -213,13 +297,13 @@ function LessonBlockView({
       break;
     }
     case "question":
-      content = <QuestionBlock content={c} />;
+      content = <QuestionBlock content={c} completed={completed} onComplete={onComplete} />;
       break;
     case "code":
       content = (
         <div className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-2 border-b border-slate-700 px-5 py-3 text-sm font-semibold text-slate-200">
-            <Code2 className="h-4 w-4 text-sky-300" />{" "}
+            <Code2 className="h-4 w-4 text-sky-300" />
             {stringValue(c, "language", "Технический пример")}
           </div>
           <pre className="overflow-x-auto p-5 text-sm leading-relaxed text-slate-100">
@@ -248,12 +332,7 @@ function LessonBlockView({
       );
       break;
   }
-
-  return (
-    <section ref={ref} data-block-id={block.id}>
-      {content}
-    </section>
-  );
+  return <div className="space-y-5">{content}</div>;
 }
 
 function ExamplePart({ title, text, tone }: { title: string; text: string; tone: string }) {
@@ -265,12 +344,24 @@ function ExamplePart({ title, text, tone }: { title: string; text: string; tone:
   );
 }
 
-function QuestionBlock({ content }: { content: Record<string, unknown> }) {
+function QuestionBlock({
+  content,
+  completed,
+  onComplete,
+}: {
+  content: Record<string, unknown>;
+  completed: boolean;
+  onComplete: () => Promise<void> | void;
+}) {
   const options = stringList(content, "options");
   const correctIndex = typeof content.correctIndex === "number" ? content.correctIndex : 0;
   const [selected, setSelected] = useState<number | null>(null);
   const correct = selected === correctIndex;
   const answered = selected !== null;
+  const choose = (index: number) => {
+    setSelected(index);
+    if (index === correctIndex) void onComplete();
+  };
   return (
     <section className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] md:p-7">
       <div className="mb-3 flex items-center gap-2 text-sm font-bold text-primary">
@@ -290,7 +381,7 @@ function QuestionBlock({ content }: { content: Record<string, unknown> }) {
             <button
               key={`${option}-${index}`}
               type="button"
-              onClick={() => setSelected(index)}
+              onClick={() => choose(index)}
               className={`w-full rounded-xl border px-4 py-3 text-left text-sm transition-colors ${className}`}
             >
               {option}
@@ -302,7 +393,9 @@ function QuestionBlock({ content }: { content: Record<string, unknown> }) {
         <div
           className={`mt-4 rounded-xl p-4 text-sm ${correct ? "bg-emerald-50 text-emerald-950" : "bg-red-50 text-red-950"}`}
         >
-          <p className="font-bold">{correct ? "Верно!" : "Почти. Попробуйте ещё раз."}</p>
+          <p className="font-bold">
+            {correct ? "Верно! Следующая часть открыта." : "Почти. Попробуйте ещё раз."}
+          </p>
           <p className="mt-1">{stringValue(content, "explanation")}</p>
           {!correct && (
             <Button variant="outline" size="sm" className="mt-3" onClick={() => setSelected(null)}>
@@ -310,6 +403,12 @@ function QuestionBlock({ content }: { content: Record<string, unknown> }) {
             </Button>
           )}
         </div>
+      )}
+      {completed && !answered && (
+        <p className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-700">
+          <CheckCircle2 className="h-4 w-4" /> Ответ уже принят. Можете ответить ещё раз для
+          повторения.
+        </p>
       )}
     </section>
   );
