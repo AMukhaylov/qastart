@@ -583,7 +583,7 @@ function LessonPage() {
               }}
             />
           ) : null
-        ) : (
+        ) : homeworkBlock || blocks.length === 0 ? (
           <section className="rounded-2xl border border-border bg-card p-7 shadow-[var(--shadow-soft)]">
             <div className="flex items-center gap-3 mb-3">
               <div className="h-10 w-10 rounded-xl bg-primary-soft text-primary flex items-center justify-center">
@@ -712,7 +712,7 @@ function LessonPage() {
               </div>
             )}
           </section>
-        )}
+        ) : null}
 
         {/* Navigation */}
         <div className="flex justify-between gap-3">

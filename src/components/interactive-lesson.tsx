@@ -197,7 +197,19 @@ function LessonBlockView({
             />
           </div>
         </section>
-      ) : null;
+      ) : (
+        <section className="overflow-hidden rounded-2xl border border-dashed border-primary/30 bg-primary-soft shadow-[var(--shadow-soft)]">
+          <div className="flex aspect-video flex-col items-center justify-center p-6 text-center">
+            <PlayCircle className="h-12 w-12 text-primary" />
+            <h3 className="mt-3 font-extrabold">
+              {stringValue(c, "title", "Дополнительное видео")}
+            </h3>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              {stringValue(c, "description", "Видео появится здесь.")}
+            </p>
+          </div>
+        </section>
+      );
       break;
     }
     case "question":

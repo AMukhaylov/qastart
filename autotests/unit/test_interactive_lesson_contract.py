@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = ROOT / "supabase/migrations/20260919000000_interactive_lesson_blocks.sql"
+DAY_ONE_UPDATE = ROOT / "supabase/migrations/20260920090000_day1_video_and_check_quiz.sql"
 RENDERER = ROOT / "src/components/interactive-lesson.tsx"
 ADMIN = ROOT / "src/routes/admin.lessons.tsx"
 
@@ -56,3 +57,11 @@ def test_admin_builder_exposes_all_block_types_and_order_controls():
     assert "createLessonBlock(type)" in source
     assert "onUp" in source and "onDown" in source and "onDelete" in source
     assert 'from("lesson_blocks").delete()' in source
+
+
+def test_day_one_update_reserves_video_and_removes_homework_block():
+    sql = DAY_ONE_UPDATE.read_text(encoding="utf-8")
+
+    assert "Приветствие Артура" in sql
+    assert "Проверочный тест" in sql
+    assert "and block_type = 'homework'" in sql
