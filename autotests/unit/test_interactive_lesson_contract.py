@@ -6,6 +6,7 @@ MIGRATION = ROOT / "supabase/migrations/20260919000000_interactive_lesson_blocks
 DAY_ONE_UPDATE = ROOT / "supabase/migrations/20260920090000_day1_video_and_check_quiz.sql"
 ASSESSMENT_FORMAT = ROOT / "supabase/migrations/20260920100000_course_assessment_format.sql"
 INTERACTIVE_LESSONS = ROOT / "supabase/migrations/20260920110000_seed_interactive_lessons_2_to_13.sql"
+EXPANDED_LESSONS = ROOT / "supabase/migrations/20260920120000_expand_interactive_lessons_2_and_3.sql"
 RENDERER = ROOT / "src/components/interactive-lesson.tsx"
 ADMIN = ROOT / "src/routes/admin.lessons.tsx"
 
@@ -84,4 +85,13 @@ def test_remaining_teaching_days_have_interactive_blocks_and_no_extra_videos():
         assert f"({day}, 'heading', 0" in sql
     assert sql.count("'homework'") == 8
     assert sql.count("Проверочный тест") == 4
+    assert "'video'" not in sql
+
+
+def test_days_two_and_three_have_expanded_interactive_material():
+    sql = EXPANDED_LESSONS.read_text(encoding="utf-8")
+
+    assert "Кто за что отвечает" in sql
+    assert "Структура тест-кейса" in sql
+    assert sql.count("'question'") >= 3
     assert "'video'" not in sql
