@@ -406,6 +406,18 @@ function BlockEditor({
   else if (block.block_type === "question")
     fields = (
       <>
+        <Field label="Тип активности">
+          <select
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={stringValue(c, "questionType", "single_choice")}
+            onChange={(e) => set("questionType", e.target.value)}
+          >
+            <option value="single_choice">Один правильный ответ</option>
+            <option value="multiple_choice">Несколько правильных ответов</option>
+            <option value="true_false">Верно / неверно</option>
+            <option value="scenario">Ситуационная задача</option>
+          </select>
+        </Field>
         {simple("Вопрос", "question", true)}
         <Field label="4 варианта, по одному на строке">
           <Textarea

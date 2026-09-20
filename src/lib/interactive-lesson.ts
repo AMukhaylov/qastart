@@ -104,6 +104,7 @@ export function createLessonBlock(type: LessonBlockType): LessonBlockDraft {
     image: { url: "", alt: "", caption: "" },
     video: { url: "", title: "Дополнительное видео", required: false },
     question: {
+      questionType: "single_choice",
       question: "Вопрос для закрепления",
       options: ["Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4"],
       correctIndex: 0,

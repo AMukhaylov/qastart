@@ -387,12 +387,35 @@ function QuestionBlock({
 }) {
   const options = stringList(content, "options");
   const correctIndex = typeof content.correctIndex === "number" ? content.correctIndex : 0;
-  const [selected, setSelected] = useState<number | null>(null);
-  const correct = selected === correctIndex;
-  const answered = selected !== null;
+  const questionType = stringValue(content, "questionType", "single_choice");
+  const correctAnswers = Array.isArray(content.correctAnswers)
+    ? content.correctAnswers.filter((item): item is number => typeof item === "number")
+    : [correctIndex];
+  const [selected, setSelected] = useState<number[]>([]);
+  const [submitted, setSubmitted] = useState(false);
+  const correct =
+    submitted &&
+    selected.length === correctAnswers.length &&
+    selected.every((index) => correctAnswers.includes(index));
+  const answered = submitted;
   const choose = (index: number) => {
-    setSelected(index);
+    if (questionType === "multiple_choice") {
+      setSelected((current) =>
+        current.includes(index) ? current.filter((item) => item !== index) : [...current, index],
+      );
+      return;
+    }
+    setSelected([index]);
+    setSubmitted(true);
     if (index === correctIndex) void onComplete();
+  };
+  const submitMultiple = () => {
+    setSubmitted(true);
+    if (
+      selected.length === correctAnswers.length &&
+      selected.every((index) => correctAnswers.includes(index))
+    )
+      void onComplete();
   };
   return (
     <section className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] md:p-7">
@@ -400,9 +423,12 @@ function QuestionBlock({
         <CircleAlert className="h-4 w-4" /> Проверь себя
       </div>
       <h3 className="text-xl font-extrabold">{stringValue(content, "question")}</h3>
+      {questionType === "multiple_choice" && (
+        <p className="mt-2 text-sm text-muted-foreground">Выберите все подходящие варианты.</p>
+      )}
       <div className="mt-5 space-y-2">
         {options.map((option, index) => {
-          const isSelected = selected === index;
+          const isSelected = selected.includes(index);
           const className =
             answered && isSelected
               ? correct
@@ -421,6 +447,16 @@ function QuestionBlock({
           );
         })}
       </div>
+      {questionType === "multiple_choice" && !submitted && (
+        <Button
+          className="mt-4"
+          variant="hero"
+          onClick={submitMultiple}
+          disabled={selected.length === 0}
+        >
+          Проверить ответ
+        </Button>
+      )}
       {answered && (
         <div
           className={`mt-4 rounded-xl p-4 text-sm ${correct ? "bg-emerald-50 text-emerald-950" : "bg-red-50 text-red-950"}`}
@@ -430,7 +466,15 @@ function QuestionBlock({
           </p>
           <p className="mt-1">{stringValue(content, "explanation")}</p>
           {!correct && (
-            <Button variant="outline" size="sm" className="mt-3" onClick={() => setSelected(null)}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => {
+                setSelected([]);
+                setSubmitted(false);
+              }}
+            >
               Попробовать ещё раз
             </Button>
           )}
