@@ -126,7 +126,11 @@ async function expectStorageBucket(bucketId) {
 }
 
 async function expectClientBundleConfig() {
-  const htmlResponse = await fetchWithTimeout(`${baseUrl}/auth`);
+  // A cached HTML document can reference the asset hashes from a previous
+  // deployment. Fetch a fresh document before walking its bundle graph.
+  const htmlResponse = await fetchWithTimeout(
+    `${baseUrl}/auth?verify=${encodeURIComponent(Date.now().toString(36))}`,
+  );
   const html = await htmlResponse.text();
   if (!htmlResponse.ok) throw new Error(`HTML HTTP ${htmlResponse.status}`);
 
