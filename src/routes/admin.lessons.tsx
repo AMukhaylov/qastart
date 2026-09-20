@@ -474,6 +474,14 @@ function BlockEditor({
         {simple("Подсказка по отправке", "submitHint", true)}
       </>
     );
+  const defaultCondition =
+    block.block_type === "question"
+      ? "question_correct"
+      : block.block_type === "video"
+        ? "video_watched"
+        : block.block_type === "homework"
+          ? "homework_submitted"
+          : "viewed";
   return (
     <article className="rounded-2xl border border-border bg-muted/30 p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -505,6 +513,63 @@ function BlockEditor({
         </div>
       </div>
       <div className="space-y-3">{fields}</div>
+      <div className="mt-5 grid gap-3 border-t border-border pt-4 text-sm md:grid-cols-2">
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-background p-3">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={c.required !== false}
+            onChange={(event) => set("required", event.target.checked)}
+          />
+          <span>
+            <span className="block font-semibold">Обязательный блок</span>
+            <span className="text-xs text-muted-foreground">Учитывается в прогрессе урока.</span>
+          </span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-background p-3">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={c.blocksNext !== false}
+            onChange={(event) => set("blocksNext", event.target.checked)}
+          />
+          <span>
+            <span className="block font-semibold">Открывает следующий этап</span>
+            <span className="text-xs text-muted-foreground">
+              Ученик завершит этот блок перед следующим.
+            </span>
+          </span>
+        </label>
+        <Field label="Условие выполнения">
+          <select
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={stringValue(c, "completionCondition", defaultCondition)}
+            onChange={(event) => set("completionCondition", event.target.value)}
+          >
+            <option value="viewed">Просмотрен</option>
+            <option value="question_correct">Правильный ответ</option>
+            <option value="video_watched">Видео просмотрено</option>
+            <option value="task_completed">Задание выполнено</option>
+            <option value="homework_submitted">Домашнее задание отправлено</option>
+          </select>
+        </Field>
+        {block.block_type === "homework" && (
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-background p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={c.homeworkRequiredForCompletion === true}
+              onChange={(event) => set("homeworkRequiredForCompletion", event.target.checked)}
+            />
+            <span>
+              <span className="block font-semibold">ДЗ обязательно для завершения</span>
+              <span className="text-xs text-muted-foreground">
+                Без отправки урок не получит статус «Пройден».
+              </span>
+            </span>
+          </label>
+        )}
+      </div>
     </article>
   );
 }

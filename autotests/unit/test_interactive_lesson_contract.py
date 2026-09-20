@@ -11,6 +11,7 @@ DAY_THREE_ORDER = ROOT / "supabase/migrations/20260920130000_reorder_day3_questi
 RENDERER = ROOT / "src/components/interactive-lesson.tsx"
 LESSON_PAGE = ROOT / "src/routes/lessons.$day.tsx"
 ADMIN = ROOT / "src/routes/admin.lessons.tsx"
+GUIDE = ROOT / "src/components/lesson-guide.tsx"
 
 
 def test_interactive_lesson_migration_has_all_mvp_block_types_and_rls():
@@ -64,8 +65,24 @@ def test_lesson_steps_unlock_in_order_and_progress_is_saved_automatically():
     assert "onBlocksCompleted" in renderer
     assert "Я посмотрел видео — продолжить" in renderer
     assert "markBlocksCompleted" in page
-    assert "!blocks.every((block) => viewedBlockIds.includes(block.id))" in page
+    assert ".filter(isBlockRequired)" in page
     assert "Завершить урок" not in page
+
+
+def test_blocks_have_configurable_completion_rules_and_lesson_has_a_guide():
+    renderer = RENDERER.read_text(encoding="utf-8")
+    page = LESSON_PAGE.read_text(encoding="utf-8")
+    admin = ADMIN.read_text(encoding="utf-8")
+    guide = GUIDE.read_text(encoding="utf-8")
+
+    assert "isBlockRequired" in renderer
+    assert "blocksNext" in renderer
+    assert "homeworkRequiredForCompletion" in admin
+    assert "completionCondition" in admin
+    assert "requiredBlocks" in page
+    assert 'variant="success"' in page
+    assert "LessonGuide" in guide
+    assert "backgroundSize: \"300% 200%\"" in guide
 
 
 def test_admin_builder_exposes_all_block_types_and_order_controls():

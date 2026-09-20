@@ -17,7 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { FinalQuiz } from "@/components/final-quiz";
 import { InteractiveLesson } from "@/components/interactive-lesson";
-import { LessonBlock, stringValue } from "@/lib/interactive-lesson";
+import { LessonGuide } from "@/components/lesson-guide";
+import { isBlockRequired, LessonBlock, stringValue } from "@/lib/interactive-lesson";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -259,7 +260,7 @@ function LessonPage() {
       completed ||
       completingLesson ||
       blocks.length === 0 ||
-      !blocks.every((block) => viewedBlockIds.includes(block.id))
+      !blocks.filter(isBlockRequired).every((block) => viewedBlockIds.includes(block.id))
     ) {
       return;
     }
@@ -501,15 +502,24 @@ function LessonPage() {
 
   const prevDay = dayNum > 1 ? dayNum - 1 : null;
   const nextDay = dayNum < 14 ? dayNum + 1 : null;
-  const viewedCount = blocks.filter((block) => viewedBlockIds.includes(block.id)).length;
+  const requiredBlocks = blocks.filter(isBlockRequired);
+  const viewedCount = requiredBlocks.filter((block) => viewedBlockIds.includes(block.id)).length;
   const lessonProgress =
-    blocks.length > 0 ? Math.round((viewedCount / blocks.length) * 100) : completed ? 100 : 0;
+    requiredBlocks.length > 0
+      ? Math.round((viewedCount / requiredBlocks.length) * 100)
+      : completed
+        ? 100
+        : 0;
   const homeworkBlock = blocks.find((block) => block.block_type === "homework");
   const hasLegacyHomework = blocks.length === 0 && Boolean(lesson.homework_md.trim());
   const homeworkUnlocked =
     Boolean(homeworkBlock) &&
     blocks
-      .filter((block) => block.position < (homeworkBlock?.position ?? Number.MAX_SAFE_INTEGER))
+      .filter(
+        (block) =>
+          block.position < (homeworkBlock?.position ?? Number.MAX_SAFE_INTEGER) &&
+          isBlockRequired(block),
+      )
       .every((block) => viewedBlockIds.includes(block.id));
   const showHomework =
     (Boolean(homeworkBlock) && (homeworkUnlocked || Boolean(submission))) || hasLegacyHomework;
@@ -568,7 +578,26 @@ function LessonPage() {
           completedBlockIds={new Set(viewedBlockIds)}
           onBlocksCompleted={markBlocksCompleted}
           legacyContent={lesson.content_md}
+          lessonDay={lesson.day_number}
+          lessonTitle={lesson.title}
         />
+
+        {completed && lesson.day_number !== 14 && (
+          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-[var(--shadow-soft)] md:p-7">
+            <LessonGuide
+              variant="success"
+              title={`День ${lesson.day_number} пройден`}
+              text={`Ты завершил урок «${lesson.title}». Все обязательные шаги сохранены, а следующий день уже открыт.`}
+            />
+            {nextDay && (
+              <Button asChild variant="hero" className="mt-5">
+                <Link to="/lessons/$day" params={{ day: String(nextDay) }}>
+                  Перейти к следующему дню <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            )}
+          </section>
+        )}
 
         {lesson.day_number === 14 ? (
           session?.access_token ? (
@@ -745,11 +774,15 @@ function LessonPage() {
             <div />
           )}
           {nextDay ? (
-            <Button asChild variant="hero" size="lg">
-              <Link to="/lessons/$day" params={{ day: String(nextDay) }}>
-                День {nextDay} <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            completed ? (
+              <Button asChild variant="hero" size="lg">
+                <Link to="/lessons/$day" params={{ day: String(nextDay) }}>
+                  День {nextDay} <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            ) : (
+              <div />
+            )
           ) : (
             <Button variant="hero" size="lg" onClick={returnToDashboard}>
               Завершить курс <CheckCircle2 className="h-4 w-4" />

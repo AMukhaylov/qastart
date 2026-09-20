@@ -11,21 +11,30 @@ import {
   PlayCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LessonGuide } from "@/components/lesson-guide";
 import { LessonRichContent } from "@/components/lesson-rich-content";
-import { LessonBlock, stringList, stringValue } from "@/lib/interactive-lesson";
+import {
+  blocksNext,
+  isBlockRequired,
+  LessonBlock,
+  stringList,
+  stringValue,
+} from "@/lib/interactive-lesson";
 
 type InteractiveLessonProps = {
   blocks: LessonBlock[];
   completedBlockIds: Set<string>;
   onBlocksCompleted: (blockIds: string[]) => Promise<void> | void;
   legacyContent?: string;
+  lessonDay: number;
+  lessonTitle: string;
 };
 
 type StepKind = "material" | "question" | "video" | "homework";
 type LessonStep = { kind: StepKind; blocks: LessonBlock[] };
 
 function isRequiredVideo(block: LessonBlock) {
-  return block.block_type === "video" && block.content.required === true;
+  return block.block_type === "video" && isBlockRequired(block) && blocksNext(block);
 }
 
 function createSteps(blocks: LessonBlock[]): LessonStep[] {
@@ -38,8 +47,9 @@ function createSteps(blocks: LessonBlock[]): LessonStep[] {
 
   for (const block of blocks) {
     if (
-      block.block_type === "question" ||
-      block.block_type === "homework" ||
+      ((block.block_type === "question" || block.block_type === "homework") &&
+        isBlockRequired(block) &&
+        blocksNext(block)) ||
       isRequiredVideo(block)
     ) {
       flushMaterial();
@@ -65,11 +75,13 @@ export function InteractiveLesson({
   completedBlockIds,
   onBlocksCompleted,
   legacyContent,
+  lessonDay,
+  lessonTitle,
 }: InteractiveLessonProps) {
   const steps = useMemo(() => createSteps(blocks), [blocks]);
-  const activeIndex = steps.findIndex((step) =>
-    step.blocks.some((block) => !completedBlockIds.has(block.id)),
-  );
+  const isStepCompleted = (step: LessonStep) =>
+    step.blocks.filter(isBlockRequired).every((block) => completedBlockIds.has(block.id));
+  const activeIndex = steps.findIndex((step) => !isStepCompleted(step));
   const visibleThrough = activeIndex === -1 ? steps.length - 1 : activeIndex;
   const activeRef = useRef<HTMLElement | null>(null);
 
@@ -88,9 +100,15 @@ export function InteractiveLesson({
 
   return (
     <div className="space-y-8">
+      <LessonGuide
+        variant="intro"
+        title={`День ${lessonDay}: ${lessonTitle}`}
+        text="Двигайся спокойно: изучи текущую часть, выполни короткое действие и открой следующий шаг."
+      />
       {steps.slice(0, visibleThrough + 1).map((step, index) => {
-        const stepCompleted = step.blocks.every((block) => completedBlockIds.has(block.id));
+        const stepCompleted = isStepCompleted(step);
         const active = index === activeIndex;
+        const requiredIds = step.blocks.filter(isBlockRequired).map((block) => block.id);
         return (
           <section
             key={step.blocks.map((block) => block.id).join("-")}
@@ -112,6 +130,20 @@ export function InteractiveLesson({
                 </span>
               ) : null}
             </div>
+            {step.kind === "question" && (
+              <LessonGuide
+                variant="question"
+                title="Проверь себя"
+                text="Вопрос опирается только на материал, который уже был выше. Если ошибёшься, сможешь попробовать ещё раз."
+              />
+            )}
+            {step.kind === "homework" && (
+              <LessonGuide
+                variant="task"
+                title="Самостоятельная практика"
+                text="Здесь можно применить знания на своей задаче. Обязательность домашнего задания настраивается в редакторе урока."
+              />
+            )}
             {step.blocks.map((block) => (
               <LessonBlockView
                 key={block.id}
@@ -124,7 +156,7 @@ export function InteractiveLesson({
               <Button
                 className="mt-5"
                 variant="hero"
-                onClick={() => onBlocksCompleted(step.blocks.map((block) => block.id))}
+                onClick={() => onBlocksCompleted(requiredIds)}
               >
                 Продолжить
               </Button>
@@ -133,7 +165,7 @@ export function InteractiveLesson({
               <Button
                 className="mt-5"
                 variant="hero"
-                onClick={() => onBlocksCompleted(step.blocks.map((block) => block.id))}
+                onClick={() => onBlocksCompleted(requiredIds)}
               >
                 Я посмотрел видео — продолжить
               </Button>
