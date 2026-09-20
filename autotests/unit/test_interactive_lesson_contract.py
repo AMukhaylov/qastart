@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = ROOT / "supabase/migrations/20260919000000_interactive_lesson_blocks.sql"
 DAY_ONE_UPDATE = ROOT / "supabase/migrations/20260920090000_day1_video_and_check_quiz.sql"
 ASSESSMENT_FORMAT = ROOT / "supabase/migrations/20260920100000_course_assessment_format.sql"
+INTERACTIVE_LESSONS = ROOT / "supabase/migrations/20260920110000_seed_interactive_lessons_2_to_13.sql"
 RENDERER = ROOT / "src/components/interactive-lesson.tsx"
 ADMIN = ROOT / "src/routes/admin.lessons.tsx"
 
@@ -74,3 +75,13 @@ def test_course_assessment_format_keeps_homework_only_for_selected_practice_days
     assert "Приветствие Артура" in sql
     assert "position = 4" in sql
     assert "not in (3, 4, 5, 6, 8, 10, 11, 13)" in sql
+
+
+def test_remaining_teaching_days_have_interactive_blocks_and_no_extra_videos():
+    sql = INTERACTIVE_LESSONS.read_text(encoding="utf-8")
+
+    for day in range(2, 14):
+        assert f"({day}, 'heading', 0" in sql
+    assert sql.count("'homework'") == 8
+    assert sql.count("Проверочный тест") == 4
+    assert "'video'" not in sql
