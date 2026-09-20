@@ -483,6 +483,8 @@ function LessonPage() {
   const lessonProgress =
     blocks.length > 0 ? Math.round((viewedCount / blocks.length) * 100) : completed ? 100 : 0;
   const homeworkBlock = blocks.find((block) => block.block_type === "homework");
+  const hasLegacyHomework = blocks.length === 0 && Boolean(lesson.homework_md.trim());
+  const showHomework = Boolean(homeworkBlock) || hasLegacyHomework;
   const homeworkInstruction = homeworkBlock
     ? stringValue(homeworkBlock.content, "instruction")
     : lesson.homework_md;
@@ -583,7 +585,7 @@ function LessonPage() {
               }}
             />
           ) : null
-        ) : homeworkBlock || blocks.length === 0 ? (
+        ) : showHomework ? (
           <section className="rounded-2xl border border-border bg-card p-7 shadow-[var(--shadow-soft)]">
             <div className="flex items-center gap-3 mb-3">
               <div className="h-10 w-10 rounded-xl bg-primary-soft text-primary flex items-center justify-center">
