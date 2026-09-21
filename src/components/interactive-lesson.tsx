@@ -99,7 +99,7 @@ export function InteractiveLesson({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10 md:space-y-12">
       <LessonGuide
         variant="intro"
         title={`День ${lessonDay}: ${lessonTitle}`}
@@ -114,9 +114,9 @@ export function InteractiveLesson({
             key={step.blocks.map((block) => block.id).join("-")}
             ref={active ? activeRef : undefined}
             data-lesson-step={index}
-            className="scroll-mt-6"
+            className="scroll-mt-8 space-y-6 md:space-y-7"
           >
-            <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+            <div className="flex items-center justify-between gap-3 text-sm">
               <span className="font-semibold text-muted-foreground">
                 Часть {index + 1} из {steps.length}
               </span>
@@ -154,7 +154,7 @@ export function InteractiveLesson({
             ))}
             {step.kind === "material" && !stepCompleted && (
               <Button
-                className="mt-5"
+                className="mt-1"
                 variant="hero"
                 onClick={() => onBlocksCompleted(requiredIds)}
               >
@@ -163,7 +163,7 @@ export function InteractiveLesson({
             )}
             {step.kind === "video" && !stepCompleted && (
               <Button
-                className="mt-5"
+                className="mt-1"
                 variant="hero"
                 onClick={() => onBlocksCompleted(requiredIds)}
               >
@@ -171,7 +171,7 @@ export function InteractiveLesson({
               </Button>
             )}
             {step.kind === "homework" && !stepCompleted && (
-              <p className="mt-4 text-sm text-muted-foreground">
+              <p className="pt-1 text-sm text-muted-foreground">
                 Отправьте выполненное задание в форме ниже, чтобы открыть следующий шаг.
               </p>
             )}
@@ -199,7 +199,7 @@ function LessonBlockView({
   switch (block.block_type) {
     case "heading":
       content = (
-        <div className="px-1 pt-4">
+        <div className="px-1 pt-2 md:pt-3">
           {stringValue(c, "eyebrow") && (
             <p className="mb-2 text-sm font-semibold uppercase tracking-[0.14em] text-primary">
               {stringValue(c, "eyebrow")}
@@ -364,7 +364,7 @@ function LessonBlockView({
       );
       break;
   }
-  return <div className="space-y-5">{content}</div>;
+  return <div className="space-y-6 md:space-y-7">{content}</div>;
 }
 
 function ExamplePart({ title, text, tone }: { title: string; text: string; tone: string }) {
