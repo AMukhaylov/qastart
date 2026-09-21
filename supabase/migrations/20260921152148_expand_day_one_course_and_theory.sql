@@ -88,7 +88,7 @@ $testing$) where lesson_id = lesson_uuid and position = 6;
     'explanation', 'В тексте выше были названы три цели: получить информацию о качестве и рисках, найти дефекты и проверить важное поведение. Ограниченное число проверок не доказывает полного отсутствия ошибок.'
   ) where lesson_id = lesson_uuid and position = 10;
 
-  update public.lesson_blocks set content = jsonb_build_object('title', 'Ожидаемый и фактический результат')
+  update public.lesson_blocks set content = jsonb_build_object('title', 'Сначала ожидание, потом наблюдение')
   where lesson_id = lesson_uuid and position = 11;
 
   update public.lesson_blocks set content = jsonb_build_object('markdown', $results$

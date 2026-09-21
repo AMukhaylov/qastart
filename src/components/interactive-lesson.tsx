@@ -452,7 +452,7 @@ function QuestionBlock({
         <CircleAlert className="h-4 w-4" /> Проверь себя
       </div>
       <h3 className="text-xl font-extrabold">{stringValue(content, "question")}</h3>
-      {multiple && (
+      {multiple && !answered && (
         <p className="mt-3 rounded-lg bg-primary-soft px-4 py-3 text-sm font-semibold text-primary">
           Можно выбрать несколько ответов. Отметь все верные варианты, затем нажми «Проверить
           ответ».
@@ -519,7 +519,7 @@ function QuestionBlock({
           <p className="mt-1">{stringValue(content, "explanation")}</p>
           {(!correct || !submitted) && (
             <p className="mt-2 font-semibold">
-              Правильный вариант{correctAnswers.length > 1 ? "ы" : ""}:{" "}
+              {correctAnswers.length > 1 ? "Правильные варианты" : "Правильный вариант"}:{" "}
               {correctAnswers.map((index) => options[index]).join("; ")}
             </p>
           )}
