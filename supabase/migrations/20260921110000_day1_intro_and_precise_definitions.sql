@@ -6,8 +6,12 @@ begin
   if lesson_uuid is null then raise exception 'Day 1 is missing'; end if;
 
   -- Make room after the optional greeting video for the mentor introduction.
-  update public.lesson_blocks set position = position + 2
+  -- Use a temporary range so the unique (lesson_id, position) constraint is
+  -- never violated while the existing blocks move down.
+  update public.lesson_blocks set position = position + 100
   where lesson_id = lesson_uuid and position >= 3;
+  update public.lesson_blocks set position = position - 98
+  where lesson_id = lesson_uuid and position >= 103;
 
   insert into public.lesson_blocks (lesson_id, block_type, position, content)
   values
