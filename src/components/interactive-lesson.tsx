@@ -3,12 +3,15 @@ import {
   ArrowDown,
   BookOpen,
   CheckCircle2,
+  CheckSquare2,
+  Circle,
   CircleAlert,
   Code2,
   Lightbulb,
   ListChecks,
   LockKeyhole,
   PlayCircle,
+  Square,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LessonGuide } from "@/components/lesson-guide";
@@ -46,6 +49,9 @@ function createSteps(blocks: LessonBlock[]): LessonStep[] {
   };
 
   for (const block of blocks) {
+    if (block.block_type === "heading" && block.content.startsStep === true) {
+      flushMaterial();
+    }
     if (
       ((block.block_type === "question" || block.block_type === "homework") &&
         isBlockRequired(block) &&
@@ -75,8 +81,6 @@ export function InteractiveLesson({
   completedBlockIds,
   onBlocksCompleted,
   legacyContent,
-  lessonDay,
-  lessonTitle,
 }: InteractiveLessonProps) {
   const steps = useMemo(() => createSteps(blocks), [blocks]);
   const isStepCompleted = (step: LessonStep) =>
@@ -111,11 +115,6 @@ export function InteractiveLesson({
 
   return (
     <div className="space-y-10 md:space-y-12">
-      <LessonGuide
-        variant="intro"
-        title={`День ${lessonDay}: ${lessonTitle}`}
-        text="Двигайся спокойно: изучи текущую часть, выполни короткое действие и открой следующий шаг."
-      />
       {steps.slice(0, visibleThrough + 1).map((step, index) => {
         const stepCompleted = isStepCompleted(step);
         const active = index === activeIndex;
@@ -141,13 +140,6 @@ export function InteractiveLesson({
                 </span>
               ) : null}
             </div>
-            {step.kind === "question" && (
-              <LessonGuide
-                variant="question"
-                title="Проверь себя"
-                text="Ответь один раз. После проверки увидишь пояснение и правильный вариант, затем сможешь идти дальше."
-              />
-            )}
             {step.kind === "homework" && (
               <LessonGuide
                 variant="task"
@@ -413,6 +405,7 @@ function QuestionBlock({
   const options = stringList(content, "options");
   const correctIndex = typeof content.correctIndex === "number" ? content.correctIndex : 0;
   const questionType = stringValue(content, "questionType", "single_choice");
+  const multiple = questionType === "multiple_choice";
   const correctAnswers = Array.isArray(content.correctAnswers)
     ? content.correctAnswers.filter((item): item is number => typeof item === "number")
     : [correctIndex];
@@ -438,7 +431,7 @@ function QuestionBlock({
   };
   const choose = (index: number) => {
     if (answered) return;
-    if (questionType === "multiple_choice") {
+    if (multiple) {
       setSelected((current) =>
         current.includes(index) ? current.filter((item) => item !== index) : [...current, index],
       );
@@ -459,8 +452,11 @@ function QuestionBlock({
         <CircleAlert className="h-4 w-4" /> Проверь себя
       </div>
       <h3 className="text-xl font-extrabold">{stringValue(content, "question")}</h3>
-      {questionType === "multiple_choice" && (
-        <p className="mt-2 text-sm text-muted-foreground">Выберите все подходящие варианты.</p>
+      {multiple && (
+        <p className="mt-3 rounded-lg bg-primary-soft px-4 py-3 text-sm font-semibold text-primary">
+          Можно выбрать несколько ответов. Отметь все верные варианты, затем нажми «Проверить
+          ответ».
+        </p>
       )}
       <div className="mt-5 space-y-2">
         {options.map((option, index) => {
@@ -480,21 +476,33 @@ function QuestionBlock({
               type="button"
               onClick={() => choose(index)}
               disabled={answered}
-              className={`w-full rounded-xl border px-4 py-3 text-left text-sm transition-colors disabled:cursor-default ${className}`}
+              aria-pressed={isSelected}
+              className={`flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-colors disabled:cursor-default ${className}`}
             >
-              {option}
+              {multiple ? (
+                isSelected ? (
+                  <CheckSquare2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                ) : (
+                  <Square className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                )
+              ) : isSelected ? (
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              ) : (
+                <Circle className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+              )}
+              <span>{option}</span>
             </button>
           );
         })}
       </div>
-      {questionType === "multiple_choice" && !answered && (
+      {multiple && !answered && (
         <Button
           className="mt-4"
           variant="hero"
           onClick={submitMultiple}
           disabled={selected.length === 0}
         >
-          Проверить ответ
+          Проверить ответ{selected.length > 0 ? ` (${selected.length})` : ""}
         </Button>
       )}
       {answered && (
