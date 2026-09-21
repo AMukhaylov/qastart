@@ -471,7 +471,9 @@ function QuestionBlock({
               ? "border-emerald-400 bg-emerald-50"
               : answered && isSelected
                 ? "border-red-300 bg-red-50"
-                : "border-border hover:border-primary/40 hover:bg-primary-soft";
+                : isSelected
+                  ? "border-primary bg-primary-soft"
+                  : "border-border hover:border-primary/40 hover:bg-primary-soft";
           return (
             <button
               key={`${option}-${index}`}
