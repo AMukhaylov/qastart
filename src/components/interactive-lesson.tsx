@@ -24,7 +24,7 @@ import {
 type InteractiveLessonProps = {
   blocks: LessonBlock[];
   completedBlockIds: Set<string>;
-  onBlocksCompleted: (blockIds: string[]) => Promise<void> | void;
+  onBlocksCompleted: (blockIds: string[]) => Promise<boolean> | void;
   legacyContent?: string;
   lessonDay: number;
   lessonTitle: string;
@@ -84,10 +84,21 @@ export function InteractiveLesson({
   const activeIndex = steps.findIndex((step) => !isStepCompleted(step));
   const visibleThrough = activeIndex === -1 ? steps.length - 1 : activeIndex;
   const activeRef = useRef<HTMLElement | null>(null);
+  const previousActiveIndex = useRef<number | null>(null);
 
   useEffect(() => {
+    const previous = previousActiveIndex.current;
+    previousActiveIndex.current = activeIndex;
+    // Keep the explanation visible after an answer; the learner decides when to move on.
+    if (
+      previous !== null &&
+      previous >= 0 &&
+      steps[previous]?.kind === "question" &&
+      activeIndex > previous
+    )
+      return;
     activeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [activeIndex]);
+  }, [activeIndex, steps]);
 
   if (blocks.length === 0) {
     return legacyContent ? (
@@ -134,7 +145,7 @@ export function InteractiveLesson({
               <LessonGuide
                 variant="question"
                 title="Проверь себя"
-                text="Вопрос опирается только на материал, который уже был выше. Если ошибёшься, сможешь попробовать ещё раз."
+                text="Ответь один раз. После проверки увидишь пояснение и правильный вариант, затем сможешь идти дальше."
               />
             )}
             {step.kind === "homework" && (
@@ -150,6 +161,14 @@ export function InteractiveLesson({
                 block={block}
                 completed={completedBlockIds.has(block.id)}
                 onComplete={() => onBlocksCompleted([block.id])}
+                onNext={
+                  index < steps.length - 1
+                    ? () =>
+                        document
+                          .querySelector(`[data-lesson-step="${index + 1}"]`)
+                          ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                    : undefined
+                }
               />
             ))}
             {step.kind === "material" && !stepCompleted && (
@@ -186,10 +205,12 @@ function LessonBlockView({
   block,
   completed,
   onComplete,
+  onNext,
 }: {
   block: LessonBlock;
   completed: boolean;
-  onComplete: () => Promise<void> | void;
+  onComplete: () => Promise<boolean> | void;
+  onNext?: () => void;
 }) {
   const c = block.content;
   const cardClass =
@@ -329,7 +350,9 @@ function LessonBlockView({
       break;
     }
     case "question":
-      content = <QuestionBlock content={c} completed={completed} onComplete={onComplete} />;
+      content = (
+        <QuestionBlock content={c} completed={completed} onComplete={onComplete} onNext={onNext} />
+      );
       break;
     case "code":
       content = (
@@ -380,10 +403,12 @@ function QuestionBlock({
   content,
   completed,
   onComplete,
+  onNext,
 }: {
   content: Record<string, unknown>;
   completed: boolean;
-  onComplete: () => Promise<void> | void;
+  onComplete: () => Promise<boolean> | void;
+  onNext?: () => void;
 }) {
   const options = stringList(content, "options");
   const correctIndex = typeof content.correctIndex === "number" ? content.correctIndex : 0;
@@ -393,12 +418,26 @@ function QuestionBlock({
     : [correctIndex];
   const [selected, setSelected] = useState<number[]>([]);
   const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const correct =
     submitted &&
     selected.length === correctAnswers.length &&
     selected.every((index) => correctAnswers.includes(index));
-  const answered = submitted;
+  const answered = submitted || completed;
+  const saveAnswer = async () => {
+    setSaving(true);
+    setSaveFailed(false);
+    try {
+      if ((await onComplete()) === false) setSaveFailed(true);
+    } catch {
+      setSaveFailed(true);
+    } finally {
+      setSaving(false);
+    }
+  };
   const choose = (index: number) => {
+    if (answered) return;
     if (questionType === "multiple_choice") {
       setSelected((current) =>
         current.includes(index) ? current.filter((item) => item !== index) : [...current, index],
@@ -407,15 +446,12 @@ function QuestionBlock({
     }
     setSelected([index]);
     setSubmitted(true);
-    if (index === correctIndex) void onComplete();
+    void saveAnswer();
   };
   const submitMultiple = () => {
+    if (answered) return;
     setSubmitted(true);
-    if (
-      selected.length === correctAnswers.length &&
-      selected.every((index) => correctAnswers.includes(index))
-    )
-      void onComplete();
+    void saveAnswer();
   };
   return (
     <section className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] md:p-7">
@@ -429,25 +465,27 @@ function QuestionBlock({
       <div className="mt-5 space-y-2">
         {options.map((option, index) => {
           const isSelected = selected.includes(index);
+          const isCorrectOption = correctAnswers.includes(index);
           const className =
-            answered && isSelected
-              ? correct
-                ? "border-emerald-400 bg-emerald-50"
-                : "border-red-300 bg-red-50"
-              : "border-border hover:border-primary/40 hover:bg-primary-soft";
+            answered && isCorrectOption
+              ? "border-emerald-400 bg-emerald-50"
+              : answered && isSelected
+                ? "border-red-300 bg-red-50"
+                : "border-border hover:border-primary/40 hover:bg-primary-soft";
           return (
             <button
               key={`${option}-${index}`}
               type="button"
               onClick={() => choose(index)}
-              className={`w-full rounded-xl border px-4 py-3 text-left text-sm transition-colors ${className}`}
+              disabled={answered}
+              className={`w-full rounded-xl border px-4 py-3 text-left text-sm transition-colors disabled:cursor-default ${className}`}
             >
               {option}
             </button>
           );
         })}
       </div>
-      {questionType === "multiple_choice" && !submitted && (
+      {questionType === "multiple_choice" && !answered && (
         <Button
           className="mt-4"
           variant="hero"
@@ -459,32 +497,40 @@ function QuestionBlock({
       )}
       {answered && (
         <div
-          className={`mt-4 rounded-xl p-4 text-sm ${correct ? "bg-emerald-50 text-emerald-950" : "bg-red-50 text-red-950"}`}
+          className={`mt-4 rounded-xl p-4 text-sm ${!submitted ? "bg-primary-soft text-foreground" : correct ? "bg-emerald-50 text-emerald-950" : "bg-red-50 text-red-950"}`}
         >
           <p className="font-bold">
-            {correct ? "Верно! Следующая часть открыта." : "Почти. Попробуйте ещё раз."}
+            {!submitted
+              ? "Вопрос уже пройден. Повтори правильные варианты."
+              : correct
+                ? "Верно!"
+                : "Неверно. Посмотри разбор ответа."}
           </p>
           <p className="mt-1">{stringValue(content, "explanation")}</p>
-          {!correct && (
+          {(!correct || !submitted) && (
+            <p className="mt-2 font-semibold">
+              Правильный вариант{correctAnswers.length > 1 ? "ы" : ""}:{" "}
+              {correctAnswers.map((index) => options[index]).join("; ")}
+            </p>
+          )}
+          {saving && <p className="mt-3 text-muted-foreground">Сохраняем ответ…</p>}
+          {saveFailed && !completed && (
             <Button
+              type="button"
               variant="outline"
               size="sm"
-              className="mt-3"
-              onClick={() => {
-                setSelected([]);
-                setSubmitted(false);
-              }}
+              className="mt-4"
+              onClick={() => void saveAnswer()}
             >
-              Попробовать ещё раз
+              Повторить сохранение
+            </Button>
+          )}
+          {completed && onNext && (
+            <Button type="button" variant="outline" size="sm" className="mt-4" onClick={onNext}>
+              Продолжить урок
             </Button>
           )}
         </div>
-      )}
-      {completed && !answered && (
-        <p className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-700">
-          <CheckCircle2 className="h-4 w-4" /> Ответ уже принят. Можете ответить ещё раз для
-          повторения.
-        </p>
       )}
     </section>
   );

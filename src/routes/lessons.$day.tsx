@@ -217,18 +217,19 @@ function LessonPage() {
   }
 
   async function markBlocksCompleted(blockIds: string[]) {
-    if (!lesson || !user) return;
+    if (!lesson || !user) return false;
     const pendingIds = Array.from(new Set(blockIds)).filter((id) => !viewedBlockIds.includes(id));
-    if (pendingIds.length === 0) return;
+    if (pendingIds.length === 0) return true;
     const { error } = await supabase.from("lesson_block_progress").upsert(
       pendingIds.map((blockId) => ({ user_id: user.id, lesson_id: lesson.id, block_id: blockId })),
       { onConflict: "user_id,block_id" },
     );
     if (error) {
       toast.error("Не удалось сохранить прогресс. Попробуйте ещё раз.");
-      return;
+      return false;
     }
     setViewedBlockIds((ids) => Array.from(new Set([...ids, ...pendingIds])));
+    return true;
   }
 
   async function completeLesson() {
