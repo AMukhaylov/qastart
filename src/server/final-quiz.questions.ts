@@ -84,7 +84,7 @@ const BASE_FINAL_QUIZ_QUESTIONS: FinalQuizQuestion[] = [
       { id: "a", text: "Ожидаемый результат" },
       { id: "b", text: "Фото автора" },
       { id: "c", text: "Название компании" },
-      { id: "d", text: "Ссылка на личный чат" },
+      { id: "d", text: "Ссылка на личный кабинет" },
     ],
     correctOptionId: "a",
     explanation: "Без ожидаемого результата нельзя однозначно понять, пройдена проверка или нет.",

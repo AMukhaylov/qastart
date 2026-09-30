@@ -16,12 +16,21 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Search,
   Save,
   Trash2,
   Unlock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,13 +40,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
-import { supabase } from "@/integrations/supabase/client";
-import { withRetry } from "@/lib/admin-diagnostics";
 import {
   createAdminStudent,
   deleteAdminStudent,
   generateAdminStudentCredentials,
-  listAdminStudentsAuth,
+  listAdminStudentsOverview,
   resetAdminStudentPassword,
   setAdminStudentBlocked,
   updateAdminStudent,
@@ -52,6 +59,12 @@ import {
   grantAdditionalFinalQuizAttempt,
   listAdminFinalQuizEligibility,
 } from "@/server/final-quiz.functions";
+import {
+  deleteAdminStudentGroup,
+  listAdminStudentGroups,
+  saveAdminStudentGroup,
+  setAdminStudentGroupMembers,
+} from "@/server/student-groups.functions";
 
 export const Route = createFileRoute("/admin/students")({ component: AdminStudents });
 
@@ -66,6 +79,7 @@ type Row = {
   pending: number;
   canGrantQuizAttempt: boolean;
   certificate: Certificate | null;
+  groups: Array<{ id: string; name: string }>;
 };
 type Certificate = {
   id: string;
@@ -73,12 +87,6 @@ type Certificate = {
   certificate_number: string;
   verification_code: string;
   revoked_at: string | null;
-};
-type AuthStudent = {
-  id: string;
-  login: string;
-  banned_until: string | null;
-  full_name: string | null;
 };
 type FormState = {
   userId?: string;
@@ -88,6 +96,7 @@ type FormState = {
   password: string;
 };
 type Credentials = { fullName: string; login: string; password: string };
+type Group = Awaited<ReturnType<typeof listAdminStudentGroups>>[number];
 const blankForm: FormState = { firstName: "", lastName: "", login: "", password: "" };
 
 function splitName(value: string | null) {
@@ -107,75 +116,63 @@ function AdminStudents() {
   const [savingCertificateId, setSavingCertificateId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [issued, setIssued] = useState<Credentials | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupFilter, setGroupFilter] = useState("all");
+  const [showGroups, setShowGroups] = useState(false);
+  const [groupDraft, setGroupDraft] = useState({ name: "", description: "" });
+  const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+  const [groupEditDraft, setGroupEditDraft] = useState({
+    name: "",
+    description: "",
+    studentIds: [] as string[],
+  });
+  const [groupSearch, setGroupSearch] = useState("");
+  const [studentGroupsStudent, setStudentGroupsStudent] = useState<Row | null>(null);
+  const [studentGroupSelection, setStudentGroupSelection] = useState<string[]>([]);
   const load = useCallback(async () => {
     if (!session?.access_token) return;
     setLoading(true);
-    const [
-      profilesRes,
-      lessonsRes,
-      progressRes,
-      homeworkRes,
-      certificates,
-      authRows,
-      quizEligibility,
-    ] = await Promise.all([
-      withRetry("profiles.list", () =>
-        supabase
-          .from("profiles")
-          .select("id,full_name,login,created_at")
-          .order("created_at", { ascending: false }),
-      ),
-      supabase.from("lessons").select("id"),
-      supabase.from("lesson_progress").select("user_id,completed").eq("completed", true),
-      supabase.from("homework_submissions").select("user_id,status"),
-      listAdminCertificates({ data: { accessToken: session.access_token } }),
-      listAdminStudentsAuth({ data: { accessToken: session.access_token } }),
-      listAdminFinalQuizEligibility({ data: { accessToken: session.access_token } }),
-    ]);
-    if (profilesRes.error || lessonsRes.error || progressRes.error || homeworkRes.error) {
+    try {
+      const [overview, certificates, quizEligibility] = await Promise.all([
+        listAdminStudentsOverview({ data: { accessToken: session.access_token } }),
+        listAdminCertificates({ data: { accessToken: session.access_token } }),
+        listAdminFinalQuizEligibility({ data: { accessToken: session.access_token } }),
+      ]);
+      const students = overview.students;
+      const groupData = overview.groups as Group[];
+      setGroups(groupData);
+      const certificatesByUser = new Map<string, Certificate>();
+      ((certificates as Certificate[]) ?? []).forEach((certificate) => {
+        const current = certificatesByUser.get(certificate.user_id);
+        if (!current || (current.revoked_at && !certificate.revoked_at)) {
+          certificatesByUser.set(certificate.user_id, certificate);
+        }
+      });
+      setTotalLessons(overview.totalLessons);
+      setRows(
+        students.map((student) => {
+          const studentGroups = groupData.filter((group) => group.studentIds.includes(student.id));
+          return {
+            id: student.id,
+            full_name: student.full_name,
+            login: student.login,
+            created_at: student.created_at,
+            blocked: Boolean(student.banned_until),
+            completed: student.completed,
+            approved: student.approved,
+            pending: student.pending,
+            canGrantQuizAttempt: Boolean(quizEligibility?.[student.id]),
+            certificate: certificatesByUser.get(student.id) ?? null,
+            groups: studentGroups.map(({ id, name }) => ({ id, name })),
+          };
+        }),
+      );
+    } catch (error) {
+      console.error("Не удалось загрузить учеников", error);
       toast.error("Не удалось загрузить учеников");
+    } finally {
       setLoading(false);
-      return;
     }
-    const students = (authRows as AuthStudent[]) ?? [];
-    const profilesById = new Map((profilesRes.data ?? []).map((profile) => [profile.id, profile]));
-    const certificatesByUser = new Map<string, Certificate>();
-    ((certificates as Certificate[]) ?? []).forEach((certificate) => {
-      const current = certificatesByUser.get(certificate.user_id);
-      if (!current || (current.revoked_at && !certificate.revoked_at)) {
-        certificatesByUser.set(certificate.user_id, certificate);
-      }
-    });
-    const completed = new Map<string, number>();
-    (progressRes.data ?? []).forEach((item) =>
-      completed.set(item.user_id, (completed.get(item.user_id) ?? 0) + 1),
-    );
-    const approved = new Map<string, number>();
-    const pending = new Map<string, number>();
-    (homeworkRes.data ?? []).forEach((item) => {
-      const map =
-        item.status === "approved" ? approved : item.status === "pending" ? pending : null;
-      if (map) map.set(item.user_id, (map.get(item.user_id) ?? 0) + 1);
-    });
-    setTotalLessons((lessonsRes.data ?? []).length || 14);
-    setRows(
-      students.map((student) => {
-        const profile = profilesById.get(student.id);
-        return {
-          id: student.id,
-          full_name: profile?.full_name ?? student.full_name,
-          login: student.login,
-          created_at: profile?.created_at ?? "",
-          blocked: Boolean(student.banned_until),
-          completed: completed.get(student.id) ?? 0,
-          approved: approved.get(student.id) ?? 0,
-          pending: pending.get(student.id) ?? 0,
-          canGrantQuizAttempt: Boolean(quizEligibility?.[student.id]),
-          certificate: certificatesByUser.get(student.id) ?? null,
-        };
-      }),
-    );
-    setLoading(false);
   }, [session?.access_token]);
   useEffect(() => {
     if (isAdmin) void load();
@@ -271,6 +268,7 @@ function AdminStudents() {
       pending: 0,
       canGrantQuizAttempt: false,
       certificate: null,
+      groups: [],
     });
   }
   async function grantQuizAttempt(row: Row) {
@@ -400,6 +398,67 @@ function AdminStudents() {
     await navigator.clipboard.writeText(credentialsText(issued));
     toast.success("Данные для входа скопированы");
   }
+  function openGroupEditor(group: Group) {
+    setEditingGroup(group);
+    setGroupEditDraft({
+      name: group.name,
+      description: group.description,
+      studentIds: [...group.studentIds],
+    });
+    setGroupSearch("");
+  }
+  function openStudentGroups(row: Row) {
+    setStudentGroupsStudent(row);
+    setStudentGroupSelection(row.groups.map((group) => group.id));
+  }
+  async function saveStudentGroups() {
+    if (!session?.access_token || !studentGroupsStudent) return;
+    try {
+      await Promise.all(
+        groups.map((group) => {
+          const hasStudent = group.studentIds.includes(studentGroupsStudent.id);
+          const shouldHaveStudent = studentGroupSelection.includes(group.id);
+          if (hasStudent === shouldHaveStudent) return Promise.resolve();
+          const studentIds = shouldHaveStudent
+            ? [...group.studentIds, studentGroupsStudent.id]
+            : group.studentIds.filter((id) => id !== studentGroupsStudent.id);
+          return setAdminStudentGroupMembers({
+            data: { accessToken: session.access_token, groupId: group.id, studentIds },
+          });
+        }),
+      );
+      setStudentGroupsStudent(null);
+      await load();
+      toast.success("Группы ученика обновлены");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось обновить группы ученика");
+    }
+  }
+  async function saveGroupEditor() {
+    if (!session?.access_token || !editingGroup || !groupEditDraft.name.trim()) return;
+    try {
+      await saveAdminStudentGroup({
+        data: {
+          accessToken: session.access_token,
+          id: editingGroup.id,
+          name: groupEditDraft.name,
+          description: groupEditDraft.description,
+        },
+      });
+      await setAdminStudentGroupMembers({
+        data: {
+          accessToken: session.access_token,
+          groupId: editingGroup.id,
+          studentIds: groupEditDraft.studentIds,
+        },
+      });
+      setEditingGroup(null);
+      await load();
+      toast.success("Группа обновлена");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось сохранить группу");
+    }
+  }
   if (!isAdmin) return null;
   return (
     <div className="space-y-6">
@@ -413,6 +472,9 @@ function AdminStudents() {
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} /> Обновить
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowGroups((value) => !value)}>
+            <span className="text-base">◎</span> Группы
           </Button>
           <Button variant="hero" size="sm" onClick={openCreate}>
             <Plus className="h-4 w-4" /> Создать ученика
@@ -437,6 +499,264 @@ function AdminStudents() {
           onClose={() => setIssued(null)}
         />
       )}
+      {showGroups && (
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="min-w-52 flex-1 space-y-1 text-sm font-medium">
+              Название группы
+              <input
+                value={groupDraft.name}
+                onChange={(event) =>
+                  setGroupDraft((draft) => ({ ...draft, name: event.target.value }))
+                }
+                className="h-10 w-full rounded-md border border-input bg-background px-3"
+                placeholder="QA Start, группа 1"
+              />
+            </label>
+            <label className="min-w-52 flex-1 space-y-1 text-sm font-medium">
+              Описание
+              <input
+                value={groupDraft.description}
+                onChange={(event) =>
+                  setGroupDraft((draft) => ({ ...draft, description: event.target.value }))
+                }
+                className="h-10 w-full rounded-md border border-input bg-background px-3"
+              />
+            </label>
+            <Button
+              variant="hero"
+              onClick={async () => {
+                if (!session?.access_token || !groupDraft.name.trim()) return;
+                await saveAdminStudentGroup({
+                  data: {
+                    accessToken: session.access_token,
+                    name: groupDraft.name,
+                    description: groupDraft.description,
+                  },
+                });
+                setGroupDraft({ name: "", description: "" });
+                await load();
+              }}
+            >
+              Создать группу
+            </Button>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {groups.map((group) => (
+              <div key={group.id} className="rounded-xl border border-border p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">{group.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {group.description || "Без описания"} · {group.studentIds.length} учеников
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => openGroupEditor(group)}>
+                      Изменить
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive"
+                      onClick={async () => {
+                        if (
+                          !session?.access_token ||
+                          !window.confirm("Удалить группу? Ученики не будут удалены.")
+                        )
+                          return;
+                        await deleteAdminStudentGroup({
+                          data: { accessToken: session.access_token, id: group.id },
+                        });
+                        await load();
+                      }}
+                    >
+                      Удалить
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-3 flex max-h-32 flex-wrap gap-1 overflow-auto">
+                  {group.studentIds.length ? (
+                    group.studentIds.map((studentId) => {
+                      const row = rows.find((item) => item.id === studentId);
+                      return (
+                        <span
+                          key={studentId}
+                          className="rounded-full border border-primary bg-primary-soft px-2 py-1 text-xs text-primary"
+                        >
+                          {row?.full_name ?? row?.login ?? "Ученик"}
+                        </span>
+                      );
+                    })
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Группа пока пустая</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      <Dialog
+        open={Boolean(studentGroupsStudent)}
+        onOpenChange={(open) => !open && setStudentGroupsStudent(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Группы ученика</DialogTitle>
+            <DialogDescription>
+              {studentGroupsStudent?.full_name ?? studentGroupsStudent?.login ?? "Ученик"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 space-y-2 overflow-y-auto">
+            {groups.length ? (
+              groups.map((group) => (
+                <label
+                  key={group.id}
+                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 hover:bg-muted/50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={studentGroupSelection.includes(group.id)}
+                    onChange={(event) =>
+                      setStudentGroupSelection((current) =>
+                        event.target.checked
+                          ? [...current, group.id]
+                          : current.filter((id) => id !== group.id),
+                      )
+                    }
+                    className="h-4 w-4 accent-primary"
+                  />
+                  <span>{group.name}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {group.studentIds.length} уч.
+                  </span>
+                </label>
+              ))
+            ) : (
+              <p className="py-6 text-center text-sm text-muted-foreground">Групп пока нет</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStudentGroupsStudent(null)}>
+              Отмена
+            </Button>
+            <Button variant="hero" onClick={() => void saveStudentGroups()}>
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(editingGroup)} onOpenChange={(open) => !open && setEditingGroup(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Редактирование группы</DialogTitle>
+            <DialogDescription>Измените данные и состав группы.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <label className="block space-y-1.5 text-sm font-medium">
+              Название группы
+              <input
+                value={groupEditDraft.name}
+                onChange={(event) =>
+                  setGroupEditDraft((draft) => ({ ...draft, name: event.target.value }))
+                }
+                className="h-10 w-full rounded-md border border-input bg-background px-3"
+              />
+            </label>
+            <label className="block space-y-1.5 text-sm font-medium">
+              Описание
+              <input
+                value={groupEditDraft.description}
+                onChange={(event) =>
+                  setGroupEditDraft((draft) => ({ ...draft, description: event.target.value }))
+                }
+                className="h-10 w-full rounded-md border border-input bg-background px-3"
+              />
+            </label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3 text-sm font-medium">
+                <span>Участники</span>
+                <span className="text-primary">Участников: {groupEditDraft.studentIds.length}</span>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <input
+                  value={groupSearch}
+                  onChange={(event) => setGroupSearch(event.target.value)}
+                  placeholder="Поиск по имени или логину"
+                  className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm"
+                />
+              </div>
+              <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+                {rows
+                  .filter((row) => {
+                    const query = groupSearch.trim().toLowerCase();
+                    return (
+                      !query ||
+                      (row.full_name ?? "").toLowerCase().includes(query) ||
+                      row.login.toLowerCase().includes(query)
+                    );
+                  })
+                  .map((row) => (
+                    <label
+                      key={row.id}
+                      className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-muted/50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={groupEditDraft.studentIds.includes(row.id)}
+                        onChange={(event) =>
+                          setGroupEditDraft((draft) => ({
+                            ...draft,
+                            studentIds: event.target.checked
+                              ? [...draft.studentIds, row.id]
+                              : draft.studentIds.filter((id) => id !== row.id),
+                          }))
+                        }
+                        className="h-4 w-4 accent-primary"
+                      />
+                      <span>{row.full_name ?? "Без имени"}</span>
+                      <span className="ml-auto font-mono text-xs text-muted-foreground">
+                        {row.login}
+                      </span>
+                    </label>
+                  ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingGroup(null)}>
+              Отмена
+            </Button>
+            <Button
+              variant="hero"
+              disabled={!groupEditDraft.name.trim()}
+              onClick={() => void saveGroupEditor()}
+            >
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <div className="flex items-center gap-3">
+        <label className="text-sm font-medium">
+          Группа{" "}
+          <select
+            value={groupFilter}
+            onChange={(event) => setGroupFilter(event.target.value)}
+            className="ml-2 h-9 rounded-md border border-input bg-background px-2"
+          >
+            <option value="all">Все группы</option>
+            <option value="none">Без группы</option>
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-soft)]">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -444,6 +764,7 @@ function AdminStudents() {
               <tr>
                 <th className="px-4 py-3">Ученик</th>
                 <th className="px-4 py-3">Логин</th>
+                <th className="px-4 py-3">Группа</th>
                 <th className="px-4 py-3">Статус</th>
                 <th className="px-4 py-3">Прогресс</th>
                 <th className="px-4 py-3">ДЗ</th>
@@ -452,55 +773,91 @@ function AdminStudents() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} className="border-t border-border">
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-2 font-medium">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-soft text-primary">
-                        {(row.full_name ?? "?")[0]}
+              {rows
+                .filter(
+                  (row) =>
+                    groupFilter === "all" ||
+                    (groupFilter === "none"
+                      ? row.groups.length === 0
+                      : row.groups.some((group) => group.id === groupFilter)),
+                )
+                .map((row) => (
+                  <tr key={row.id} className="border-t border-border">
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-2 font-medium">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-soft text-primary">
+                          {(row.full_name ?? "?")[0]}
+                        </span>
+                        {row.full_name ?? "Без имени"}
                       </span>
-                      {row.full_name ?? "Без имени"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs">{row.login}</td>
-                  <td className="px-4 py-3">
-                    <span className={row.blocked ? "text-destructive" : "text-primary"}>
-                      {row.blocked ? "Заблокирован" : "Активен"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {row.completed}/{totalLessons}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1">
-                      <ClipboardCheck className="h-4 w-4" />
-                      {row.approved} / {row.pending}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <CertificateStatus certificate={row.certificate} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <StudentActions
-                      row={row}
-                      saving={saving || savingCertificateId === row.certificate?.id}
-                      onEdit={() => {
-                        const name = splitName(row.full_name);
-                        setForm({ userId: row.id, ...name, login: row.login, password: "" });
-                      }}
-                      onToggleBlocked={() => void toggleBlocked(row)}
-                      onGrantQuizAttempt={() => void grantQuizAttempt(row)}
-                      onDeleteStudent={() => void deleteStudent(row)}
-                      onRevoke={() => row.certificate && void revokeCertificate(row.certificate)}
-                      onRestore={() => row.certificate && void restoreCertificate(row.certificate)}
-                      onDelete={() => row.certificate && void deleteCertificate(row.certificate)}
-                    />
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs">{row.login}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {row.groups.length ? (
+                          row.groups.map((group) => (
+                            <button
+                              key={group.id}
+                              type="button"
+                              onClick={() => openStudentGroups(row)}
+                              title="Изменить группы ученика"
+                              className="rounded-full bg-primary-soft px-2 py-0.5 text-xs text-primary"
+                            >
+                              {group.name}
+                            </button>
+                          ))
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openStudentGroups(row)}
+                            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                          >
+                            Без группы
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={row.blocked ? "text-destructive" : "text-primary"}>
+                        {row.blocked ? "Заблокирован" : "Активен"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {row.completed}/{totalLessons}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1">
+                        <ClipboardCheck className="h-4 w-4" />
+                        {row.approved} / {row.pending}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <CertificateStatus certificate={row.certificate} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <StudentActions
+                        row={row}
+                        saving={saving || savingCertificateId === row.certificate?.id}
+                        onEdit={() => {
+                          const name = splitName(row.full_name);
+                          setForm({ userId: row.id, ...name, login: row.login, password: "" });
+                        }}
+                        onToggleBlocked={() => void toggleBlocked(row)}
+                        onGrantQuizAttempt={() => void grantQuizAttempt(row)}
+                        onDeleteStudent={() => void deleteStudent(row)}
+                        onRevoke={() => row.certificate && void revokeCertificate(row.certificate)}
+                        onRestore={() =>
+                          row.certificate && void restoreCertificate(row.certificate)
+                        }
+                        onDelete={() => row.certificate && void deleteCertificate(row.certificate)}
+                        onManageGroups={() => setShowGroups(true)}
+                      />
+                    </td>
+                  </tr>
+                ))}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
                     Учеников пока нет
                   </td>
                 </tr>
@@ -538,6 +895,7 @@ function StudentActions({
   onRevoke,
   onRestore,
   onDelete,
+  onManageGroups,
 }: {
   row: Row;
   saving: boolean;
@@ -548,6 +906,7 @@ function StudentActions({
   onRevoke: () => void;
   onRestore: () => void;
   onDelete: () => void;
+  onManageGroups: () => void;
 }) {
   const certificate = row.certificate;
   return (
@@ -570,6 +929,7 @@ function StudentActions({
         <DropdownMenuItem disabled={saving} onSelect={onToggleBlocked}>
           {row.blocked ? <Unlock /> : <Ban />} {row.blocked ? "Разблокировать" : "Заблокировать"}
         </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onManageGroups}>Управление группами</DropdownMenuItem>
         {row.canGrantQuizAttempt && (
           <DropdownMenuItem disabled={saving} onSelect={onGrantQuizAttempt}>
             <RotateCcw /> Добавить попытку теста

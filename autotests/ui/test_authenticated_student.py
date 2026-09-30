@@ -28,7 +28,7 @@ def test_student_dashboard_does_not_reload_on_focus(student_page):
 
     before = student_page.url
     student_page.evaluate("window.dispatchEvent(new Event('focus'))")
-    student_page.wait_for_timeout(500)
+    student_page.evaluate("() => new Promise(requestAnimationFrame)")
 
     assert student_page.url == before
     expect(student_page.get_by_text("Прогресс курса", exact=True)).to_be_visible()

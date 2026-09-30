@@ -9,7 +9,6 @@ import {
   Briefcase,
   Users,
   PlayCircle,
-  MessageSquare,
   ClipboardCheck,
   Database,
   Globe,
@@ -133,7 +132,7 @@ const benefits = [
   },
   { icon: Video, title: "2 встречи", desc: "Разберём вопросы и сложные темы вместе." },
   {
-    icon: MessageSquare,
+    icon: UserCheck,
     title: "Поддержка наставника",
     desc: "Поможем, если что-то останется непонятным.",
   },
@@ -372,7 +371,7 @@ function LandingPage() {
                     <Users className="h-3.5 w-3.5" /> Сотни студентов
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft text-primary px-3 py-1 text-xs font-semibold">
-                    <MessageSquare className="h-3.5 w-3.5" /> На связи в чате
+                    <ClipboardCheck className="h-3.5 w-3.5" /> Проверка заданий
                   </span>
                 </div>
               </div>

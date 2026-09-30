@@ -4,6 +4,28 @@ export type AppRole = "admin" | "student";
 
 const VALID_ROLES: AppRole[] = ["admin", "student"];
 const DEFAULT_AUTH_ATTEMPTS = 4;
+const AUTH_PAGE_SIZE = 1000;
+
+export type AuthUserSummary = {
+  id: string;
+  banned_until?: string | null;
+  created_at: string;
+};
+
+/** Load all auth users instead of silently truncating the admin list at 1000. */
+export async function listAllAuthUsers(): Promise<AuthUserSummary[]> {
+  const users: AuthUserSummary[] = [];
+  for (let page = 1; page <= 1000; page += 1) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage: AUTH_PAGE_SIZE,
+    });
+    if (error) throw error;
+    users.push(...data.users);
+    if (data.users.length < AUTH_PAGE_SIZE) break;
+  }
+  return users;
+}
 
 function isAppRole(role: string): role is AppRole {
   return VALID_ROLES.includes(role as AppRole);

@@ -31,28 +31,52 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "QA Start — интенсивный курс по тестированию ПО с нуля" },
+      { title: "QA Start — интерактивный курс по тестированию для начинающих" },
       {
         name: "description",
         content:
-          "Индивидуальный 14-дневный онлайн-курс по тестированию ПО. Стань QA-инженером и выйди на первую работу в IT.",
+          "QA Start — 14 интерактивных уроков по основам тестирования: практика, домашние задания, поддержка наставника и итоговый сертификат.",
       },
       { name: "author", content: "QA школа" },
-      { name: "app-version", content: "v0.3.35" },
-      { property: "og:title", content: "QA Start — интенсивный курс по тестированию ПО с нуля" },
+      { name: "app-version", content: "v.0.4.0" },
+      {
+        property: "og:title",
+        content: "QA Start — интерактивный курс по тестированию для начинающих",
+      },
       {
         property: "og:description",
-        content: "Онлайн-курс по тестированию ПО с личным наставником и практикой.",
+        content:
+          "14 уроков, практика, домашние задания, поддержка наставника и итоговый сертификат.",
       },
       { property: "og:type", content: "website" },
+      { property: "og:url", content: "https://startqa.ru/" },
+      { property: "og:site_name", content: "QA Start" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:title", content: "QA Start — интенсивный курс по тестированию ПО с нуля" },
+      {
+        name: "twitter:title",
+        content: "QA Start — интерактивный курс по тестированию для начинающих",
+      },
       {
         name: "twitter:description",
-        content: "Онлайн-курс по тестированию ПО с личным наставником и практикой.",
+        content:
+          "14 уроков, практика, домашние задания, поддержка наставника и итоговый сертификат.",
       },
     ],
     links: [
+      {
+        rel: "icon",
+        href: "/favicon.svg?v=3",
+        type: "image/svg+xml",
+      },
+      {
+        rel: "shortcut icon",
+        href: "/favicon.svg?v=3",
+        type: "image/svg+xml",
+      },
+      {
+        rel: "canonical",
+        href: "https://startqa.ru/",
+      },
       {
         rel: "stylesheet",
         href: appCss,

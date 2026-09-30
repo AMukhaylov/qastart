@@ -86,6 +86,48 @@ export type Database = {
         };
         Relationships: [];
       };
+      student_groups: {
+        Row: {
+          id: string;
+          name: string;
+          description: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          description?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          description?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      group_students: {
+        Row: { group_id: string; student_id: string; created_at: string };
+        Insert: { group_id: string; student_id: string; created_at?: string };
+        Update: { group_id?: string; student_id?: string; created_at?: string };
+        Relationships: [];
+      };
+      meeting_groups: {
+        Row: { meeting_id: string; group_id: string; created_at: string };
+        Insert: { meeting_id: string; group_id: string; created_at?: string };
+        Update: { meeting_id?: string; group_id?: string; created_at?: string };
+        Relationships: [];
+      };
+      meeting_students: {
+        Row: { meeting_id: string; student_id: string; created_at: string };
+        Insert: { meeting_id: string; student_id: string; created_at?: string };
+        Update: { meeting_id?: string; student_id?: string; created_at?: string };
+        Relationships: [];
+      };
       course_invites: {
         Row: {
           created_at: string;
@@ -162,6 +204,75 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      notifications: {
+        Row: {
+          body: string;
+          created_at: string;
+          event_key: string;
+          id: string;
+          link: string;
+          metadata: Json;
+          read_at: string | null;
+          recipient_user_id: string;
+          title: string;
+          type: string;
+        };
+        Insert: {
+          body?: string;
+          created_at?: string;
+          event_key: string;
+          id?: string;
+          link: string;
+          metadata?: Json;
+          read_at?: string | null;
+          recipient_user_id: string;
+          title: string;
+          type: string;
+        };
+        Update: {
+          body?: string;
+          created_at?: string;
+          event_key?: string;
+          id?: string;
+          link?: string;
+          metadata?: Json;
+          read_at?: string | null;
+          recipient_user_id?: string;
+          title?: string;
+          type?: string;
+        };
+        Relationships: [];
+      };
+      web_push_subscriptions: {
+        Row: {
+          auth: string;
+          created_at: string;
+          endpoint: string;
+          id: string;
+          p256dh: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          auth: string;
+          created_at?: string;
+          endpoint: string;
+          id?: string;
+          p256dh: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          auth?: string;
+          created_at?: string;
+          endpoint?: string;
+          id?: string;
+          p256dh?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
       };
       homework_submissions: {
         Row: {

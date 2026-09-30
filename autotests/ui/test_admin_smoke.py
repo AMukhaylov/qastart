@@ -1,5 +1,9 @@
+import json
+import re
+
 import pytest
 from playwright.sync_api import expect
+
 
 
 @pytest.mark.authenticated
@@ -18,4 +22,121 @@ def test_admin_students_list_is_available(admin_page):
 def test_admin_lessons_editor_is_available(admin_page):
     admin_page.goto("/admin/lessons", wait_until="domcontentloaded")
 
-    expect(admin_page.get_by_text("Конспект", exact=True).first).to_be_visible()
+    expect(admin_page.get_by_role("heading", name="Управление уроками")).to_be_visible()
+    expect(admin_page.get_by_role("button", name=re.compile("Что такое тестирование"))).to_be_visible()
+    expect(admin_page.get_by_role("button", name="Импортировать урок", exact=True)).to_be_visible()
+    expect(
+        admin_page.get_by_role("button", name="Скачать спецификацию для ИИ", exact=True)
+    ).to_be_visible()
+
+
+@pytest.mark.authenticated
+@pytest.mark.admin
+def test_admin_can_switch_to_lessons_with_homework_blocks(admin_page):
+    """Homework editor must receive its lesson day and never crash on Day 2 or 3."""
+    admin_page.goto("/admin/lessons", wait_until="domcontentloaded")
+
+    for title in ["Как работает IT-команда", "Тест-кейсы и чек-листы"]:
+        admin_page.get_by_role("button", name=re.compile(title)).click()
+        expect(admin_page.get_by_text("После отправки ДЗ — «День пройден»", exact=True)).to_be_visible()
+        expect(admin_page.get_by_role("button", name="Сохранить", exact=True)).to_be_visible()
+        assert admin_page.get_by_text("Что-то пошло не так", exact=True).count() == 0
+
+
+@pytest.mark.authenticated
+@pytest.mark.admin
+def test_admin_lesson_actions_stay_visible_while_scrolling(admin_page):
+    admin_page.goto("/admin/lessons", wait_until="domcontentloaded")
+    save_button = admin_page.get_by_role("button", name="Сохранить", exact=True)
+    actions_bar = admin_page.get_by_test_id("lesson-actions-bar")
+    expect(save_button).to_be_visible()
+    expect(actions_bar).to_be_visible()
+    admin_page.locator('input:not([type="file"])').first.fill("Черновая проверка сохранения")
+    expect(save_button).to_be_enabled()
+
+    admin_page.evaluate("window.scrollTo(0, 1_600)")
+    expect(save_button).to_be_visible()
+    expect(save_button).to_be_enabled()
+    header = admin_page.locator("header").bounding_box()
+    bar = actions_bar.bounding_box()
+    assert header and bar
+    assert header["y"] <= 1
+    scroll_y = admin_page.evaluate("window.scrollY")
+    assert header["height"] <= bar["y"] <= header["height"] + 24, (header, bar, scroll_y)
+
+    admin_page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+    expect(actions_bar).to_be_visible()
+    expect(save_button).to_be_visible()
+
+
+@pytest.mark.authenticated
+@pytest.mark.admin
+def test_admin_lesson_actions_fit_mobile_screen(admin_page):
+    admin_page.set_viewport_size({"width": 390, "height": 844})
+    admin_page.goto("/admin/lessons", wait_until="domcontentloaded")
+
+    actions_bar = admin_page.get_by_test_id("lesson-actions-bar")
+    expect(actions_bar).to_be_visible()
+    box = actions_bar.bounding_box()
+    assert box and box["width"] <= 390
+
+    admin_page.evaluate("window.scrollTo(0, 1_600)")
+    expect(admin_page.get_by_role("button", name="Сохранить", exact=True)).to_be_visible()
+
+
+@pytest.mark.authenticated
+@pytest.mark.admin
+def test_lesson_import_shows_preview_before_any_save(admin_page):
+    admin_page.goto("/admin/lessons", wait_until="domcontentloaded")
+    package = {
+        "schemaVersion": "1.0",
+        "lesson": {
+            "day": 99,
+            "title": "Предпросмотр импорта",
+            "description": "Урок для проверки предпросмотра.",
+            "blocks": [
+                {"type": "heading", "title": "Раздел"},
+                {
+                    "type": "summary",
+                    "title": "Главное",
+                    "items": [{"term": "Термин", "definition": "Объяснение"}],
+                    "points": ["Мысль"],
+                },
+            ],
+        },
+    }
+    admin_page.locator('input[type="file"]').set_input_files(
+        {
+            "name": "lesson-preview.json",
+            "mimeType": "application/json",
+            "buffer": json.dumps(package).encode("utf-8"),
+        }
+    )
+
+    expect(admin_page.get_by_role("heading", name="Импорт урока")).to_be_visible()
+    expect(admin_page.get_by_text("Предпросмотр для ученика", exact=True)).to_be_visible()
+    expect(admin_page.get_by_role("button", name="Импортировать", exact=True)).to_be_visible()
+
+
+@pytest.mark.authenticated
+@pytest.mark.admin
+def test_day_one_export_can_be_opened_in_the_import_preview(admin_page):
+    admin_page.goto("/admin/lessons", wait_until="domcontentloaded")
+    with admin_page.expect_download() as download_info:
+        admin_page.get_by_role("button", name="Экспортировать урок", exact=True).click()
+    download = download_info.value
+    package = json.loads(download.path().read_text(encoding="utf-8"))
+
+    assert package["schemaVersion"] == "1.0"
+    assert package["lesson"]["day"] == 1
+    assert package["lesson"]["blocks"]
+
+    admin_page.locator('input[type="file"]').set_input_files(
+        {
+            "name": "day-1-round-trip.json",
+            "mimeType": "application/json",
+            "buffer": json.dumps(package).encode("utf-8"),
+        }
+    )
+    expect(admin_page.get_by_role("heading", name="Импорт урока")).to_be_visible()
+    expect(admin_page.get_by_text("JSON не прошёл проверку", exact=True)).not_to_be_visible()

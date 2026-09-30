@@ -24,8 +24,10 @@ function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    setHydrated(true);
     if (loading || rolesLoading) return;
     if (user && isAdmin) navigate({ to: "/admin/homework" });
   }, [user, isAdmin, loading, rolesLoading, navigate]);
@@ -88,7 +90,11 @@ function AdminLoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-[var(--gradient-soft)]">
+    <div
+      data-testid="admin-login-ready"
+      data-hydrated={hydrated}
+      className="min-h-screen flex items-center justify-center p-6 bg-[var(--gradient-soft)]"
+    >
       <div className="w-full max-w-md">
         <a
           href="/"

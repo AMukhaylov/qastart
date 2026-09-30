@@ -3,7 +3,7 @@ from playwright.sync_api import expect
 
 def test_student_login_rejects_cyrillic_login(page):
     page.goto("/auth", wait_until="domcontentloaded")
-    page.wait_for_timeout(5000)
+    page.locator('[data-testid="student-login-ready"][data-hydrated="true"]').wait_for()
     page.locator("#login").fill("ученик")
     page.locator("#password").fill("ExamplePassword1")
     page.get_by_role("button", name="Войти", exact=True).click()
@@ -13,7 +13,7 @@ def test_student_login_rejects_cyrillic_login(page):
 
 def test_student_login_rejects_email_as_login(page):
     page.goto("/auth", wait_until="domcontentloaded")
-    page.wait_for_timeout(5000)
+    page.locator('[data-testid="student-login-ready"][data-hydrated="true"]').wait_for()
     page.locator("#login").fill("student@example.com")
     page.locator("#password").fill("ExamplePassword1")
     page.get_by_role("button", name="Войти", exact=True).click()

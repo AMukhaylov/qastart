@@ -6,6 +6,7 @@ import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
+import { NotificationBell } from "@/components/notification-bell";
 
 export function SiteHeader() {
   const { user, signOut, isAdmin } = useAuth();
@@ -57,6 +58,7 @@ export function SiteHeader() {
         <div className="flex items-center gap-2">
           {user ? (
             <>
+              <NotificationBell />
               {isAdmin && (
                 <Button asChild variant="ghost" size="sm">
                   <Link to="/admin">

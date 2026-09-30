@@ -3,11 +3,16 @@ export const lessonBlockTypes = [
   "text",
   "definition",
   "important",
+  "guide",
   "example",
   "diagram",
+  "state_diagram",
+  "table",
   "image",
   "video",
   "question",
+  "reflection",
+  "visual_choice",
   "code",
   "summary",
   "homework",
@@ -37,11 +42,16 @@ export const lessonBlockLabels: Record<LessonBlockType, string> = {
   text: "Текст",
   definition: "Определение",
   important: "Важная мысль",
+  guide: "Подсказка проводника",
   example: "Пример",
   diagram: "Схема",
+  state_diagram: "Диаграмма состояний",
+  table: "Таблица",
   image: "Изображение",
   video: "Видео",
   question: "Вопрос",
+  reflection: "Открытый вопрос",
+  visual_choice: "Визуальная активность",
   code: "Код",
   summary: "Главное из урока",
   homework: "Домашнее задание",
@@ -59,7 +69,75 @@ export function stringList(content: Record<string, unknown>, key: string) {
     : [];
 }
 
+export type StateDiagramPosition = { x: number; y: number };
+export type StateDiagramViewport = { x: number; y: number; zoom: number };
+export type StateDiagramState = { id: string; label: string; position?: StateDiagramPosition };
+export type StateDiagramTransition = {
+  id?: string;
+  from: string;
+  to: string;
+  label?: string;
+  edgeType?: "auto" | "straight" | "bezier" | "smoothstep";
+  sourceHandle?: string;
+  targetHandle?: string;
+};
+export type LessonTableColumn = { id: string; label: string };
+export type LessonTableRow = Record<string, string>;
+
+export function stateDiagramStates(content: Record<string, unknown>): StateDiagramState[] {
+  return Array.isArray(content.states)
+    ? content.states.filter(
+        (state): state is StateDiagramState =>
+          typeof state === "object" &&
+          state !== null &&
+          typeof (state as Record<string, unknown>).id === "string" &&
+          typeof (state as Record<string, unknown>).label === "string",
+      )
+    : [];
+}
+
+export function stateDiagramTransitions(
+  content: Record<string, unknown>,
+): StateDiagramTransition[] {
+  return Array.isArray(content.transitions)
+    ? content.transitions.filter(
+        (transition): transition is StateDiagramTransition =>
+          typeof transition === "object" &&
+          transition !== null &&
+          typeof (transition as Record<string, unknown>).from === "string" &&
+          typeof (transition as Record<string, unknown>).to === "string" &&
+          ((transition as Record<string, unknown>).label === undefined ||
+            typeof (transition as Record<string, unknown>).label === "string"),
+      )
+    : [];
+}
+
+export function lessonTableColumns(content: Record<string, unknown>): LessonTableColumn[] {
+  return Array.isArray(content.columns)
+    ? content.columns.filter(
+        (column): column is LessonTableColumn =>
+          typeof column === "object" &&
+          column !== null &&
+          typeof (column as Record<string, unknown>).id === "string" &&
+          typeof (column as Record<string, unknown>).label === "string",
+      )
+    : [];
+}
+
+export function lessonTableRows(content: Record<string, unknown>): LessonTableRow[] {
+  return Array.isArray(content.rows)
+    ? content.rows.filter(
+        (row): row is LessonTableRow =>
+          typeof row === "object" &&
+          row !== null &&
+          !Array.isArray(row) &&
+          Object.values(row).every((cell) => typeof cell === "string"),
+      )
+    : [];
+}
+
 export function isBlockRequired(block: Pick<LessonBlock, "block_type" | "content">) {
+  if (block.content.visible === false) return false;
   if (block.content.required === false) return false;
   if (block.block_type === "homework") return block.content.homeworkRequiredForCompletion === true;
   return true;
@@ -94,6 +172,13 @@ export function createLessonBlock(type: LessonBlockType): LessonBlockDraft {
     text: { markdown: "Новый текст" },
     definition: { term: "Термин", text: "Короткое и понятное определение." },
     important: { title: "Важная мысль", text: "Главная мысль этого раздела." },
+    guide: {
+      variant: "explain",
+      title: "Подсказка",
+      text: "Коротко поясните, на что обратить внимание в этом месте урока.",
+      visible: true,
+      required: false,
+    },
     example: {
       title: "Пример",
       expected: "Ожидание",
@@ -101,6 +186,26 @@ export function createLessonBlock(type: LessonBlockType): LessonBlockDraft {
       conclusion: "Вывод",
     },
     diagram: { title: "Схема", steps: ["Первый шаг", "Следующий шаг"] },
+    state_diagram: {
+      title: "Диаграмма состояний",
+      states: [
+        { id: "state-1", label: "Создан", position: { x: 70, y: 70 } },
+        { id: "state-2", label: "Завершён", position: { x: 330, y: 70 } },
+      ],
+      transitions: [
+        { id: "transition-1", from: "state-1", to: "state-2", label: "Действие выполнено" },
+      ],
+      initialState: "state-1",
+      finalStates: ["state-2"],
+    },
+    table: {
+      title: "Таблица",
+      columns: [
+        { id: "column-1", label: "Колонка 1" },
+        { id: "column-2", label: "Колонка 2" },
+      ],
+      rows: [{ "column-1": "Значение 1", "column-2": "Значение 2" }],
+    },
     image: { url: "", alt: "", caption: "" },
     video: { url: "", title: "Дополнительное видео", required: false },
     question: {
@@ -110,12 +215,30 @@ export function createLessonBlock(type: LessonBlockType): LessonBlockDraft {
       correctIndex: 0,
       explanation: "Объясните правильный ответ.",
     },
+    reflection: {
+      prompt: "О чём ты бы подумал?",
+      hint: "Напиши 1–3 идеи.",
+      feedback: "Здесь нет единственного правильного ответа.",
+      required: false,
+    },
+    visual_choice: {
+      title: "Посмотри на форму",
+      prompt: "Что стоит проверить?",
+      options: ["Пустые поля", "Неверный пароль", "Кнопка входа"],
+      correctAnswers: [0, 1],
+      explanation: "Проверки начинаются с разных условий.",
+      required: false,
+    },
     code: { language: "text", code: "" },
     summary: { title: "Главное из урока", items: [], points: [] },
     homework: {
       title: "Домашнее задание",
       instruction: "Опишите задание для ученика.",
-      submitHint: "",
+      completionVariant: "success",
+      completionTitle: "День пройден",
+      completionText:
+        "Домашнее задание отправлено на проверку. Следующий урок уже доступен, а результат проверки появится здесь, как только наставник его проверит.",
+      completionVisible: true,
       homeworkRequiredForCompletion: false,
     },
   };

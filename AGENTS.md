@@ -1,0 +1,7 @@
+# QA Start
+
+Перед работой над любым уроком QA Start обязательно:
+
+1. Прочитать [docs/LESSON_GUIDELINES.md](docs/LESSON_GUIDELINES.md).
+2. Посмотреть актуальный День 1 как эталон качества.
+

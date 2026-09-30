@@ -10,9 +10,7 @@ def _start_final_quiz_with_available_attempt(student_page, settings) -> None:
     """Ensure the disposable account has an available attempt before exercising it."""
     student_page.goto("/lessons/14", wait_until="domcontentloaded")
     start_button = student_page.get_by_role("button", name=re.compile(r"^(Начать|Повторить) тест$"))
-    if not start_button.count():
-        pytest.skip("The disposable final-quiz account has no available attempts to exercise.")
-
+    expect(start_button).to_be_visible()
     start_button.click()
 
 

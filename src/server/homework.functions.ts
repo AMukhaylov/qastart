@@ -4,6 +4,11 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getRolesForAccessToken, getUserIdForAccessToken } from "./admin-auth.server";
+import {
+  notifyAdminsHomeworkSubmitted,
+  notifyStudentHomeworkStatus,
+  notifyStudentMentorComment,
+} from "./notifications.server";
 
 const HOMEWORK_ATTACHMENTS_BUCKET = "homework-attachments";
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
@@ -28,6 +33,11 @@ const listMessagesInput = z.object({
   submissionId: z.string().uuid(),
 });
 
+const adminSubmissionAccessInput = z.object({
+  accessToken: z.string().min(20),
+  submissionId: z.string().uuid(),
+});
+
 const reviewHomeworkInput = z.object({
   accessToken: z.string().min(20),
   submissionId: z.string().uuid(),
@@ -41,6 +51,12 @@ const answerHomeworkInput = z.object({
   submissionId: z.string().uuid(),
   feedback: z.string().trim().min(1).max(20_000),
   attachments: z.array(attachmentSchema).max(3).default([]),
+});
+
+const editHomeworkMessageInput = z.object({
+  accessToken: z.string().min(20),
+  messageId: z.string().uuid(),
+  body: z.string().trim().min(1).max(20_000),
 });
 
 const askHomeworkQuestionInput = z.object({
@@ -151,7 +167,7 @@ export const submitHomeworkForCurrentUser = createServerFn({ method: "POST" })
 
     const submissionPayload = {
       content: data.content.trim(),
-      status: "pending",
+      status: "pending" as const,
       feedback: null,
       reviewed_by: null,
       reviewed_at: null,
@@ -194,6 +210,11 @@ export const submitHomeworkForCurrentUser = createServerFn({ method: "POST" })
 
     if (messageError && !isMissingMessagesTable(messageError)) throw messageError;
 
+    await notifyAdminsHomeworkSubmitted(
+      { submissionId: submission.id, userId, lessonId: data.lessonId },
+      Boolean(data.submissionId),
+    );
+
     return submission;
   });
 
@@ -232,6 +253,21 @@ export const listHomeworkMessages = createServerFn({ method: "POST" })
         attachments: await hydrateAttachmentUrls(message.attachments),
       })),
     );
+  });
+
+/** Server-side authorization gate for deep links from admin notifications. */
+export const getAdminHomeworkSubmissionAccess = createServerFn({ method: "POST" })
+  .inputValidator((data) => adminSubmissionAccessInput.parse(data))
+  .handler(async ({ data }) => {
+    const roles = await getRolesForAccessToken(data.accessToken);
+    if (!roles.includes("admin")) throw new Error("Недостаточно прав для просмотра ДЗ");
+    const { data: submission, error } = await supabaseAdmin
+      .from("homework_submissions")
+      .select("id")
+      .eq("id", data.submissionId)
+      .maybeSingle();
+    if (error || !submission) throw error ?? new Error("Домашнее задание не найдено");
+    return submission;
   });
 
 export const reviewHomeworkSubmission = createServerFn({ method: "POST" })
@@ -278,6 +314,11 @@ export const reviewHomeworkSubmission = createServerFn({ method: "POST" })
 
       if (messageError && !isMissingMessagesTable(messageError)) throw messageError;
     }
+
+    await notifyStudentHomeworkStatus(
+      { submissionId: submission.id, userId: submission.user_id, lessonId: submission.lesson_id },
+      data.status,
+    );
 
     let certificate = null;
     if (data.status === "approved") {
@@ -344,6 +385,22 @@ export const answerHomeworkQuestion = createServerFn({ method: "POST" })
 
     if (messageError && !isMissingMessagesTable(messageError)) throw messageError;
 
+    const { data: latestMessage, error: latestMessageError } = await supabaseAdmin
+      .from("homework_messages")
+      .select("id")
+      .eq("submission_id", submission.id)
+      .eq("author_id", adminId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    if (latestMessageError || !latestMessage) {
+      throw latestMessageError ?? new Error("Не удалось найти комментарий наставника");
+    }
+    await notifyStudentMentorComment(
+      { submissionId: submission.id, userId: submission.user_id, lessonId: submission.lesson_id },
+      latestMessage.id,
+    );
+
     const { error: progressError } = await supabaseAdmin
       .from("lesson_progress")
       .delete()
@@ -352,6 +409,35 @@ export const answerHomeworkQuestion = createServerFn({ method: "POST" })
     if (progressError) throw progressError;
 
     return { ok: true };
+  });
+
+export const editHomeworkMessage = createServerFn({ method: "POST" })
+  .inputValidator((data) => editHomeworkMessageInput.parse(data))
+  .handler(async ({ data }) => {
+    const roles = await getRolesForAccessToken(data.accessToken);
+    if (!roles.includes("admin")) throw new Error("Недостаточно прав для редактирования сообщения");
+
+    const adminId = await getUserIdForAccessToken(data.accessToken);
+    const { data: message, error: messageError } = await supabaseAdmin
+      .from("homework_messages")
+      .select("id,author_id,author_role")
+      .eq("id", data.messageId)
+      .single();
+
+    if (messageError || !message) throw messageError ?? new Error("Сообщение не найдено");
+    if (message.author_role !== "mentor" || message.author_id !== adminId) {
+      throw new Error("Можно редактировать только собственные комментарии");
+    }
+
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from("homework_messages")
+      .update({ body: data.body.trim() })
+      .eq("id", message.id)
+      .select("id,body")
+      .single();
+
+    if (updateError || !updated) throw updateError ?? new Error("Не удалось сохранить комментарий");
+    return updated;
   });
 
 export const askHomeworkQuestion = createServerFn({ method: "POST" })

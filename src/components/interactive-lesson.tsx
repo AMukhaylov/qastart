@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDown,
   BookOpen,
@@ -6,23 +6,33 @@ import {
   CheckSquare2,
   Circle,
   CircleAlert,
+  Eye,
   Code2,
   Lightbulb,
-  ListChecks,
   LockKeyhole,
+  Loader2,
+  MessageCircleQuestion,
   PlayCircle,
   Square,
 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { LessonGuide } from "@/components/lesson-guide";
 import { LessonRichContent } from "@/components/lesson-rich-content";
+import type { LessonGuideVariant } from "@/lib/lesson-guide";
 import {
   blocksNext,
   isBlockRequired,
+  lessonTableColumns,
+  lessonTableRows,
   LessonBlock,
   stringList,
   stringValue,
 } from "@/lib/interactive-lesson";
+
+const StateDiagramCanvas = lazy(() =>
+  import("@/components/state-diagram").then((module) => ({ default: module.StateDiagramCanvas })),
+);
 
 type InteractiveLessonProps = {
   blocks: LessonBlock[];
@@ -31,6 +41,9 @@ type InteractiveLessonProps = {
   legacyContent?: string;
   lessonDay: number;
   lessonTitle: string;
+  previousDay?: number;
+  previewMode?: boolean;
+  renderHomework?: (block: LessonBlock) => ReactNode;
 };
 
 type StepKind = "material" | "question" | "video" | "homework";
@@ -81,18 +94,34 @@ export function InteractiveLesson({
   completedBlockIds,
   onBlocksCompleted,
   legacyContent,
+  lessonDay,
+  previousDay,
+  previewMode = false,
+  renderHomework,
 }: InteractiveLessonProps) {
+  const [completingStep, setCompletingStep] = useState<number | null>(null);
   const steps = useMemo(() => createSteps(blocks), [blocks]);
   const isStepCompleted = (step: LessonStep) =>
     step.blocks.filter(isBlockRequired).every((block) => completedBlockIds.has(block.id));
   const activeIndex = steps.findIndex((step) => !isStepCompleted(step));
-  const visibleThrough = activeIndex === -1 ? steps.length - 1 : activeIndex;
+  const visibleThrough = previewMode || activeIndex === -1 ? steps.length - 1 : activeIndex;
   const activeRef = useRef<HTMLElement | null>(null);
   const previousActiveIndex = useRef<number | null>(null);
+
+  async function completeStep(index: number, requiredIds: string[]) {
+    if (completingStep !== null) return;
+    setCompletingStep(index);
+    try {
+      await onBlocksCompleted(requiredIds);
+    } finally {
+      setCompletingStep(null);
+    }
+  }
 
   useEffect(() => {
     const previous = previousActiveIndex.current;
     previousActiveIndex.current = activeIndex;
+    if (previewMode) return;
     // Keep the explanation visible after an answer; the learner decides when to move on.
     if (
       previous !== null &&
@@ -102,7 +131,7 @@ export function InteractiveLesson({
     )
       return;
     activeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [activeIndex, steps]);
+  }, [activeIndex, previewMode, steps]);
 
   if (blocks.length === 0) {
     return legacyContent ? (
@@ -140,48 +169,63 @@ export function InteractiveLesson({
                 </span>
               ) : null}
             </div>
-            {step.kind === "homework" && (
-              <LessonGuide
-                variant="task"
-                title="Самостоятельная практика"
-                text="Здесь можно применить знания на своей задаче. Обязательность домашнего задания настраивается в редакторе урока."
-              />
+            {step.blocks.map((block) => {
+              if (block.block_type === "homework" && renderHomework) {
+                return <div key={block.id}>{renderHomework(block)}</div>;
+              }
+              return (
+                <LessonBlockView
+                  key={block.id}
+                  block={block}
+                  completed={completedBlockIds.has(block.id)}
+                  onComplete={() => onBlocksCompleted([block.id])}
+                  previewMode={previewMode}
+                />
+              );
+            })}
+            {step.kind === "material" && !stepCompleted && !previewMode && (
+              <div className="mt-1 flex items-center justify-between gap-3">
+                {previousDay ? (
+                  <Button asChild variant="soft" size="lg">
+                    <Link to="/lessons/$day" params={{ day: String(previousDay) }}>
+                      ← День {previousDay}
+                    </Link>
+                  </Button>
+                ) : (
+                  <span />
+                )}
+                <Button
+                  variant="hero"
+                  disabled={completingStep !== null}
+                  onClick={() => void completeStep(index, requiredIds)}
+                >
+                  {completingStep === index && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Продолжить
+                </Button>
+              </div>
             )}
-            {step.blocks.map((block) => (
-              <LessonBlockView
-                key={block.id}
-                block={block}
-                completed={completedBlockIds.has(block.id)}
-                onComplete={() => onBlocksCompleted([block.id])}
-                onNext={
-                  index < steps.length - 1
-                    ? () =>
-                        document
-                          .querySelector(`[data-lesson-step="${index + 1}"]`)
-                          ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                    : undefined
-                }
-              />
-            ))}
-            {step.kind === "material" && !stepCompleted && (
-              <Button
-                className="mt-1"
-                variant="hero"
-                onClick={() => onBlocksCompleted(requiredIds)}
-              >
-                Продолжить
-              </Button>
+            {step.kind === "video" && !stepCompleted && !previewMode && (
+              <div className="mt-1 flex items-center justify-between gap-3">
+                {previousDay ? (
+                  <Button asChild variant="soft" size="lg">
+                    <Link to="/lessons/$day" params={{ day: String(previousDay) }}>
+                      ← День {previousDay}
+                    </Link>
+                  </Button>
+                ) : (
+                  <span />
+                )}
+                <Button
+                  variant="hero"
+                  disabled={completingStep !== null}
+                  onClick={() => void completeStep(index, requiredIds)}
+                >
+                  {completingStep === index && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {"Я посмотрел видео — продолжить"}
+                </Button>
+              </div>
             )}
-            {step.kind === "video" && !stepCompleted && (
-              <Button
-                className="mt-1"
-                variant="hero"
-                onClick={() => onBlocksCompleted(requiredIds)}
-              >
-                Я посмотрел видео — продолжить
-              </Button>
-            )}
-            {step.kind === "homework" && !stepCompleted && (
+            {step.kind === "homework" && !stepCompleted && !previewMode && (
               <p className="pt-1 text-sm text-muted-foreground">
                 Отправьте выполненное задание в форме ниже, чтобы открыть следующий шаг.
               </p>
@@ -197,14 +241,15 @@ function LessonBlockView({
   block,
   completed,
   onComplete,
-  onNext,
+  previewMode = false,
 }: {
   block: LessonBlock;
   completed: boolean;
   onComplete: () => Promise<boolean> | void;
-  onNext?: () => void;
+  previewMode?: boolean;
 }) {
   const c = block.content;
+  if (c.visible === false) return null;
   const cardClass =
     "rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)] md:p-7";
   let content: React.ReactNode;
@@ -238,7 +283,9 @@ function LessonBlockView({
             <BookOpen className="h-4 w-4" /> Определение
           </div>
           <h3 className="text-xl font-extrabold">{stringValue(c, "term")}</h3>
-          <p className="mt-2 leading-relaxed text-foreground/85">{stringValue(c, "text")}</p>
+          <div className="mt-2 leading-relaxed text-foreground/85">
+            <LessonRichContent content={stringValue(c, "text")} />
+          </div>
         </div>
       );
       break;
@@ -249,20 +296,55 @@ function LessonBlockView({
             <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
             <div>
               <h3 className="font-extrabold">{stringValue(c, "title", "Важная мысль")}</h3>
-              <p className="mt-2 leading-relaxed">{stringValue(c, "text")}</p>
+              <div className="mt-2 leading-relaxed">
+                <LessonRichContent content={stringValue(c, "text")} />
+              </div>
             </div>
           </div>
         </div>
       );
       break;
+    case "guide": {
+      const rawVariant = stringValue(c, "variant", "explain");
+      const variant: LessonGuideVariant = [
+        "intro",
+        "explain",
+        "important",
+        "question",
+        "task",
+        "success",
+      ].includes(rawVariant)
+        ? (rawVariant as LessonGuideVariant)
+        : "explain";
+      content = (
+        <LessonGuide
+          variant={variant}
+          title={stringValue(c, "title", "Подсказка")}
+          text={stringValue(c, "text")}
+        />
+      );
+      break;
+    }
     case "example":
       content = (
         <div className={cardClass}>
           <h3 className="mb-5 text-xl font-extrabold">{stringValue(c, "title", "Пример")}</h3>
           <div className="grid gap-3 sm:grid-cols-3">
-            <ExamplePart title="Ожидание" text={stringValue(c, "expected")} tone="bg-sky-50" />
-            <ExamplePart title="Фактически" text={stringValue(c, "actual")} tone="bg-amber-50" />
-            <ExamplePart title="Вывод" text={stringValue(c, "conclusion")} tone="bg-emerald-50" />
+            <ExamplePart
+              title={stringValue(c, "expectedTitle", "Ожидание")}
+              text={stringValue(c, "expected")}
+              tone="bg-sky-50"
+            />
+            <ExamplePart
+              title={stringValue(c, "actualTitle", "Фактический результат")}
+              text={stringValue(c, "actual")}
+              tone="bg-amber-50"
+            />
+            <ExamplePart
+              title={stringValue(c, "conclusionTitle", "Вывод")}
+              text={stringValue(c, "conclusion")}
+              tone="bg-emerald-50"
+            />
           </div>
         </div>
       );
@@ -286,6 +368,12 @@ function LessonBlockView({
       );
       break;
     }
+    case "state_diagram":
+      content = <StateDiagram content={c} cardClass={cardClass} />;
+      break;
+    case "table":
+      content = <LessonTable content={c} cardClass={cardClass} />;
+      break;
     case "image": {
       const url = stringValue(c, "url");
       content = url ? (
@@ -342,9 +430,13 @@ function LessonBlockView({
       break;
     }
     case "question":
-      content = (
-        <QuestionBlock content={c} completed={completed} onComplete={onComplete} onNext={onNext} />
-      );
+      content = <QuestionBlock content={c} completed={completed} onComplete={onComplete} />;
+      break;
+    case "reflection":
+      content = <ReflectionBlock content={c} />;
+      break;
+    case "visual_choice":
+      content = <VisualChoiceBlock content={c} />;
       break;
     case "code":
       content = (
@@ -363,30 +455,209 @@ function LessonBlockView({
       content = <SummaryBlock content={c} />;
       break;
     case "homework":
-      content = (
-        <div className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] md:p-7">
+      // The submission form below the lesson is the single homework card. Keeping the
+      // instruction here as well created two identical homework blocks for the learner.
+      content = previewMode ? (
+        <section className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] md:p-7">
           <div className="flex items-center gap-2 text-primary">
-            <ListChecks className="h-5 w-5" />
+            <CheckSquare2 className="h-5 w-5" />
             <span className="font-extrabold">{stringValue(c, "title", "Домашнее задание")}</span>
           </div>
-          <p className="mt-3 whitespace-pre-wrap leading-relaxed text-foreground/85">
-            {stringValue(c, "instruction")}
-          </p>
-          {stringValue(c, "submitHint") && (
-            <p className="mt-3 text-sm text-muted-foreground">{stringValue(c, "submitHint")}</p>
-          )}
-        </div>
-      );
+          <div className="mt-3 leading-relaxed text-foreground/85">
+            <LessonRichContent content={stringValue(c, "instruction")} />
+          </div>
+          <textarea
+            disabled
+            rows={3}
+            placeholder="Твой ответ..."
+            className="mt-5 w-full resize-none rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm"
+          />
+          <Button className="mt-3" variant="hero" disabled>
+            Отправить на проверку
+          </Button>
+        </section>
+      ) : null;
       break;
   }
-  return <div className="space-y-6 md:space-y-7">{content}</div>;
+  return content ? <div className="space-y-6 md:space-y-7">{content}</div> : null;
+}
+
+function StateDiagram({
+  content,
+  cardClass,
+}: {
+  content: Record<string, unknown>;
+  cardClass: string;
+}) {
+  return (
+    <section className={cardClass}>
+      <h3 className="mb-5 text-xl font-extrabold">
+        {stringValue(content, "title", "Диаграмма состояний")}
+      </h3>
+      <Suspense
+        fallback={
+          <div className="h-72 animate-pulse rounded-xl border border-border bg-muted/30" />
+        }
+      >
+        <StateDiagramCanvas content={content} />
+      </Suspense>
+    </section>
+  );
+}
+
+function LessonTable({
+  content,
+  cardClass,
+}: {
+  content: Record<string, unknown>;
+  cardClass: string;
+}) {
+  const columns = lessonTableColumns(content);
+  const rows = lessonTableRows(content);
+  return (
+    <section className={cardClass}>
+      <h3 className="mb-5 text-xl font-extrabold">{stringValue(content, "title", "Таблица")}</h3>
+      <div className="max-w-full overflow-x-auto rounded-xl border border-border">
+        <table className="w-full min-w-max border-collapse text-left text-sm">
+          <thead className="bg-primary-soft text-foreground">
+            <tr>
+              {columns.map((column) => (
+                <th key={column.id} className="border-b border-border px-4 py-3 font-bold">
+                  {column.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rowIndex) => (
+              <tr key={rowIndex} className="odd:bg-muted/30">
+                {columns.map((column) => (
+                  <td key={column.id} className="border-b border-border px-4 py-3 last:border-b-0">
+                    {row[column.id] ?? ""}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ReflectionBlock({ content }: { content: Record<string, unknown> }) {
+  const [answer, setAnswer] = useState("");
+  const [sent, setSent] = useState(false);
+  return (
+    <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-5 shadow-[var(--shadow-soft)] md:p-7">
+      <div className="mb-3 flex items-center gap-2 text-sm font-bold text-primary">
+        <MessageCircleQuestion className="h-4 w-4" /> Подумай как тестировщик
+      </div>
+      <h3 className="text-xl font-extrabold">{stringValue(content, "prompt")}</h3>
+      <p className="mt-2 text-sm text-muted-foreground">{stringValue(content, "hint")}</p>
+      <textarea
+        value={answer}
+        onChange={(event) => setAnswer(event.target.value)}
+        disabled={sent}
+        rows={3}
+        className="mt-4 w-full resize-y rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:border-primary"
+        placeholder="Напиши свои идеи..."
+      />
+      {!sent ? (
+        <Button
+          className="mt-3"
+          variant="soft"
+          disabled={!answer.trim()}
+          onClick={() => setSent(true)}
+        >
+          Показать подсказку
+        </Button>
+      ) : (
+        <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-950">
+          {stringValue(content, "feedback")}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function VisualChoiceBlock({ content }: { content: Record<string, unknown> }) {
+  const options = stringList(content, "options");
+  const correctAnswers = Array.isArray(content.correctAnswers)
+    ? content.correctAnswers.filter((item): item is number => typeof item === "number")
+    : [];
+  const [chosen, setChosen] = useState<number[]>([]);
+  const [checked, setChecked] = useState(false);
+  return (
+    <section className="rounded-2xl border border-sky-200 bg-card p-5 shadow-[var(--shadow-soft)] md:p-7">
+      <div className="mb-3 flex items-center gap-2 text-sm font-bold text-primary">
+        <Eye className="h-4 w-4" /> Визуальная проверка
+      </div>
+      <h3 className="text-xl font-extrabold">{stringValue(content, "title")}</h3>
+      <p className="mt-2 text-sm text-muted-foreground">{stringValue(content, "prompt")}</p>
+      <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6">
+        <div className="mx-auto max-w-sm rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="font-bold">Вход в аккаунт</p>
+          <div className="mt-4 text-xs font-semibold">
+            <p>Логин</p>
+            <div className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-500">
+              name@example.com
+            </div>
+          </div>
+          <div className="mt-3 text-xs font-semibold">
+            <p>Пароль</p>
+            <div className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal tracking-widest text-slate-400">
+              ••••••••
+            </div>
+          </div>
+          <div className="mt-4 w-full rounded-lg bg-primary px-3 py-2 text-center text-sm font-semibold text-primary-foreground">
+            Войти
+          </div>
+          <p className="mt-3 text-center text-xs text-primary">Забыли пароль?</p>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        {options.map((option, index) => (
+          <button
+            key={option}
+            type="button"
+            disabled={checked}
+            onClick={() =>
+              setChosen((value) =>
+                value.includes(index) ? value.filter((item) => item !== index) : [...value, index],
+              )
+            }
+            className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold ${chosen.includes(index) ? "border-primary bg-primary-soft" : "border-border bg-background"}`}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+      {!checked ? (
+        <Button
+          className="mt-4"
+          variant="hero"
+          disabled={chosen.length === 0}
+          onClick={() => setChecked(true)}
+        >
+          Проверить идеи
+        </Button>
+      ) : (
+        <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-950">
+          {stringValue(content, "explanation")}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function ExamplePart({ title, text, tone }: { title: string; text: string; tone: string }) {
   return (
     <div className={`rounded-xl p-4 ${tone}`}>
       <p className="text-sm font-bold">{title}</p>
-      <p className="mt-2 text-sm leading-relaxed">{text}</p>
+      <div className="mt-2 text-sm leading-relaxed">
+        <LessonRichContent content={text} />
+      </div>
     </div>
   );
 }
@@ -395,12 +666,10 @@ function QuestionBlock({
   content,
   completed,
   onComplete,
-  onNext,
 }: {
   content: Record<string, unknown>;
   completed: boolean;
   onComplete: () => Promise<boolean> | void;
-  onNext?: () => void;
 }) {
   const options = stringList(content, "options");
   const correctIndex = typeof content.correctIndex === "number" ? content.correctIndex : 0;
@@ -409,7 +678,9 @@ function QuestionBlock({
   const correctAnswers = Array.isArray(content.correctAnswers)
     ? content.correctAnswers.filter((item): item is number => typeof item === "number")
     : [correctIndex];
-  const [selected, setSelected] = useState<number[]>([]);
+  // Completed answers are loaded as progress only, so restore the visible
+  // selection from the correct options when the learner returns to the lesson.
+  const [selected, setSelected] = useState<number[]>(() => (completed ? correctAnswers : []));
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
@@ -481,12 +752,12 @@ function QuestionBlock({
             >
               {multiple ? (
                 isSelected ? (
-                  <CheckSquare2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <CheckSquare2 className="mt-0.5 h-5 w-5 shrink-0 fill-primary text-white" />
                 ) : (
                   <Square className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
                 )
               ) : isSelected ? (
-                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 fill-primary text-white" />
               ) : (
                 <Circle className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
               )}
@@ -533,11 +804,6 @@ function QuestionBlock({
               onClick={() => void saveAnswer()}
             >
               Повторить сохранение
-            </Button>
-          )}
-          {completed && onNext && (
-            <Button type="button" variant="outline" size="sm" className="mt-4" onClick={onNext}>
-              Продолжить урок
             </Button>
           )}
         </div>

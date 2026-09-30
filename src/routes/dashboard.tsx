@@ -1,13 +1,15 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link, useLocation } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   PlayCircle,
   Trophy,
   Flame,
   ArrowRight,
+  RotateCcw,
   BookOpen,
   CalendarDays,
   CheckCircle2,
+  Clock3,
   Lock,
   Award,
   ExternalLink,
@@ -19,16 +21,25 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BrandLogo } from "@/components/brand-logo";
 import { CompletionConfetti } from "@/components/completion-confetti";
+import { NotificationBell } from "@/components/notification-bell";
 import { useAuth } from "@/hooks/use-auth";
-import { supabase } from "@/integrations/supabase/client";
 import { ensureCurrentUserCertificate } from "@/server/certificates.functions";
+import { getStudentDashboardData } from "@/server/dashboard.functions";
 import { listPublishedMeetings } from "@/server/meetings.functions";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export const Route = createFileRoute("/dashboard")({
   component: Dashboard,
 });
 
-type Lesson = { id: string; day_number: number; title: string; description: string };
+type Lesson = {
+  id: string;
+  day_number: number;
+  title: string;
+  description: string;
+  homework_md: string | null;
+};
+type HomeworkStatus = "approved" | "pending" | "rejected";
 type Certificate = {
   certificate_number: string;
   verification_code: string;
@@ -54,8 +65,13 @@ function formatMeetingDate(value: string | null) {
 function Dashboard() {
   const { user, session, loading, signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [homeworkStatusByLessonId, setHomeworkStatusByLessonId] = useState<
+    Record<string, HomeworkStatus>
+  >({});
+  const [homeworkLessonIds, setHomeworkLessonIds] = useState<Set<string>>(new Set());
   const [hwApproved, setHwApproved] = useState(0);
   const [certificate, setCertificate] = useState<Certificate | null>(null);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -67,49 +83,40 @@ function Dashboard() {
     if (!loading && !user) navigate({ to: "/auth" });
   }, [user, loading, navigate]);
 
+  // The dashboard route can stay mounted while navigating to a lesson and
+  // back. Invalidate the cache when leaving it so completed lessons and
+  // homework statuses are fetched again on return.
+  useEffect(() => {
+    if (location.pathname !== "/dashboard") loadedUserIdRef.current = null;
+  }, [location.pathname]);
+
   useEffect(() => {
     if (!user) return;
+    if (location.pathname !== "/dashboard") return;
     if (loadedUserIdRef.current === user.id) return;
     let cancelled = false;
     setDataLoading(true);
     void (async () => {
       try {
-        const [
-          { data: ls },
-          { data: prog },
-          { data: hw },
-          { data: cert },
-          { data: profileRow },
-          publishedMeetings,
-        ] = await Promise.all([
-          supabase.from("lessons").select("id,day_number,title,description").order("day_number"),
-          supabase
-            .from("lesson_progress")
-            .select("lesson_id,completed")
-            .eq("user_id", user.id)
-            .eq("completed", true),
-          supabase
-            .from("homework_submissions")
-            .select("id")
-            .eq("user_id", user.id)
-            .eq("status", "approved"),
-          supabase
-            .from("certificates")
-            .select(
-              "certificate_number,verification_code,course_title,issued_at,mentor_name,revoked_at",
-            )
-            .eq("user_id", user.id)
-            .order("issued_at", { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-          supabase.from("profiles").select("full_name,avatar_url").eq("id", user.id).maybeSingle(),
+        const [dashboardData, meetingResult] = await Promise.all([
+          session?.access_token
+            ? getStudentDashboardData({ data: { accessToken: session.access_token } })
+            : Promise.reject(new Error("Не удалось проверить сессию")),
           session?.access_token
             ? listPublishedMeetings({ data: { accessToken: session.access_token } })
-            : Promise.resolve([]),
+                .then((meetings) => ({ meetings, error: null }))
+                .catch((error: unknown) => ({ meetings: [], error }))
+            : Promise.resolve({ meetings: [], error: null }),
         ]);
-        const loadedLessons = (ls ?? []) as Lesson[];
-        const loadedCompleted = new Set((prog ?? []).map((p) => p.lesson_id as string));
-        let loadedCertificate = (cert ?? null) as Certificate | null;
+        const loadedLessons = dashboardData.lessons as Lesson[];
+        const loadedCompleted = new Set(dashboardData.progress.map((p) => p.lesson_id as string));
+        const loadedHomeworkLessonIds = new Set<string>(
+          loadedLessons.filter((item) => Boolean(item.homework_md?.trim())).map((item) => item.id),
+        );
+        for (const block of dashboardData.homeworkBlocks ?? []) {
+          if (block?.lesson_id) loadedHomeworkLessonIds.add(String(block.lesson_id));
+        }
+        let loadedCertificate = (dashboardData.certificate ?? null) as Certificate | null;
 
         if (
           !loadedCertificate &&
@@ -125,10 +132,29 @@ function Dashboard() {
         if (cancelled) return;
         setLessons(loadedLessons);
         setCompletedIds(loadedCompleted);
-        setHwApproved((hw ?? []).length);
+        setHomeworkLessonIds(loadedHomeworkLessonIds);
+        const latestHomeworkStatus: Record<string, HomeworkStatus> = {};
+        for (const submission of dashboardData.homework ?? []) {
+          if (latestHomeworkStatus[submission.lesson_id as string]) continue;
+          const status =
+            submission.status === "approved"
+              ? "approved"
+              : submission.status === "rejected"
+                ? "rejected"
+                : "pending";
+          latestHomeworkStatus[submission.lesson_id as string] = status;
+        }
+        setHomeworkStatusByLessonId(latestHomeworkStatus);
+        setHwApproved(
+          Object.values(latestHomeworkStatus).filter((status) => status === "approved").length,
+        );
         setCertificate(loadedCertificate);
-        setMeetings((publishedMeetings ?? []) as Meeting[]);
-        setProfile((profileRow ?? null) as Profile | null);
+        if (meetingResult.error) {
+          // Meetings are supplementary dashboard data. A temporary failure must not hide lessons.
+          console.error("Не удалось загрузить встречи", meetingResult.error);
+        }
+        setMeetings(meetingResult.meetings as Meeting[]);
+        setProfile((dashboardData.profile ?? null) as Profile | null);
         loadedUserIdRef.current = user.id;
       } finally {
         if (!cancelled) setDataLoading(false);
@@ -139,7 +165,7 @@ function Dashboard() {
     };
     // Refreshing a Supabase token must not remount the student's dashboard.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [user?.id, location.pathname]);
 
   if (loading || !user || dataLoading) {
     return (
@@ -166,6 +192,7 @@ function Dashboard() {
         <div className="container-page h-16 flex items-center justify-between">
           <BrandLogo />
           <div className="flex items-center gap-3">
+            <NotificationBell />
             {isAdmin && (
               <Button asChild variant="soft" size="sm">
                 <Link to="/admin">
@@ -386,8 +413,9 @@ function Dashboard() {
             />
             <StatCard
               icon={CheckCircle2}
+              iconClassName="text-emerald-600"
               label="ДЗ принято"
-              value={`${hwApproved} / ${totalDays}`}
+              value={`${hwApproved} / ${homeworkLessonIds.size}`}
             />
             <StatCard icon={Trophy} label="Прогресс" value={`${progressPct}%`} />
           </div>
@@ -399,34 +427,111 @@ function Dashboard() {
           className="rounded-2xl border border-border bg-card p-7 shadow-[var(--shadow-soft)]"
         >
           <h3 className="text-xl font-extrabold mb-6">Все уроки курса</h3>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {lessons.map((l, i) => {
-              const isDone = completedIds.has(l.id);
-              const isLocked = !isDone && i > 0 && !completedIds.has(lessons[i - 1].id);
-              return (
-                <Link
-                  key={l.id}
-                  to="/lessons/$day"
-                  params={{ day: String(l.day_number) }}
-                  className={`group rounded-xl border border-border p-4 transition-all hover:shadow-[var(--shadow-card)] hover:-translate-y-0.5 ${isDone ? "bg-primary-soft/50" : "bg-background"}`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                      День {l.day_number}
-                    </span>
-                    {isDone ? (
-                      <CheckCircle2 className="h-4 w-4 text-primary" />
-                    ) : isLocked ? (
-                      <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                    ) : (
-                      <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary" />
-                    )}
-                  </div>
-                  <div className="font-display font-bold text-sm leading-snug">{l.title}</div>
-                </Link>
-              );
-            })}
-          </div>
+          <TooltipProvider delayDuration={150}>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {lessons.map((l, i) => {
+                const isDone = completedIds.has(l.id);
+                const homeworkStatus = homeworkStatusByLessonId[l.id];
+                const isLocked = !isDone && i > 0 && !completedIds.has(lessons[i - 1].id);
+                const statusIcon =
+                  homeworkStatus === "approved" ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          aria-label="ДЗ принято"
+                          tabIndex={0}
+                          className="inline-flex focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                        >
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>ДЗ принято</TooltipContent>
+                    </Tooltip>
+                  ) : homeworkStatus === "pending" ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          aria-label="ДЗ на проверке"
+                          tabIndex={0}
+                          className="inline-flex text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                        >
+                          <Clock3 className="h-4 w-4" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>ДЗ на проверке</TooltipContent>
+                    </Tooltip>
+                  ) : homeworkStatus === "rejected" ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          aria-label="ДЗ на доработке"
+                          tabIndex={0}
+                          className="inline-flex text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>ДЗ на доработке</TooltipContent>
+                    </Tooltip>
+                  ) : isDone ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          aria-label="Урок пройден"
+                          tabIndex={0}
+                          className="inline-flex text-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>Урок пройден</TooltipContent>
+                    </Tooltip>
+                  ) : isLocked ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          aria-label="Урок пока недоступен"
+                          tabIndex={0}
+                          className="inline-flex text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                        >
+                          <Lock className="h-3.5 w-3.5" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>Урок пока недоступен</TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          aria-label="Урок доступен"
+                          tabIndex={0}
+                          className="inline-flex text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                        >
+                          <ArrowRight className="h-4 w-4" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>Урок доступен</TooltipContent>
+                    </Tooltip>
+                  );
+                return (
+                  <Link
+                    key={l.id}
+                    to="/lessons/$day"
+                    params={{ day: String(l.day_number) }}
+                    className={`group rounded-xl border border-border p-4 transition-all hover:shadow-[var(--shadow-card)] hover:-translate-y-0.5 ${isDone ? "bg-primary-soft/50" : "bg-background"}`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        День {l.day_number}
+                      </span>
+                      {statusIcon}
+                    </div>
+                    <div className="font-display font-bold text-sm leading-snug">{l.title}</div>
+                  </Link>
+                );
+              })}
+            </div>
+          </TooltipProvider>
         </section>
       </main>
     </div>
@@ -437,16 +542,18 @@ function StatCard({
   icon: Icon,
   label,
   value,
+  iconClassName,
 }: {
   icon: typeof BookOpen;
   label: string;
   value: string;
+  iconClassName?: string;
 }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
       <div className="flex items-center justify-between">
         <div className="h-10 w-10 rounded-xl bg-primary-soft text-primary flex items-center justify-center">
-          <Icon className="h-5 w-5" />
+          <Icon className={`h-5 w-5 ${iconClassName ?? ""}`} />
         </div>
         <div className="text-2xl font-extrabold font-display">{value}</div>
       </div>

@@ -5,6 +5,7 @@ import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { AdminDiagnosticsPanel } from "@/components/admin-diagnostics-panel";
+import { NotificationBell } from "@/components/notification-bell";
 
 export const Route = createFileRoute("/admin")({
   component: AdminLayout,
@@ -49,11 +50,12 @@ function AdminLayout() {
   ] as const;
 
   return (
-    <div className="min-h-screen bg-[var(--gradient-soft)]">
+    <div className="min-h-screen bg-[var(--gradient-soft)] [--admin-header-height:7rem]">
       <header className="border-b border-border bg-background sticky top-0 z-30">
         <div className="container-page h-16 flex items-center justify-between gap-4">
           <BrandLogo subtitle="Админ-панель" admin />
           <div className="flex items-center gap-2">
+            <NotificationBell />
             <Button asChild variant="ghost" size="sm">
               <Link to="/dashboard">
                 <ArrowLeft className="h-4 w-4" /> В кабинет
@@ -64,14 +66,14 @@ function AdminLayout() {
             </Button>
           </div>
         </div>
-        <div className="container-page flex gap-1 overflow-x-auto pb-px">
+        <div className="container-page flex h-12 gap-1 overflow-x-auto">
           {tabs.map((t) => {
             const active = location.pathname.startsWith(t.to);
             return (
               <Link
                 key={t.to}
                 to={t.to}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                className={`flex h-12 items-center gap-2 whitespace-nowrap border-b-2 px-4 text-sm font-medium transition-colors ${
                   active
                     ? "border-primary text-foreground"
                     : "border-transparent text-muted-foreground hover:text-foreground"

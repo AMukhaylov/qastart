@@ -8,10 +8,15 @@ ASSESSMENT_FORMAT = ROOT / "supabase/migrations/20260920100000_course_assessment
 INTERACTIVE_LESSONS = ROOT / "supabase/migrations/20260920110000_seed_interactive_lessons_2_to_13.sql"
 EXPANDED_LESSONS = ROOT / "supabase/migrations/20260920120000_expand_interactive_lessons_2_and_3.sql"
 DAY_THREE_ORDER = ROOT / "supabase/migrations/20260920130000_reorder_day3_question_after_material.sql"
+DAY_TWO_REBUILD = ROOT / "supabase/migrations/20260922131500_rebuild_day_two_team_lesson.sql"
+RESET_PROGRESS = ROOT / "supabase/migrations/20260925120000_reset_all_account_progress.sql"
 RENDERER = ROOT / "src/components/interactive-lesson.tsx"
 LESSON_PAGE = ROOT / "src/routes/lessons.$day.tsx"
 ADMIN = ROOT / "src/routes/admin.lessons.tsx"
 GUIDE = ROOT / "src/components/lesson-guide.tsx"
+DASHBOARD = ROOT / "src/routes/dashboard.tsx"
+ADMIN_HOMEWORK = ROOT / "src/routes/admin.homework.tsx"
+HOMEWORK_FUNCTIONS = ROOT / "src/server/homework.functions.ts"
 
 
 def test_interactive_lesson_migration_has_all_mvp_block_types_and_rls():
@@ -47,13 +52,13 @@ def test_day_one_is_seeded_with_interactive_content_and_mini_quiz():
     assert "Домашнее задание" in sql
 
 
-def test_student_question_supports_feedback_and_retry():
+def test_student_question_shows_feedback_without_a_redundant_continue_button():
     source = RENDERER.read_text(encoding="utf-8")
 
     assert "function QuestionBlock" in source
     assert "Верно!" in source
-    assert "Попробуйте ещё раз." in source
-    assert "Попробовать ещё раз" in source
+    assert "Посмотри разбор ответа." in source
+    assert "Продолжить урок" not in source
 
 
 def test_lesson_steps_unlock_in_order_and_progress_is_saved_automatically():
@@ -69,6 +74,16 @@ def test_lesson_steps_unlock_in_order_and_progress_is_saved_automatically():
     assert "Завершить урок" not in page
 
 
+def test_state_diagram_editor_and_canvas_are_loaded_on_demand():
+    renderer = RENDERER.read_text(encoding="utf-8")
+    admin = ADMIN.read_text(encoding="utf-8")
+
+    assert 'import("@/components/state-diagram")' in renderer
+    assert 'import("@/components/state-diagram")' in admin
+    assert 'from "@/components/state-diagram"' not in renderer
+    assert 'from "@/components/state-diagram"' not in admin
+
+
 def test_blocks_have_configurable_completion_rules_and_lesson_has_a_guide():
     renderer = RENDERER.read_text(encoding="utf-8")
     page = LESSON_PAGE.read_text(encoding="utf-8")
@@ -80,9 +95,27 @@ def test_blocks_have_configurable_completion_rules_and_lesson_has_a_guide():
     assert "homeworkRequiredForCompletion" in admin
     assert "completionCondition" in admin
     assert "requiredBlocks" in page
-    assert 'variant="success"' in page
+    # Финальная карточка после ДЗ настраивается в редакторе, поэтому вариант
+    # персонажа передаётся из данных блока, а не фиксируется как success.
+    assert "completionVariant" in page
+    assert "variant={displayedCompletionVariant}" in page
     assert "LessonGuide" in guide
-    assert "backgroundSize: \"300% 200%\"" in guide
+    assert 'backgroundSize: variant === "pending" ? "cover" : "300% 200%"' in guide
+
+
+def test_homework_and_guide_are_independent_sortable_blocks():
+    lesson = (ROOT / "src/routes/lessons.$day.tsx").read_text(encoding="utf-8")
+    interactive = (ROOT / "src/components/interactive-lesson.tsx").read_text(encoding="utf-8")
+    admin = (ROOT / "src/routes/admin.lessons.tsx").read_text(encoding="utf-8")
+    migration = (ROOT / "supabase/migrations/20260924144816_split_homework_guide_blocks.sql").read_text(
+        encoding="utf-8"
+    )
+
+    assert "renderHomework" in interactive
+    assert "renderHomework={(block)" in lesson
+    assert "legacyHomeworkGuide" in migration
+    assert "Вводная плашка проводника — отдельный блок" in admin
+    assert "guideTitle" not in admin
 
 
 def test_admin_builder_exposes_all_block_types_and_order_controls():
@@ -92,6 +125,74 @@ def test_admin_builder_exposes_all_block_types_and_order_controls():
     assert "createLessonBlock(type)" in source
     assert "onUp" in source and "onDown" in source and "onDelete" in source
     assert 'from("lesson_blocks").delete()' in source
+    assert 'value={positionValue}' in source
+    assert 'setPositionValue(String(index + 1))' in source
+    assert 'const lineList = (label: string, key: string' in source
+    assert 'value={stringList(c, key).join("\\n")}' in source
+    assert 'e.target.value.split(/\\r?\\n/)' in source
+    assert 'event.key !== "Enter"' in source
+    assert 'event.preventDefault()' in source
+
+
+def test_video_block_description_is_editable_in_admin():
+    source = ADMIN.read_text(encoding="utf-8")
+
+    assert 'simple("Описание", "description", true)' in source
+
+
+def test_example_section_titles_are_free_text_and_have_fallbacks():
+    admin = ADMIN.read_text(encoding="utf-8")
+    interactive = (ROOT / "src/components/interactive-lesson.tsx").read_text(encoding="utf-8")
+    package = (ROOT / "src/lib/lesson-package.ts").read_text(encoding="utf-8")
+
+    assert 'simple("Заголовок первой секции", "expectedTitle")' in admin
+    assert 'simple("Заголовок второй секции", "actualTitle")' in admin
+    assert 'simple("Заголовок третьей секции", "conclusionTitle")' in admin
+    assert 'simple("Описание первой секции", "expected", true)' in admin
+    assert 'simple("Описание второй секции", "actual", true)' in admin
+    assert 'simple("Описание третьей секции", "conclusion", true)' in admin
+    assert 'stringValue(c, "expectedTitle", "Ожидание")' in interactive
+    assert 'stringValue(c, "actualTitle", "Фактический результат")' in interactive
+    assert 'stringValue(c, "conclusionTitle", "Вывод")' in interactive
+    assert 'name: "expectedTitle"' in package
+    assert 'name: "actualTitle"' in package
+    assert 'name: "conclusionTitle"' in package
+
+
+def test_important_thought_renders_markdown_content():
+    source = (ROOT / "src/components/interactive-lesson.tsx").read_text(encoding="utf-8")
+
+    assert 'case "important"' in source
+    assert '<LessonRichContent content={stringValue(c, "text")} />' in source
+
+
+def test_homework_instruction_renders_markdown_in_preview_and_lesson():
+    interactive = (ROOT / "src/components/interactive-lesson.tsx").read_text(encoding="utf-8")
+    lesson = (ROOT / "src/routes/lessons.$day.tsx").read_text(encoding="utf-8")
+
+    assert '<LessonRichContent content={stringValue(c, "instruction")} />' in interactive
+    assert '<LessonRichContent content={instruction} />' in lesson
+
+
+def test_lesson_preview_preserves_scroll_position_per_lesson():
+    source = (ROOT / "src/routes/admin.lessons.tsx").read_text(encoding="utf-8")
+    interactive = (ROOT / "src/components/interactive-lesson.tsx").read_text(encoding="utf-8")
+
+    assert "usePreviewScrollPosition" in source
+    assert 'activeId ? `lesson:${activeId}` : null' in source
+    assert 'preview ? `import:${preview.previewId}` : null' in source
+    assert "lastScrollTopRef.current = event.currentTarget.scrollTop" in source
+    assert 'document.addEventListener("visibilitychange", restore)' in source
+    assert 'window.addEventListener("focus", restore)' in source
+    assert "if (previewMode) return;" in interactive
+
+
+def test_lesson_header_reuses_notification_bell_and_hides_it_during_final_quiz():
+    source = (ROOT / "src/routes/lessons.$day.tsx").read_text(encoding="utf-8")
+
+    assert 'import { NotificationBell } from "@/components/notification-bell";' in source
+    assert "<NotificationBell />" in source
+    assert "lesson.day_number === 14 && finalQuizActive" in source
 
 
 def test_day_one_update_reserves_video_and_removes_homework_block():
@@ -129,8 +230,136 @@ def test_days_two_and_three_have_expanded_interactive_material():
     assert "'video'" not in sql
 
 
+def test_day_two_tells_one_connected_story_about_a_team_task():
+    sql = DAY_TWO_REBUILD.read_text(encoding="utf-8")
+
+    assert "Как работает IT-команда" in sql
+    assert "В сервисе доставки" in sql
+    assert "Почему QA подключается ещё до готовой функции" in sql
+    assert "После разработки задача не заканчивается" in sql
+    assert sql.count('"blocksNext":true') == 4
+    assert "Главное из урока" in sql
+    assert "questionType\":\"multiple_choice" in sql
+
+
 def test_day_three_question_follows_the_test_case_explanation():
     sql = DAY_THREE_ORDER.read_text(encoding="utf-8")
 
     assert "Что обычно содержит тест-кейс?" in sql
     assert "position = 9" in sql
+
+
+def test_dashboard_distinguishes_homework_waiting_from_completed_lessons():
+    source = DASHBOARD.read_text(encoding="utf-8")
+
+    assert "homeworkStatusByLessonId" in source
+    assert 'submission.status === "approved"' in source
+    assert 'submission.status === "rejected"' in source
+    assert '"pending"' in source
+    assert "Clock3" in source
+    assert "ДЗ на проверке" in source
+    assert "ДЗ на доработке" in source
+    assert "RotateCcw" in source
+    assert 'text-amber-500' in source
+    assert "ДЗ принято" in source
+    assert "Урок доступен" in source
+    assert 'className="inline-flex text-primary' in source
+    assert "Урок пока недоступен" in source
+    assert "TooltipContent" in source
+
+
+def test_dashboard_uses_semantic_homework_status_colors_and_reset_migration_clears_training_state():
+    source = DASHBOARD.read_text(encoding="utf-8")
+    reset_sql = RESET_PROGRESS.read_text(encoding="utf-8")
+
+    assert 'CheckCircle2 className="h-4 w-4 text-emerald-600"' in source
+    assert "text-blue-600" in source
+    for table in (
+        "certificates",
+        "quiz_attempts",
+        "homework_submissions",
+        "lesson_block_progress",
+        "lesson_progress",
+    ):
+        assert f"delete from public.{table};" in reset_sql
+
+
+def test_dashboard_refreshes_progress_when_returning_from_a_lesson():
+    source = DASHBOARD.read_text(encoding="utf-8")
+
+    assert "useLocation" in source
+    assert 'if (location.pathname !== "/dashboard") loadedUserIdRef.current = null;' in source
+    assert 'if (location.pathname !== "/dashboard") return;' in source
+    assert 'value={`${hwApproved} / ${homeworkLessonIds.size}`}' in source
+    assert "getStudentDashboardData" in source
+    dashboard_server = (ROOT / "src/server/dashboard.functions.ts").read_text(encoding="utf-8")
+    assert 'from("lesson_blocks").select("lesson_id").eq("block_type", "homework")' in dashboard_server
+    assert 'aria-label="Урок пройден"' in source
+    assert "text-emerald-600" in source
+
+
+def test_admin_lesson_save_does_not_delete_blocks_during_transient_load():
+    source = (ROOT / "src/routes/admin.lessons.tsx").read_text(encoding="utf-8")
+
+    assert "blocksLoadRequestRef" in source
+    assert "blocksLoading" in source
+    assert 'if (error) {' in source
+    assert "Блоки ещё загружаются. Повторите сохранение через секунду." in source
+    assert "databaseBlocks?.length ?? 0" in source
+
+
+def test_notifications_use_realtime_fallback_and_unlocked_sound():
+    source = (ROOT / "src/components/notification-bell.tsx").read_text(encoding="utf-8")
+    nginx = (ROOT / "deploy/nginx-startqa.ru").read_text(encoding="utf-8")
+
+    assert 'event: "INSERT"' in source
+    assert 'event: "UPDATE"' in source
+    assert "window.setInterval(() => void refresh(), 30_000)" in source
+    assert "seenNotificationIdsRef" in source
+    assert "audioContextRef" in source
+    assert 'proxy_set_header Upgrade $http_upgrade;' in nginx
+    assert 'proxy_set_header Connection "upgrade";' in nginx
+
+
+def test_notifications_are_always_available_and_can_be_cleared():
+    source = (ROOT / "src/components/notification-bell.tsx").read_text(encoding="utf-8")
+    migration = (ROOT / "supabase/migrations/20260925130000_notifications_recipient_delete.sql").read_text(
+        encoding="utf-8"
+    )
+
+    assert '.from("notifications")' in source
+    assert '.delete()' in source
+    assert "clearNotifications" in source
+    assert "Очистить" in source
+    assert "Включить уведомления" not in source
+    assert "Уведомления включены" not in source
+    assert "Очистить уведомления" in source
+    assert 'Notification.permission === "granted"' in source
+    assert 'for delete' in migration
+    assert "grant delete on public.notifications to authenticated;" in migration
+
+
+def test_rework_shows_only_one_student_response_form_and_admin_can_edit_own_comment():
+    lesson = LESSON_PAGE.read_text(encoding="utf-8")
+    admin = ADMIN_HOMEWORK.read_text(encoding="utf-8")
+    server = HOMEWORK_FUNCTIONS.read_text(encoding="utf-8")
+
+    assert "Напиши доработанный ответ..." in lesson
+    assert "Нужна помощь наставника?" not in lesson
+    assert "editHomeworkMessage" in admin
+    assert "Редактировать комментарий" in admin
+    assert "editHomeworkMessageInput" in server
+    assert "Можно редактировать только собственные комментарии" in server
+
+
+def test_pending_homework_uses_non_final_completion_card():
+    page = LESSON_PAGE.read_text(encoding="utf-8")
+    guide = (ROOT / "src/components/lesson-guide.tsx").read_text(encoding="utf-8")
+    guide_model = (ROOT / "src/lib/lesson-guide.ts").read_text(encoding="utf-8")
+
+    assert 'submission?.status === "pending"' in page
+    assert "почти пройден" in page
+    assert "После принятия ДЗ день будет полностью завершён" in page
+    assert 'submission?.status !== "rejected"' in page
+    assert 'pending: Clock3' in guide
+    assert 'pending: "center"' in guide_model

@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { z } from "zod";
 import {
   ArrowLeft,
   ArrowRight,
@@ -11,24 +12,30 @@ import {
   Send,
   X,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, type ButtonProps } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { FinalQuiz } from "@/components/final-quiz";
 import { InteractiveLesson } from "@/components/interactive-lesson";
 import { LessonGuide } from "@/components/lesson-guide";
+import { NotificationBell } from "@/components/notification-bell";
+import { LessonRichContent } from "@/components/lesson-rich-content";
+import type { LessonGuideVariant } from "@/lib/lesson-guide";
 import { isBlockRequired, LessonBlock, stringValue } from "@/lib/interactive-lesson";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { listHomeworkMessages, submitHomeworkForCurrentUser } from "@/server/homework.functions";
+import { getStudentLessonData } from "@/server/lesson-content.functions";
 import {
-  askHomeworkQuestion,
-  listHomeworkMessages,
-  submitHomeworkForCurrentUser,
-} from "@/server/homework.functions";
+  completeLessonForCurrentUser,
+  getLessonDailyAccessForCurrentUser,
+  MAX_NEW_LESSONS_PER_DAY,
+} from "@/server/lesson-access.functions";
 
 export const Route = createFileRoute("/lessons/$day")({
+  validateSearch: z.object({ focus: z.literal("homework").optional() }),
   component: LessonPage,
 });
 
@@ -75,8 +82,32 @@ type HomeworkMessage = {
 
 type ProfileMini = { id: string; full_name: string | null; avatar_url: string | null };
 
+type LessonNavigationTone = "dashboard" | "previous" | "next";
+
+function LessonNavigationButton({
+  tone,
+  ...props
+}: Omit<ButtonProps, "variant" | "size"> & { tone: LessonNavigationTone }) {
+  const variantByTone = {
+    dashboard: "outline",
+    previous: "soft",
+    next: "hero",
+  } as const;
+
+  return <Button {...props} variant={variantByTone[tone]} size="lg" />;
+}
+
+function BackToDashboardButton({ onClick }: { onClick: () => void }) {
+  return (
+    <LessonNavigationButton tone="dashboard" onClick={onClick}>
+      <ArrowLeft className="h-4 w-4" /> В кабинет
+    </LessonNavigationButton>
+  );
+}
+
 function LessonPage() {
   const { day } = Route.useParams();
+  const { focus } = Route.useSearch();
   const dayNum = parseInt(day, 10);
   const { user, session, loading: authLoading, isAdmin, rolesLoading } = useAuth();
   const navigate = useNavigate();
@@ -90,18 +121,18 @@ function LessonPage() {
   const [messages, setMessages] = useState<HomeworkMessage[]>([]);
   const [hwText, setHwText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [questionText, setQuestionText] = useState("");
-  const [questionAttachments, setQuestionAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [locked, setLocked] = useState(false);
+  const [dailyLimitReached, setDailyLimitReached] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [asking, setAsking] = useState(false);
   const [finalQuizActive, setFinalQuizActive] = useState(false);
   const [finalQuizExitRequest, setFinalQuizExitRequest] = useState(0);
   const [finalQuizExitDestination, setFinalQuizExitDestination] = useState<
     "dashboard" | number | null
   >(null);
   const loadedLessonKeyRef = useRef<string | null>(null);
+  const focusedHomeworkKeyRef = useRef<string | null>(null);
+  const pendingBlockIdsRef = useRef(new Set<string>());
 
   const leaveFinalQuiz = (destination: "dashboard" | number) => {
     setFinalQuizExitDestination(destination);
@@ -121,6 +152,31 @@ function LessonPage() {
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
+    const shouldFocusHomework =
+      focus === "homework" ||
+      (typeof window !== "undefined" && window.location.hash === "#homework");
+    if (!shouldFocusHomework || loading || !lesson || !submission) return;
+    const focusKey = `${lesson.id}:${submission.id}`;
+    if (focusedHomeworkKeyRef.current === focusKey) return;
+
+    let secondFrame: number | null = null;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        const homework = document.getElementById("homework");
+        if (!homework) return;
+        const headerHeight = document.querySelector("header")?.getBoundingClientRect().height ?? 0;
+        const top = homework.getBoundingClientRect().top + window.scrollY - headerHeight - 16;
+        focusedHomeworkKeyRef.current = focusKey;
+        window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [focus, lesson, loading, messages.length, submission]);
+
+  useEffect(() => {
     if (!user?.id || isNaN(dayNum) || rolesLoading) return;
     const lessonKey = `${user.id}:${dayNum}:${isAdmin}`;
     if (loadedLessonKeyRef.current === lessonKey) return;
@@ -134,42 +190,19 @@ function LessonPage() {
     setSubmission(null);
     setMessages([]);
     setAttachments([]);
-    setQuestionAttachments([]);
-    setQuestionText("");
     setLocked(false);
+    setDailyLimitReached(false);
     setBlocks([]);
     setViewedBlockIds([]);
 
-    if (dayNum > 1 && !isAdmin) {
-      const { data: previousLesson } = await supabase
-        .from("lessons")
-        .select("id")
-        .eq("day_number", dayNum - 1)
-        .maybeSingle();
-      const { data: previousProgress } = previousLesson
-        ? await supabase
-            .from("lesson_progress")
-            .select("completed")
-            .eq("user_id", user!.id)
-            .eq("lesson_id", previousLesson.id)
-            .eq("completed", true)
-            .maybeSingle()
-        : { data: null };
-
-      if (!previousProgress?.completed) {
-        setLesson(null);
-        setCompleted(false);
-        setLocked(true);
-        setLoading(false);
-        return;
-      }
+    if (!session?.access_token) {
+      setLoading(false);
+      return;
     }
-
-    const { data: l } = await supabase
-      .from("lessons")
-      .select("*")
-      .eq("day_number", dayNum)
-      .maybeSingle();
+    const lessonData = await getStudentLessonData({
+      data: { accessToken: session.access_token, dayNumber: dayNum },
+    });
+    const l = lessonData.lesson;
     if (!l) {
       setLesson(null);
       setCompleted(false);
@@ -177,36 +210,38 @@ function LessonPage() {
       setLoading(false);
       return;
     }
+    if (dayNum > 1 && !isAdmin && !lessonData.previousCompleted) {
+      setLesson(null);
+      setCompleted(false);
+      setLocked(true);
+      setLoading(false);
+      return;
+    }
+    if (!isAdmin && session?.access_token) {
+      try {
+        const access = await getLessonDailyAccessForCurrentUser({
+          data: { accessToken: session.access_token, lessonId: l.id },
+        });
+        if (!access.allowed) {
+          setLesson(null);
+          setCompleted(false);
+          setLocked(true);
+          setDailyLimitReached(true);
+          setLoading(false);
+          return;
+        }
+      } catch {
+        toast.error("Не удалось проверить дневной лимит. Попробуйте обновить страницу.");
+        setLoading(false);
+        return;
+      }
+    }
     setLesson(l as Lesson);
-
-    const [{ data: prog }, { data: sub }, { data: blockRows }, { data: blockProgressRows }] =
-      await Promise.all([
-        supabase
-          .from("lesson_progress")
-          .select("completed")
-          .eq("user_id", user!.id)
-          .eq("lesson_id", l.id)
-          .maybeSingle(),
-        supabase
-          .from("homework_submissions")
-          .select("id,user_id,content,status,feedback,created_at,reviewed_at,reviewed_by")
-          .eq("user_id", user!.id)
-          .eq("lesson_id", l.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase.from("lesson_blocks").select("*").eq("lesson_id", l.id).order("position"),
-        supabase
-          .from("lesson_block_progress")
-          .select("block_id")
-          .eq("user_id", user!.id)
-          .eq("lesson_id", l.id),
-      ]);
-    setCompleted(!!prog?.completed);
-    setBlocks((blockRows ?? []) as LessonBlock[]);
-    setViewedBlockIds((blockProgressRows ?? []).map((row) => row.block_id));
-    if (sub) {
-      const currentSubmission = sub as Submission;
+    setCompleted(!!lessonData.progress?.completed);
+    setBlocks((lessonData.blocks ?? []) as LessonBlock[]);
+    setViewedBlockIds((lessonData.blockProgress ?? []).map((row) => row.block_id));
+    if (lessonData.submission) {
+      const currentSubmission = lessonData.submission as Submission;
       setSubmission(currentSubmission);
       setHwText(currentSubmission.status === "rejected" ? "" : currentSubmission.content);
       await loadMessages(currentSubmission);
@@ -218,35 +253,70 @@ function LessonPage() {
 
   async function markBlocksCompleted(blockIds: string[]) {
     if (!lesson || !user) return false;
-    const pendingIds = Array.from(new Set(blockIds)).filter((id) => !viewedBlockIds.includes(id));
-    if (pendingIds.length === 0) return true;
-    const { error } = await supabase.from("lesson_block_progress").upsert(
-      pendingIds.map((blockId) => ({ user_id: user.id, lesson_id: lesson.id, block_id: blockId })),
-      { onConflict: "user_id,block_id" },
+    const previouslyViewed = new Set(viewedBlockIds);
+    const pendingIds = Array.from(new Set(blockIds)).filter(
+      (id) => !previouslyViewed.has(id) && !pendingBlockIdsRef.current.has(id),
     );
+    if (pendingIds.length === 0) return true;
+    pendingIds.forEach((id) => pendingBlockIdsRef.current.add(id));
+    // Move the learner forward immediately; the write is persisted in the
+    // background and rolled back if Supabase rejects it.
+    setViewedBlockIds((ids) => Array.from(new Set([...ids, ...pendingIds])));
+    let error: { message: string } | null = null;
+    try {
+      const result = await Promise.race([
+        supabase.from("lesson_block_progress").upsert(
+          pendingIds.map((blockId) => ({
+            user_id: user.id,
+            lesson_id: lesson.id,
+            block_id: blockId,
+          })),
+          { onConflict: "user_id,block_id" },
+        ),
+        new Promise<never>((_, reject) =>
+          window.setTimeout(() => reject(new Error("Превышено время сохранения прогресса")), 12000),
+        ),
+      ]);
+      error = result.error;
+    } catch (caught) {
+      error = {
+        message: caught instanceof Error ? caught.message : "Не удалось сохранить прогресс",
+      };
+    } finally {
+      pendingIds.forEach((id) => pendingBlockIdsRef.current.delete(id));
+    }
     if (error) {
+      setViewedBlockIds((ids) =>
+        ids.filter((id) => previouslyViewed.has(id) || !pendingIds.includes(id)),
+      );
       toast.error("Не удалось сохранить прогресс. Попробуйте ещё раз.");
       return false;
     }
-    setViewedBlockIds((ids) => Array.from(new Set([...ids, ...pendingIds])));
     return true;
   }
 
   async function completeLesson() {
     if (!lesson || !user || lesson.day_number === 14 || completed) return;
     setCompletingLesson(true);
-    const { error } = await supabase.from("lesson_progress").upsert(
-      {
-        user_id: user.id,
-        lesson_id: lesson.id,
-        completed: true,
-        completed_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,lesson_id" },
-    );
-    setCompletingLesson(false);
-    if (error) {
+    if (!session?.access_token) {
+      setCompletingLesson(false);
+      toast.error("Не удалось подтвердить сессию. Войди заново");
+      return;
+    }
+    let result: Awaited<ReturnType<typeof completeLessonForCurrentUser>>;
+    try {
+      result = await completeLessonForCurrentUser({
+        data: { accessToken: session.access_token, lessonId: lesson.id },
+      });
+    } catch {
+      setCompletingLesson(false);
       toast.error("Не удалось завершить урок. Попробуйте ещё раз.");
+      return;
+    }
+    setCompletingLesson(false);
+    if (!result.completed) {
+      setDailyLimitReached(true);
+      toast.error(`Сегодня можно завершить не больше ${MAX_NEW_LESSONS_PER_DAY} новых уроков.`);
       return;
     }
     setCompleted(true);
@@ -365,22 +435,6 @@ function LessonPage() {
     setAttachments((prev) => [...prev, ...loaded]);
   }
 
-  async function handleQuestionFiles(files: FileList | null) {
-    if (!files?.length) return;
-    const incoming = Array.from(files);
-    if (questionAttachments.length + incoming.length > 3) {
-      toast.error("Можно приложить максимум 3 файла");
-      return;
-    }
-    const tooBig = incoming.find((file) => file.size > 1_500_000);
-    if (tooBig) {
-      toast.error(`Файл «${tooBig.name}» больше 1.5 МБ`);
-      return;
-    }
-    const loaded = await Promise.all(incoming.map(readAttachment));
-    setQuestionAttachments((prev) => [...prev, ...loaded]);
-  }
-
   function readAttachment(file: File): Promise<Attachment> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -428,35 +482,6 @@ function LessonPage() {
     }
   }
 
-  async function submitQuestion() {
-    if (!submission || !questionText.trim()) return;
-    if (!session?.access_token) {
-      toast.error("Не удалось подтвердить сессию. Войди заново");
-      return;
-    }
-    setAsking(true);
-    try {
-      const data = await askHomeworkQuestion({
-        data: {
-          accessToken: session.access_token,
-          submissionId: submission.id,
-          question: questionText.trim(),
-          attachments: questionAttachments,
-        },
-      });
-      const savedSubmission = data as Submission;
-      setSubmission(savedSubmission);
-      setQuestionText("");
-      setQuestionAttachments([]);
-      await loadMessages(savedSubmission);
-      toast.success("Вопрос отправлен наставнику");
-    } catch {
-      toast.error("Не удалось отправить вопрос");
-    } finally {
-      setAsking(false);
-    }
-  }
-
   if (authLoading || rolesLoading || loading) {
     return (
       <div className="min-h-screen bg-[var(--gradient-soft)] px-6 flex items-center justify-center">
@@ -482,7 +507,9 @@ function LessonPage() {
           <div className="max-w-md rounded-2xl border border-border bg-card p-8 shadow-[var(--shadow-soft)]">
             <h1 className="text-xl font-extrabold">Урок пока закрыт</h1>
             <p className="mt-2 text-muted-foreground">
-              Сначала заверши предыдущий урок, чтобы открыть следующий материал.
+              {dailyLimitReached
+                ? `Сегодня уже пройдено ${MAX_NEW_LESSONS_PER_DAY} новых урока. Следующий урок станет доступен завтра.`
+                : "Сначала заверши предыдущий урок, чтобы открыть следующий материал."}
             </p>
             <Button asChild variant="soft" className="mt-6">
               <Link to="/dashboard">Вернуться к урокам</Link>
@@ -511,7 +538,9 @@ function LessonPage() {
       : completed
         ? 100
         : 0;
-  const homeworkBlock = blocks.find((block) => block.block_type === "homework");
+  const homeworkBlock = blocks.find(
+    (block) => block.block_type === "homework" && block.content.visible !== false,
+  );
   const hasLegacyHomework = blocks.length === 0 && Boolean(lesson.homework_md.trim());
   const homeworkUnlocked =
     Boolean(homeworkBlock) &&
@@ -524,18 +553,51 @@ function LessonPage() {
       .every((block) => viewedBlockIds.includes(block.id));
   const showHomework =
     (Boolean(homeworkBlock) && (homeworkUnlocked || Boolean(submission))) || hasLegacyHomework;
+  const hasHomework = Boolean(homeworkBlock) || hasLegacyHomework;
+  const showBottomCabinet = hasHomework ? Boolean(submission) : completed;
   const homeworkInstruction = homeworkBlock
     ? stringValue(homeworkBlock.content, "instruction")
     : lesson.homework_md;
+  const completionTitle = stringValue(
+    homeworkBlock?.content ?? {},
+    "completionTitle",
+    `День ${lesson.day_number} пройден`,
+  );
+  const completionText = stringValue(
+    homeworkBlock?.content ?? {},
+    "completionText",
+    "Домашнее задание отправлено на проверку. Следующий урок уже доступен, а результат проверки появится здесь, как только наставник его проверит.",
+  );
+  const completionVariant = stringValue(
+    homeworkBlock?.content ?? {},
+    "completionVariant",
+    "success",
+  ).replace("character_", "") as LessonGuideVariant;
+  const completionVisible = homeworkBlock?.content.completionVisible !== false;
+  const homeworkPending = submission?.status === "pending";
+  const completionCardVisible =
+    completed && lesson.day_number !== 14 && completionVisible && submission?.status !== "rejected";
+  const displayedCompletionTitle = homeworkPending
+    ? `День ${lesson.day_number} почти пройден`
+    : completionTitle;
+  const displayedCompletionText = homeworkPending
+    ? "Ты выполнил урок и отправил домашнее задание. Осталось дождаться проверки наставника. После принятия ДЗ день будет полностью завершён."
+    : submission && submission.status !== "approved"
+      ? completionText
+      : lesson.day_number === 1
+        ? "Первый день готов. Ты разобрался, зачем нужно тестирование, чем ожидаемый результат отличается от фактического и какую роль QA играет в команде. В следующем уроке посмотрим, кто ещё работает над продуктом и как специалисты взаимодействуют друг с другом."
+        : `Ты завершил урок «${lesson.title}». Все обязательные шаги сохранены, а следующий день уже открыт.`;
+  const displayedCompletionVariant = homeworkPending ? "pending" : completionVariant;
 
   return (
     <div className="min-h-screen bg-[var(--gradient-soft)]">
       <header className="border-b border-border bg-background">
         <div className="container-page h-16 flex items-center justify-between">
-          <Button variant="ghost" size="sm" onClick={returnToDashboard}>
-            <ArrowLeft className="h-4 w-4" /> В кабинет
-          </Button>
-          <div className="text-sm text-muted-foreground">День {lesson.day_number} из 14</div>
+          <BackToDashboardButton onClick={returnToDashboard} />
+          <div className="flex items-center gap-4">
+            {!(lesson.day_number === 14 && finalQuizActive) && <NotificationBell />}
+            <div className="text-sm text-muted-foreground">День {lesson.day_number} из 14</div>
+          </div>
         </div>
       </header>
 
@@ -575,30 +637,45 @@ function LessonPage() {
         )}
 
         <InteractiveLesson
-          blocks={blocks}
+          blocks={
+            submission
+              ? blocks.filter(
+                  (block) =>
+                    !(
+                      block.block_type === "guide" &&
+                      stringValue(block.content, "title").toLowerCase().includes("почти готов")
+                    ),
+                )
+              : blocks
+          }
           completedBlockIds={new Set(viewedBlockIds)}
           onBlocksCompleted={markBlocksCompleted}
           legacyContent={lesson.content_md}
           lessonDay={lesson.day_number}
           lessonTitle={lesson.title}
+          previousDay={prevDay || undefined}
+          renderHomework={(block) =>
+            showHomework && block.id === homeworkBlock?.id ? (
+              <HomeworkSubmissionCard
+                title={stringValue(block.content, "title", "Домашнее задание")}
+                instruction={homeworkInstruction}
+                submission={submission}
+                messages={messages}
+                hwText={hwText}
+                setHwText={setHwText}
+                attachments={attachments}
+                onFiles={handleFiles}
+                onRemoveAttachment={(index) =>
+                  setAttachments((previous) =>
+                    previous.filter((_, itemIndex) => itemIndex !== index),
+                  )
+                }
+                onSubmit={submitHomework}
+                saving={saving}
+              />
+            ) : null
+          }
         />
-
-        {completed && lesson.day_number !== 14 && (
-          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-[var(--shadow-soft)] md:p-7">
-            <LessonGuide
-              variant="success"
-              title={`День ${lesson.day_number} пройден`}
-              text={`Ты завершил урок «${lesson.title}». Все обязательные шаги сохранены, а следующий день уже открыт.`}
-            />
-            {nextDay && (
-              <Button asChild variant="hero" className="mt-5">
-                <Link to="/lessons/$day" params={{ day: String(nextDay) }}>
-                  Перейти к следующему дню <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            )}
-          </section>
-        )}
 
         {lesson.day_number === 14 ? (
           session?.access_token ? (
@@ -618,180 +695,195 @@ function LessonPage() {
               }}
             />
           ) : null
-        ) : showHomework ? (
-          <section className="rounded-2xl border border-border bg-card p-7 shadow-[var(--shadow-soft)]">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="h-10 w-10 rounded-xl bg-primary-soft text-primary flex items-center justify-center">
-                <ClipboardCheck className="h-5 w-5" />
-              </div>
-              <h2 className="text-xl font-extrabold">Домашнее задание</h2>
-            </div>
-            <p className="text-muted-foreground whitespace-pre-wrap">{homeworkInstruction}</p>
-
-            {submission ? (
-              <div className="mt-6 space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Статус:</span>
-                  <Badge
-                    variant={
-                      submission.status === "approved"
-                        ? "default"
-                        : submission.status === "rejected"
-                          ? "destructive"
-                          : "secondary"
-                    }
-                  >
-                    {submission.status === "approved"
-                      ? "Принято"
-                      : submission.status === "rejected"
-                        ? "На доработку"
-                        : submission.status === "awaiting_mentor"
-                          ? "Ждёт ответа наставника"
-                          : "На проверке"}
-                  </Badge>
-                </div>
-                <MessageHistory messages={messages} />
-                {submission.status === "rejected" && (
-                  <div className="space-y-5 pt-2">
-                    <div className="space-y-3">
-                      <Textarea
-                        placeholder="Напиши доработанный ответ..."
-                        value={hwText}
-                        onChange={(e) => setHwText(e.target.value)}
-                        rows={6}
-                        className="resize-y"
-                      />
-                      <AttachmentPicker
-                        attachments={attachments}
-                        onFiles={handleFiles}
-                        onRemove={(index) =>
-                          setAttachments((prev) => prev.filter((_, i) => i !== index))
-                        }
-                      />
-                      <Button
-                        variant="hero"
-                        onClick={submitHomework}
-                        disabled={!hwText.trim() || saving}
-                      >
-                        {saving ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Send className="h-4 w-4" />
-                        )}
-                        Отправить доработку
-                      </Button>
-                    </div>
-
-                    <div className="rounded-xl border border-border bg-muted/40 p-4">
-                      <h3 className="text-sm font-semibold">Нужна помощь наставника?</h3>
-                      <div className="mt-3 space-y-3">
-                        <Textarea
-                          placeholder="Напиши вопрос по доработке..."
-                          value={questionText}
-                          onChange={(e) => setQuestionText(e.target.value)}
-                          rows={4}
-                          className="resize-y bg-background"
-                        />
-                        <AttachmentPicker
-                          attachments={questionAttachments}
-                          onFiles={handleQuestionFiles}
-                          onRemove={(index) =>
-                            setQuestionAttachments((prev) => prev.filter((_, i) => i !== index))
-                          }
-                        />
-                        <Button
-                          variant="outline"
-                          onClick={submitQuestion}
-                          disabled={!questionText.trim() || asking}
-                        >
-                          {asking ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Send className="h-4 w-4" />
-                          )}
-                          Задать вопрос наставнику
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {submission.status === "awaiting_mentor" && (
-                  <div className="rounded-xl bg-primary-soft p-4 text-sm text-primary">
-                    Вопрос отправлен наставнику. Когда наставник ответит, здесь появится продолжение
-                    переписки.
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="mt-6 space-y-3">
-                <Textarea
-                  placeholder="Твой ответ..."
-                  value={hwText}
-                  onChange={(e) => setHwText(e.target.value)}
-                  rows={6}
-                  className="resize-y"
-                />
-                <AttachmentPicker
-                  attachments={attachments}
-                  onFiles={handleFiles}
-                  onRemove={(index) => setAttachments((prev) => prev.filter((_, i) => i !== index))}
-                />
-                <Button variant="hero" onClick={submitHomework} disabled={!hwText.trim() || saving}>
-                  {saving ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                  Отправить на проверку
-                </Button>
-              </div>
-            )}
-          </section>
+        ) : showHomework && !homeworkBlock ? (
+          <HomeworkSubmissionCard
+            title="Домашнее задание"
+            instruction={homeworkInstruction}
+            submission={submission}
+            messages={messages}
+            hwText={hwText}
+            setHwText={setHwText}
+            attachments={attachments}
+            onFiles={handleFiles}
+            onRemoveAttachment={(index) =>
+              setAttachments((previous) => previous.filter((_, itemIndex) => itemIndex !== index))
+            }
+            onSubmit={submitHomework}
+            saving={saving}
+          />
         ) : null}
 
-        {/* Navigation */}
-        <div className="flex justify-between gap-3">
-          {prevDay ? (
-            dayNum === 14 ? (
-              <Button
-                variant="soft"
-                size="lg"
-                onClick={() =>
-                  finalQuizActive
-                    ? leaveFinalQuiz(prevDay)
-                    : navigate({ to: "/lessons/$day", params: { day: String(prevDay) } })
-                }
-              >
-                <ArrowLeft className="h-4 w-4" /> День {prevDay}
-              </Button>
-            ) : (
-              <Button asChild variant="soft" size="lg">
-                <Link to="/lessons/$day" params={{ day: String(prevDay) }}>
+        {completionCardVisible && (
+          <section
+            className={`rounded-2xl p-5 shadow-[var(--shadow-soft)] md:p-7 ${homeworkPending ? "border border-primary/20 bg-primary-soft/30" : "border border-emerald-200 bg-emerald-50"}`}
+          >
+            <LessonGuide
+              variant={displayedCompletionVariant}
+              title={displayedCompletionTitle}
+              text={displayedCompletionText}
+            />
+          </section>
+        )}
+      </main>
+
+      <footer className="container-page pb-10">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            {showBottomCabinet && <BackToDashboardButton onClick={returnToDashboard} />}
+            {completed && prevDay ? (
+              dayNum === 14 ? (
+                <LessonNavigationButton
+                  tone="previous"
+                  onClick={() =>
+                    finalQuizActive
+                      ? leaveFinalQuiz(prevDay)
+                      : navigate({ to: "/lessons/$day", params: { day: String(prevDay) } })
+                  }
+                >
                   <ArrowLeft className="h-4 w-4" /> День {prevDay}
-                </Link>
-              </Button>
-            )
-          ) : (
-            <div />
-          )}
+                </LessonNavigationButton>
+              ) : (
+                <LessonNavigationButton tone="previous" asChild>
+                  <Link to="/lessons/$day" params={{ day: String(prevDay) }}>
+                    <ArrowLeft className="h-4 w-4" /> День {prevDay}
+                  </Link>
+                </LessonNavigationButton>
+              )
+            ) : null}
+          </div>
+
           {nextDay ? (
             completed ? (
-              <Button asChild variant="hero" size="lg">
+              <LessonNavigationButton tone="next" asChild className="self-start sm:self-auto">
                 <Link to="/lessons/$day" params={{ day: String(nextDay) }}>
                   День {nextDay} <ArrowRight className="h-4 w-4" />
                 </Link>
-              </Button>
-            ) : (
-              <div />
-            )
+              </LessonNavigationButton>
+            ) : null
           ) : (
-            <Button variant="hero" size="lg" onClick={returnToDashboard}>
+            <LessonNavigationButton
+              tone="next"
+              className="self-start sm:self-auto"
+              onClick={returnToDashboard}
+            >
               Завершить курс <CheckCircle2 className="h-4 w-4" />
-            </Button>
+            </LessonNavigationButton>
           )}
         </div>
-      </main>
+      </footer>
     </div>
+  );
+}
+
+function HomeworkSubmissionCard({
+  title,
+  instruction,
+  submission,
+  messages,
+  hwText,
+  setHwText,
+  attachments,
+  onFiles,
+  onRemoveAttachment,
+  onSubmit,
+  saving,
+}: {
+  title: string;
+  instruction: string;
+  submission: Submission | null;
+  messages: HomeworkMessage[];
+  hwText: string;
+  setHwText: (value: string) => void;
+  attachments: Attachment[];
+  onFiles: (files: FileList | null) => void;
+  onRemoveAttachment: (index: number) => void;
+  onSubmit: () => void;
+  saving: boolean;
+}) {
+  return (
+    <section
+      id="homework"
+      className="scroll-mt-24 rounded-2xl border border-border bg-card p-7 shadow-[var(--shadow-soft)]"
+    >
+      <div className="mb-3 flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-soft text-primary">
+          <ClipboardCheck className="h-5 w-5" />
+        </div>
+        <h2 className="text-xl font-extrabold">{title}</h2>
+      </div>
+      <div className="text-muted-foreground">
+        <LessonRichContent content={instruction} />
+      </div>
+
+      {submission ? (
+        <div className="mt-6 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Статус:</span>
+            <Badge
+              variant={
+                submission.status === "approved"
+                  ? "default"
+                  : submission.status === "rejected"
+                    ? "destructive"
+                    : "secondary"
+              }
+            >
+              {submission.status === "approved"
+                ? "Принято"
+                : submission.status === "rejected"
+                  ? "На доработку"
+                  : submission.status === "awaiting_mentor"
+                    ? "Ждёт ответа наставника"
+                    : "На проверке"}
+            </Badge>
+          </div>
+          <MessageHistory messages={messages} />
+          {submission.status === "rejected" && (
+            <div className="space-y-5 pt-2">
+              <Textarea
+                placeholder="Напиши доработанный ответ..."
+                value={hwText}
+                onChange={(event) => setHwText(event.target.value)}
+                rows={6}
+                className="resize-y"
+              />
+              <AttachmentPicker
+                attachments={attachments}
+                onFiles={onFiles}
+                onRemove={onRemoveAttachment}
+              />
+              <Button variant="hero" onClick={onSubmit} disabled={!hwText.trim() || saving}>
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Отправить доработку
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mt-6 space-y-3">
+          <Textarea
+            placeholder="Твой ответ..."
+            value={hwText}
+            onChange={(event) => setHwText(event.target.value)}
+            rows={6}
+            className="resize-y"
+          />
+          <AttachmentPicker
+            attachments={attachments}
+            onFiles={onFiles}
+            onRemove={onRemoveAttachment}
+          />
+          <Button variant="hero" onClick={onSubmit} disabled={!hwText.trim() || saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            Отправить на проверку
+          </Button>
+        </div>
+      )}
+    </section>
   );
 }
 

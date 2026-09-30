@@ -1,4 +1,5 @@
 import re
+import time
 
 from playwright.sync_api import expect
 
@@ -22,12 +23,12 @@ PROGRAM_TITLES = [
 
 
 def test_homepage_has_course_program_and_vk_contact(page):
-    response = page.goto("/", wait_until="domcontentloaded")
+    response = page.goto(f"/?qa_regression={time.time_ns()}", wait_until="domcontentloaded")
 
     assert response and response.status == 200
     expect(page).to_have_title(re.compile("QA Start"))
     expect(page.get_by_role("link", name="Войти в кабинет", exact=True)).to_be_visible()
-    vk_link = page.get_by_role("link", name="Написать в VK", exact=True)
+    vk_link = page.get_by_role("link", name="Записаться на курс", exact=True)
     expect(vk_link).to_be_visible()
     assert vk_link.get_attribute("href") == "https://vk.ru/qa_school"
 
@@ -36,7 +37,7 @@ def test_homepage_has_course_program_and_vk_contact(page):
 
 
 def test_hidden_application_version_is_present(page):
-    page.goto("/", wait_until="domcontentloaded")
+    page.goto(f"/?qa_regression={time.time_ns()}", wait_until="domcontentloaded")
     version = page.locator('meta[name="app-version"]').get_attribute("content")
 
     assert version and re.fullmatch(r"v\d+\.\d+\.\d+", version)
@@ -44,7 +45,7 @@ def test_hidden_application_version_is_present(page):
 
 def test_homepage_is_usable_on_mobile(page):
     page.set_viewport_size({"width": 390, "height": 844})
-    page.goto("/", wait_until="domcontentloaded")
+    page.goto(f"/?qa_regression={time.time_ns()}", wait_until="domcontentloaded")
 
     cta = page.get_by_role("link", name="Войти в кабинет", exact=True)
     expect(cta).to_be_visible()
@@ -54,6 +55,7 @@ def test_homepage_is_usable_on_mobile(page):
 
 def test_student_login_has_no_self_registration_or_email_field(page):
     page.goto("/auth", wait_until="domcontentloaded")
+    page.locator('[data-testid="student-login-ready"][data-hydrated="true"]').wait_for()
 
     expect(page.get_by_role("heading", name="Добро пожаловать в QA Start")).to_be_visible()
     expect(page.locator("#login")).to_be_visible()
@@ -64,7 +66,7 @@ def test_student_login_has_no_self_registration_or_email_field(page):
 
 def test_student_login_password_visibility_toggle(page):
     page.goto("/auth", wait_until="domcontentloaded")
-    page.wait_for_timeout(5000)
+    page.locator('[data-testid="student-login-ready"][data-hydrated="true"]').wait_for()
     password = page.locator("#password")
     password.fill("ExamplePassword1")
 

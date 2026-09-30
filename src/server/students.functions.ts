@@ -1,7 +1,12 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { getRolesForAccessToken, getUserIdForAccessToken } from "./admin-auth.server";
+import {
+  getRolesForAccessToken,
+  getUserIdForAccessToken,
+  listAllAuthUsers,
+} from "./admin-auth.server";
 
 const adminAccessInput = z.object({ accessToken: z.string().min(20) });
 const studentIdInput = adminAccessInput.extend({ userId: z.string().uuid() });
@@ -100,23 +105,19 @@ export const listAdminStudentsAuth = createServerFn({ method: "POST" })
   .inputValidator((data) => adminAccessInput.parse(data))
   .handler(async ({ data }) => {
     await assertAdmin(data.accessToken);
-    const [
-      { data: profiles, error: profilesError },
-      { data: users, error: usersError },
-      { data: roles, error: rolesError },
-    ] = await Promise.all([
-      supabaseAdmin.from("profiles").select("id,login,full_name"),
-      supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
-      supabaseAdmin.from("user_roles").select("user_id,role"),
-    ]);
+    const [{ data: profiles, error: profilesError }, users, { data: roles, error: rolesError }] =
+      await Promise.all([
+        supabaseAdmin.from("profiles").select("id,login,full_name"),
+        listAllAuthUsers(),
+        supabaseAdmin.from("user_roles").select("user_id,role"),
+      ]);
     if (profilesError) throw profilesError;
-    if (usersError) throw usersError;
     if (rolesError) throw rolesError;
     const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
     const admins = new Set(
       (roles ?? []).filter((role) => role.role === "admin").map((role) => role.user_id),
     );
-    return users.users
+    return users
       .filter((user) => !admins.has(user.id))
       .map((user) => {
         const profile = profileById.get(user.id);
@@ -127,6 +128,90 @@ export const listAdminStudentsAuth = createServerFn({ method: "POST" })
           full_name: profile?.full_name ?? null,
         };
       });
+  });
+
+export const listAdminStudentsOverview = createServerFn({ method: "POST" })
+  .inputValidator((data) => adminAccessInput.parse(data))
+  .handler(async ({ data }) => {
+    await assertAdmin(data.accessToken);
+    const [
+      { data: profiles, error: profilesError },
+      users,
+      { data: roles, error: rolesError },
+      { data: lessons, error: lessonsError },
+      { data: progress, error: progressError },
+      { data: homework, error: homeworkError },
+      { data: groups, error: groupsError },
+      { data: memberships, error: membershipsError },
+    ] = await Promise.all([
+      supabaseAdmin.from("profiles").select("id,login,full_name,created_at"),
+      listAllAuthUsers(),
+      supabaseAdmin.from("user_roles").select("user_id,role"),
+      supabaseAdmin.from("lessons").select("id"),
+      supabaseAdmin.from("lesson_progress").select("user_id,completed").eq("completed", true),
+      supabaseAdmin.from("homework_submissions").select("user_id,status"),
+      supabaseAdmin
+        .from("student_groups" as any)
+        .select("id,name,description,created_at,updated_at")
+        .order("name"),
+      supabaseAdmin.from("group_students" as any).select("group_id,student_id"),
+    ]);
+    for (const error of [
+      profilesError,
+      rolesError,
+      lessonsError,
+      progressError,
+      homeworkError,
+      groupsError,
+      membershipsError,
+    ]) {
+      if (error) throw error;
+    }
+    const admins = new Set(
+      (roles ?? []).filter((role) => role.role === "admin").map((role) => role.user_id),
+    );
+    const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
+    const completed = new Map<string, number>();
+    (progress ?? []).forEach((item) =>
+      completed.set(item.user_id, (completed.get(item.user_id) ?? 0) + 1),
+    );
+    const approved = new Map<string, number>();
+    const pending = new Map<string, number>();
+    (homework ?? []).forEach((item) => {
+      const target =
+        item.status === "approved" ? approved : item.status === "pending" ? pending : null;
+      if (target) target.set(item.user_id, (target.get(item.user_id) ?? 0) + 1);
+    });
+    const groupMembers = new Map<string, string[]>();
+    (memberships ?? []).forEach((membership: any) => {
+      groupMembers.set(membership.group_id, [
+        ...(groupMembers.get(membership.group_id) ?? []),
+        membership.student_id,
+      ]);
+    });
+    const studentRows = users
+      .filter((user) => !admins.has(user.id))
+      .map((user) => {
+        const profile = profileById.get(user.id);
+        return {
+          id: user.id,
+          login: profile?.login ?? "",
+          full_name: profile?.full_name ?? null,
+          created_at: profile?.created_at ?? user.created_at,
+          banned_until: user.banned_until ?? null,
+          completed: completed.get(user.id) ?? 0,
+          approved: approved.get(user.id) ?? 0,
+          pending: pending.get(user.id) ?? 0,
+        };
+      });
+    return {
+      students: studentRows,
+      totalLessons: lessons?.length || 14,
+      groups: (groups ?? []).map((group: any) => ({
+        ...group,
+        studentIds: groupMembers.get(group.id) ?? [],
+      })),
+    };
   });
 
 export const createAdminStudent = createServerFn({ method: "POST" })

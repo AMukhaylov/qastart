@@ -1,5 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { z } from "zod";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -26,11 +27,14 @@ import { toast } from "sonner";
 import { withRetry } from "@/lib/admin-diagnostics";
 import {
   answerHomeworkQuestion,
+  editHomeworkMessage,
+  getAdminHomeworkSubmissionAccess,
   listHomeworkMessages,
   reviewHomeworkSubmission,
 } from "@/server/homework.functions";
 
 export const Route = createFileRoute("/admin/homework")({
+  validateSearch: z.object({ submission: z.string().uuid().optional() }),
   component: AdminHomework,
 });
 
@@ -76,7 +80,9 @@ type HomeworkMessage = {
 };
 
 function AdminHomework() {
-  const { session, isAdmin } = useAuth();
+  const { session, isAdmin, user } = useAuth();
+  const { submission: targetSubmissionId } = Route.useSearch();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<Status>("pending");
   const [items, setItems] = useState<Submission[]>([]);
   const [messagesBySubmission, setMessagesBySubmission] = useState<
@@ -91,14 +97,17 @@ function AdminHomework() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loadedMessageThreads, setLoadedMessageThreads] = useState<Record<string, boolean>>({});
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingMessageBody, setEditingMessageBody] = useState("");
+  const [updatingMessageId, setUpdatingMessageId] = useState<string | null>(null);
   const selected = selectedId ? (items.find((item) => item.id === selectedId) ?? null) : null;
 
   useEffect(() => {
     if (!isAdmin) return;
-    void load();
+    void load(targetSubmissionId);
     // `load` intentionally closes over the current filter for the retry timer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, filter]);
+  }, [isAdmin, filter, targetSubmissionId]);
 
   useEffect(() => {
     if (!selected || loadedMessageThreads[selected.id]) return;
@@ -107,28 +116,34 @@ function AdminHomework() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id, session?.access_token]);
 
-  async function load() {
+  async function load(targetId?: string) {
     setLoading(true);
     setLoadError(null);
     try {
+      if (targetId) {
+        if (!session?.access_token) throw new Error("Не удалось подтвердить админ-сессию");
+        await getAdminHomeworkSubmissionAccess({
+          data: { accessToken: session.access_token, submissionId: targetId },
+        });
+      }
       const subsRes = await withRetry(
-        `homework.list[${filter}]`,
-        () =>
-          supabase
+        targetId ? `homework.target[${targetId}]` : `homework.list[${filter}]`,
+        () => {
+          const query = supabase
             .from("homework_submissions")
             .select(
               "id,user_id,lesson_id,content,status,feedback,created_at,updated_at,reviewed_at,reviewed_by",
             )
-            .eq("status", filter)
-            .order("created_at", { ascending: false })
-            .limit(120),
+            .order("created_at", { ascending: false });
+          return targetId ? query.eq("id", targetId) : query.eq("status", filter).limit(120);
+        },
         { retries: 2, timeoutMs: 5000 },
       );
 
       if (subsRes.error) {
         setItems([]);
         setLoadError("База временно недоступна. Повторим автоматически…");
-        window.setTimeout(() => void load(), 2500);
+        window.setTimeout(() => void load(targetId), 2500);
         return;
       }
 
@@ -182,6 +197,7 @@ function AdminHomework() {
         }),
       );
       setItems(hydrated);
+      if (targetId) setSelectedId(hydrated[0]?.id ?? null);
       setMessagesBySubmission((prev) => {
         const next = { ...prev };
         for (const submission of hydrated) {
@@ -460,12 +476,44 @@ function AdminHomework() {
     setSelectedId(null);
   }
 
+  async function saveEditedMessage(message: HomeworkMessage) {
+    if (!session?.access_token || !editingMessageBody.trim()) return;
+    setUpdatingMessageId(message.id);
+    try {
+      const updated = await editHomeworkMessage({
+        data: {
+          accessToken: session.access_token,
+          messageId: message.id,
+          body: editingMessageBody.trim(),
+        },
+      });
+      if (!selected) return;
+      setMessagesBySubmission((prev) => ({
+        ...prev,
+        [selected.id]: (prev[selected.id] ?? []).map((item) =>
+          item.id === message.id ? { ...item, body: updated.body } : item,
+        ),
+      }));
+      setEditingMessageId(null);
+      setEditingMessageBody("");
+      toast.success("Комментарий обновлён");
+    } catch {
+      toast.error("Не удалось обновить комментарий");
+    } finally {
+      setUpdatingMessageId(null);
+    }
+  }
+
   const tabs: { key: Status; label: string; icon: typeof Clock }[] = [
     { key: "pending", label: "На проверке", icon: Clock },
     { key: "awaiting_mentor", label: "Ждут ответа", icon: HelpCircle },
     { key: "approved", label: "Принятые", icon: CheckCircle2 },
     { key: "rejected", label: "На доработке", icon: XCircle },
   ];
+  const closeSubmission = () => {
+    setSelectedId(null);
+    if (targetSubmissionId) void navigate({ to: "/admin/homework", search: {} });
+  };
   return (
     <div className="space-y-5">
       <div>
@@ -503,12 +551,26 @@ function AdminHomework() {
           attachments={attachmentsBySubmission[selected.id] ?? []}
           saving={savingId === selected.id}
           filter={filter}
-          onBack={() => setSelectedId(null)}
+          onBack={closeSubmission}
           onFeedback={(value) => setFeedbacks((p) => ({ ...p, [selected.id]: value }))}
           onFiles={(files) => handleFiles(selected.id, files)}
           onRemoveAttachment={(index) => removeAttachment(selected.id, index)}
           onReview={(status) => review(selected.id, status)}
           onAnswer={() => answerQuestion(selected.id)}
+          currentUserId={user?.id ?? null}
+          editingMessageId={editingMessageId}
+          editingMessageBody={editingMessageBody}
+          updatingMessageId={updatingMessageId}
+          onStartEdit={(message) => {
+            setEditingMessageId(message.id);
+            setEditingMessageBody(message.body);
+          }}
+          onCancelEdit={() => {
+            setEditingMessageId(null);
+            setEditingMessageBody("");
+          }}
+          onEditedMessageChange={setEditingMessageBody}
+          onSaveEditedMessage={saveEditedMessage}
         />
       ) : loading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
@@ -525,13 +587,12 @@ function AdminHomework() {
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border bg-card">
           <div className="min-w-[1040px]">
-            <div className="grid grid-cols-[170px_minmax(280px,1fr)_120px_110px_180px_64px_130px] bg-muted/70 px-4 py-3 text-xs font-semibold text-muted-foreground">
+            <div className="grid grid-cols-[170px_minmax(280px,1fr)_120px_110px_180px_130px] bg-muted/70 px-4 py-3 text-xs font-semibold text-muted-foreground">
               <div>Ученик</div>
               <div>Задание</div>
               <div>Создано</div>
               <div>SLA ↑</div>
               <div>Наставник</div>
-              <div></div>
               <div>Статус</div>
             </div>
             {items.map((s) => (
@@ -539,7 +600,7 @@ function AdminHomework() {
                 key={s.id}
                 type="button"
                 onClick={() => setSelectedId(s.id)}
-                className="grid w-full grid-cols-[170px_minmax(280px,1fr)_120px_110px_180px_64px_130px] items-center gap-x-3 border-t border-border px-4 py-4 text-left text-sm transition-colors hover:bg-muted/50"
+                className="grid w-full grid-cols-[170px_minmax(280px,1fr)_120px_110px_180px_130px] items-center gap-x-3 border-t border-border px-4 py-4 text-left text-sm transition-colors hover:bg-muted/50"
               >
                 <div className="min-w-0 font-medium">{s.profile?.full_name ?? "Студент"}</div>
                 <div className="min-w-0">
@@ -561,9 +622,6 @@ function AdminHomework() {
                   messages={messagesBySubmission[s.id] ?? buildLegacyMessages(s)}
                 />
                 <div className="min-w-0">{s.mentor?.full_name ?? "Артур Мухайлов"}</div>
-                <div className="text-primary">
-                  <Edit3 className="h-4 w-4" />
-                </div>
                 <div className="inline-flex items-center gap-2">
                   <StatusBadge status={s.status} />
                 </div>
@@ -589,6 +647,14 @@ function HomeworkDetail({
   onRemoveAttachment,
   onReview,
   onAnswer,
+  currentUserId,
+  editingMessageId,
+  editingMessageBody,
+  updatingMessageId,
+  onStartEdit,
+  onCancelEdit,
+  onEditedMessageChange,
+  onSaveEditedMessage,
 }: {
   submission: Submission;
   messages: HomeworkMessage[];
@@ -602,6 +668,14 @@ function HomeworkDetail({
   onRemoveAttachment: (index: number) => void;
   onReview: (status: "approved" | "rejected") => void;
   onAnswer: () => void;
+  currentUserId: string | null;
+  editingMessageId: string | null;
+  editingMessageBody: string;
+  updatingMessageId: string | null;
+  onStartEdit: (message: HomeworkMessage) => void;
+  onCancelEdit: () => void;
+  onEditedMessageChange: (value: string) => void;
+  onSaveEditedMessage: (message: HomeworkMessage) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -639,7 +713,17 @@ function HomeworkDetail({
       <section className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-soft)]">
         <h2 className="text-xl font-extrabold">Ответ студента и переписка</h2>
         <div className="mt-4">
-          <MessageHistory messages={messages} />
+          <MessageHistory
+            messages={messages}
+            currentUserId={currentUserId}
+            editingMessageId={editingMessageId}
+            editingMessageBody={editingMessageBody}
+            updatingMessageId={updatingMessageId}
+            onStartEdit={onStartEdit}
+            onCancelEdit={onCancelEdit}
+            onEditedMessageChange={onEditedMessageChange}
+            onSaveEditedMessage={onSaveEditedMessage}
+          />
         </div>
       </section>
 
@@ -803,7 +887,27 @@ function AttachmentPicker({
   );
 }
 
-function MessageHistory({ messages }: { messages: HomeworkMessage[] }) {
+function MessageHistory({
+  messages,
+  currentUserId,
+  editingMessageId,
+  editingMessageBody,
+  updatingMessageId,
+  onStartEdit,
+  onCancelEdit,
+  onEditedMessageChange,
+  onSaveEditedMessage,
+}: {
+  messages: HomeworkMessage[];
+  currentUserId: string | null;
+  editingMessageId: string | null;
+  editingMessageBody: string;
+  updatingMessageId: string | null;
+  onStartEdit: (message: HomeworkMessage) => void;
+  onCancelEdit: () => void;
+  onEditedMessageChange: (value: string) => void;
+  onSaveEditedMessage: (message: HomeworkMessage) => void;
+}) {
   if (messages.length === 0) return null;
   return (
     <div className="space-y-3">
@@ -847,7 +951,43 @@ function MessageHistory({ messages }: { messages: HomeworkMessage[] }) {
             </div>
             <span>{new Date(message.created_at).toLocaleString("ru-RU")}</span>
           </div>
-          {message.body && <div className="whitespace-pre-wrap">{message.body}</div>}
+          {editingMessageId === message.id ? (
+            <div className="space-y-2">
+              <Textarea
+                aria-label="Редактирование комментария наставника"
+                rows={4}
+                value={editingMessageBody}
+                onChange={(event) => onEditedMessageChange(event.target.value)}
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => onSaveEditedMessage(message)}
+                  disabled={!editingMessageBody.trim() || updatingMessageId === message.id}
+                >
+                  {updatingMessageId === message.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Сохранить
+                </Button>
+                <Button size="sm" variant="outline" onClick={onCancelEdit}>
+                  Отмена
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {message.body && <div className="whitespace-pre-wrap">{message.body}</div>}
+              {message.author_role === "mentor" && message.author_id === currentUserId && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="mt-2 h-auto px-0 text-primary hover:bg-transparent hover:text-primary/80"
+                  onClick={() => onStartEdit(message)}
+                >
+                  <Edit3 className="h-3.5 w-3.5" /> Редактировать комментарий
+                </Button>
+              )}
+            </>
+          )}
           {message.attachments?.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {message.attachments.map((file, index) => (

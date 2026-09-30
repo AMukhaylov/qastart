@@ -18,7 +18,9 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
+    setHydrated(true);
     if (!loading && user) navigate({ to: "/dashboard" });
   }, [loading, user, navigate]);
   async function handleLogin() {
@@ -66,7 +68,11 @@ function AuthPage() {
     void handleLogin();
   }
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
+    <div
+      data-testid="student-login-ready"
+      data-hydrated={hydrated}
+      className="grid min-h-screen lg:grid-cols-2"
+    >
       <div
         className="relative hidden overflow-hidden text-primary-foreground lg:flex"
         style={{ background: "var(--gradient-hero)" }}
