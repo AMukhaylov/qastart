@@ -19,6 +19,7 @@ import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { LessonGuide } from "@/components/lesson-guide";
 import { LessonRichContent } from "@/components/lesson-rich-content";
+import { SqlSandboxHomework } from "@/components/sql-sandbox-homework";
 import type { LessonGuideVariant } from "@/lib/lesson-guide";
 import {
   blocksNext,
@@ -29,6 +30,7 @@ import {
   stringList,
   stringValue,
 } from "@/lib/interactive-lesson";
+import type { SqlSandboxConfig } from "@/lib/interactive-lesson";
 
 const StateDiagramCanvas = lazy(() =>
   import("@/components/state-diagram").then((module) => ({ default: module.StateDiagramCanvas })),
@@ -227,7 +229,12 @@ export function InteractiveLesson({
             )}
             {step.kind === "homework" && !stepCompleted && !previewMode && (
               <p className="pt-1 text-sm text-muted-foreground">
-                Отправьте выполненное задание в форме ниже, чтобы открыть следующий шаг.
+                {step.blocks.some(
+                  (block) =>
+                    block.block_type === "homework" && block.content.mode === "sql_sandbox",
+                )
+                  ? "Выполни все SQL-задания ниже, чтобы завершить урок. Ответ наставнику отправлять не нужно."
+                  : "Отправьте выполненное задание в форме ниже, чтобы открыть следующий шаг."}
               </p>
             )}
           </section>
@@ -457,26 +464,38 @@ function LessonBlockView({
     case "homework":
       // The submission form below the lesson is the single homework card. Keeping the
       // instruction here as well created two identical homework blocks for the learner.
-      content = previewMode ? (
-        <section className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] md:p-7">
-          <div className="flex items-center gap-2 text-primary">
-            <CheckSquare2 className="h-5 w-5" />
-            <span className="font-extrabold">{stringValue(c, "title", "Домашнее задание")}</span>
-          </div>
-          <div className="mt-3 leading-relaxed text-foreground/85">
-            <LessonRichContent content={stringValue(c, "instruction")} />
-          </div>
-          <textarea
-            disabled
-            rows={3}
-            placeholder="Твой ответ..."
-            className="mt-5 w-full resize-none rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm"
+      content =
+        c.mode === "sql_sandbox" && c.sandbox ? (
+          <SqlSandboxHomework
+            title={stringValue(c, "title", "SQL-практика")}
+            instruction={stringValue(c, "instruction")}
+            successMessage={stringValue(
+              c,
+              "sqlSandboxCompletionMessage",
+              "Все задания выполнены. Молодец!",
+            )}
+            config={c.sandbox as SqlSandboxConfig}
           />
-          <Button className="mt-3" variant="hero" disabled>
-            Отправить на проверку
-          </Button>
-        </section>
-      ) : null;
+        ) : previewMode ? (
+          <section className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] md:p-7">
+            <div className="flex items-center gap-2 text-primary">
+              <CheckSquare2 className="h-5 w-5" />
+              <span className="font-extrabold">{stringValue(c, "title", "Домашнее задание")}</span>
+            </div>
+            <div className="mt-3 leading-relaxed text-foreground/85">
+              <LessonRichContent content={stringValue(c, "instruction")} />
+            </div>
+            <textarea
+              disabled
+              rows={3}
+              placeholder="Твой ответ..."
+              className="mt-5 w-full resize-none rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm"
+            />
+            <Button className="mt-3" variant="hero" disabled>
+              Отправить на проверку
+            </Button>
+          </section>
+        ) : null;
       break;
   }
   return content ? <div className="space-y-6 md:space-y-7">{content}</div> : null;

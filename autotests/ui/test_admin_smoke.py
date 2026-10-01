@@ -87,6 +87,7 @@ def test_admin_lesson_actions_fit_mobile_screen(admin_page):
 @pytest.mark.authenticated
 @pytest.mark.admin
 def test_lesson_import_shows_preview_before_any_save(admin_page):
+    admin_page.set_viewport_size({"width": 1280, "height": 900})
     admin_page.goto("/admin/lessons", wait_until="domcontentloaded")
     package = {
         "schemaVersion": "1.0",
@@ -116,6 +117,19 @@ def test_lesson_import_shows_preview_before_any_save(admin_page):
     expect(admin_page.get_by_role("heading", name="Импорт урока")).to_be_visible()
     expect(admin_page.get_by_text("Предпросмотр для ученика", exact=True)).to_be_visible()
     expect(admin_page.get_by_role("button", name="Импортировать", exact=True)).to_be_visible()
+
+    dialog = admin_page.get_by_role("dialog")
+    expect(dialog).to_be_visible()
+    assert dialog.evaluate("element => element.scrollWidth <= element.clientWidth + 1")
+    assert admin_page.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth + 1"
+    )
+
+    admin_page.set_viewport_size({"width": 390, "height": 844})
+    assert dialog.evaluate("element => element.scrollWidth <= element.clientWidth + 1")
+    assert admin_page.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth + 1"
+    )
 
 
 @pytest.mark.authenticated

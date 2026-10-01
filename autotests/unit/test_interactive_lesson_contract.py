@@ -17,6 +17,7 @@ GUIDE = ROOT / "src/components/lesson-guide.tsx"
 DASHBOARD = ROOT / "src/routes/dashboard.tsx"
 ADMIN_HOMEWORK = ROOT / "src/routes/admin.homework.tsx"
 HOMEWORK_FUNCTIONS = ROOT / "src/server/homework.functions.ts"
+SQL_SANDBOX_MIGRATION = ROOT / "supabase/migrations/20260930163256_sql_sandbox_attempts.sql"
 
 
 def test_interactive_lesson_migration_has_all_mvp_block_types_and_rls():
@@ -172,6 +173,26 @@ def test_homework_instruction_renders_markdown_in_preview_and_lesson():
 
     assert '<LessonRichContent content={stringValue(c, "instruction")} />' in interactive
     assert '<LessonRichContent content={instruction} />' in lesson
+
+
+def test_sql_sandbox_attempts_are_owner_scoped_and_user_sql_is_only_saved_as_data():
+    migration = SQL_SANDBOX_MIGRATION.read_text(encoding="utf-8")
+    worker = (ROOT / "src/lib/sql-sandbox.worker.ts").read_text(encoding="utf-8")
+    lesson = (ROOT / "src/routes/lessons.$day.tsx").read_text(encoding="utf-8")
+    student_ui = (ROOT / "src/components/sql-sandbox-homework.tsx").read_text(encoding="utf-8")
+    admin_ui = (ROOT / "src/components/admin-sql-sandbox-editor.tsx").read_text(encoding="utf-8")
+
+    assert "enable row level security" in migration.lower()
+    assert "revoke all on public.sql_sandbox_attempts from public, anon" in migration.lower()
+    assert "(select auth.uid()) = user_id" in migration
+    assert "grant select, insert, update on public.sql_sandbox_attempts to authenticated" in migration.lower()
+    assert "seedSandboxDatabase(database, config.tables)" in worker
+    assert "runSandboxTask(database, sql, task, config)" in worker
+    assert '.from("sql_sandbox_attempts").upsert' in lesson
+    assert "database.exec(sql)" not in worker
+    assert "Проверочный SQL (только для наставника/админа" in admin_ui
+    assert "Ученику этот запрос не показывается" in admin_ui
+    assert "verificationQuery" not in student_ui
 
 
 def test_lesson_preview_preserves_scroll_position_per_lesson():

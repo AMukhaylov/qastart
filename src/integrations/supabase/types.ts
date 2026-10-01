@@ -401,6 +401,66 @@ export type Database = {
           },
         ];
       };
+      sql_sandbox_attempts: {
+        Row: {
+          block_id: string;
+          created_at: string;
+          feedback: string;
+          id: string;
+          lesson_id: string;
+          passed: boolean;
+          query_text: string;
+          result_columns: Json;
+          result_rows: Json;
+          task_id: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          block_id: string;
+          created_at?: string;
+          feedback?: string;
+          id?: string;
+          lesson_id: string;
+          passed?: boolean;
+          query_text?: string;
+          result_columns?: Json;
+          result_rows?: Json;
+          task_id: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          block_id?: string;
+          created_at?: string;
+          feedback?: string;
+          id?: string;
+          lesson_id?: string;
+          passed?: boolean;
+          query_text?: string;
+          result_columns?: Json;
+          result_rows?: Json;
+          task_id?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "sql_sandbox_attempts_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "sql_sandbox_attempts_block_id_fkey";
+            columns: ["block_id"];
+            isOneToOne: false;
+            referencedRelation: "lesson_blocks";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       lesson_progress: {
         Row: {
           completed: boolean;

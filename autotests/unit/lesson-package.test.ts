@@ -9,6 +9,12 @@ import {
   validateLessonPackage,
 } from "../../src/lib/lesson-package.ts";
 import type { LessonBlockDraft } from "../../src/lib/interactive-lesson.ts";
+import { blockCompletionCondition } from "../../src/lib/interactive-lesson.ts";
+import {
+  createEmptySqlSandbox,
+  createSqlSandboxTaskId,
+  validateSqlSandboxEditor,
+} from "../../src/lib/sql-sandbox-editor.ts";
 
 type MutablePackage = {
   schemaVersion: string;
@@ -140,6 +146,47 @@ const allBlockTypes: LessonBlockDraft[] = [
     block_type: "homework",
     content: { title: "Практика", instruction: "Сделай задание.", submitHint: "Отправь ответ." },
   },
+  {
+    block_type: "homework",
+    content: {
+      title: "SQL-практика",
+      instruction: "Выполни задания в учебной базе.",
+      mode: "sql_sandbox",
+      manualReview: false,
+      required: true,
+      blocksNext: true,
+      homeworkRequiredForCompletion: true,
+      completionCondition: "all_sql_tasks_passed",
+      sqlSandboxCompletionMessage: "Все задания выполнены. Молодец!",
+      sandbox: {
+        engine: "sqlite",
+        readOnly: false,
+        allowStatements: ["SELECT", "INSERT", "UPDATE", "DELETE"],
+        resetDatabaseBeforeEachRun: true,
+        tables: {
+          users: {
+            columns: [
+              { name: "id", type: "INTEGER" },
+              { name: "name", type: "TEXT" },
+            ],
+            rows: [[1, "Анна"]],
+          },
+        },
+        tasks: [
+          {
+            id: "one",
+            title: "Все пользователи",
+            instruction: "Покажи пользователей.",
+            successMessage: "Запрос выполнен успешно.",
+            starterSql: "SELECT id, name FROM users;",
+            verificationQuery: "SELECT id, name FROM users WHERE id = 1",
+            expectedColumns: ["id", "name"],
+            expectedRows: [[1, "Анна"]],
+          },
+        ],
+      },
+    },
+  },
 ];
 
 test("export → validate → import keeps every supported block without database IDs", () => {
@@ -200,6 +247,213 @@ test("validator rejects invalid state diagram references and table cells", () =>
     assert.ok(result.errors.some((entry) => entry.message.includes("несуществующее состояние")));
     assert.ok(result.errors.some((entry) => entry.message.includes("ячейки")));
   }
+});
+
+test("SQL sandbox package validates and keeps its complete config through export/import round trip", () => {
+  const exported = exportLessonPackage(lesson, allBlockTypes);
+  const validation = validateLessonPackage(exported);
+  assert.equal(validation.valid, true);
+  if (!validation.valid) return;
+  const imported = importLessonPackage(validation.value);
+  const homework = imported.blocks.find((block) => block.content.mode === "sql_sandbox");
+  assert.ok(homework);
+  assert.equal(homework?.content.manualReview, false);
+  assert.equal(homework?.content.completionCondition, "all_sql_tasks_passed");
+  assert.equal(homework?.content.sqlSandboxCompletionMessage, "Все задания выполнены. Молодец!");
+  assert.deepEqual(
+    homework?.content.sandbox,
+    exported.lesson.blocks.find((block) => block.mode === "sql_sandbox")?.sandbox,
+  );
+  assert.equal(
+    (homework?.content.sandbox as { tasks: Array<{ starterSql?: string }> }).tasks[0]?.starterSql,
+    "SELECT id, name FROM users;",
+  );
+  assert.equal(
+    (homework?.content.sandbox as { tasks: Array<{ verificationQuery?: string }> }).tasks[0]
+      ?.verificationQuery,
+    "SELECT id, name FROM users WHERE id = 1",
+  );
+  assert.equal(
+    (homework?.content.sandbox as { tasks: Array<{ successMessage?: string }> }).tasks[0]
+      ?.successMessage,
+    "Запрос выполнен успешно.",
+  );
+  const aiKit = createAiKitFiles(validation.value, "guidelines");
+  assert.match(aiKit["lesson-schema.json"], /sqlSandboxCompletionMessage/);
+  const again = exportLessonPackage({ ...lesson, ...imported.lesson }, imported.blocks);
+  assert.deepEqual(again, exported);
+});
+
+test("SQL sandbox accepts verificationQuery only as a safe single SELECT and documents it for AI", () => {
+  const exported = exportLessonPackage(lesson, allBlockTypes);
+  const task = exported.lesson.blocks.find((block) => block.mode === "sql_sandbox")?.sandbox as {
+    tasks: Array<Record<string, unknown>>;
+  };
+  task.tasks[0]!.verificationQuery = "SELECT id FROM users WHERE id = 1";
+  const valid = validateLessonPackage(exported);
+  assert.equal(valid.valid, true);
+  if (valid.valid) {
+    const aiKit = createAiKitFiles(valid.value, "guidelines");
+    assert.match(aiKit["README.md"], /verificationQuery/);
+    assert.match(aiKit["README.md"], /одиночный SELECT/);
+    assert.match(aiKit["lesson-schema.json"], /verificationQuery/);
+  }
+
+  for (const query of ["DELETE FROM users", "SELECT 1; SELECT 2", "PRAGMA table_info(users)"]) {
+    const broken = structuredClone(exported);
+    const brokenTask = broken.lesson.blocks.find((block) => block.mode === "sql_sandbox")
+      ?.sandbox as { tasks: Array<Record<string, unknown>> };
+    brokenTask.tasks[0]!.verificationQuery = query;
+    const result = validateLessonPackage(broken);
+    assert.equal(result.valid, false, query);
+    if (!result.valid)
+      assert.ok(result.errors.some((entry) => entry.message.includes("verificationQuery")));
+  }
+});
+
+test("SQL sandbox package rejects malformed expected result dimensions and duplicate task ids", () => {
+  const exported = exportLessonPackage(lesson, allBlockTypes);
+  const broken = structuredClone(exported) as unknown as MutablePackage;
+  const homework = broken.lesson.blocks.find(
+    (block) => block.type === "homework" && block.mode === "sql_sandbox",
+  )!;
+  const sandbox = homework.sandbox as { tasks: Array<Record<string, unknown>> };
+  sandbox.tasks.push({
+    ...sandbox.tasks[0],
+    title: "Другое",
+    id: sandbox.tasks[0]?.id,
+    expectedColumns: ["id", "name"],
+    expectedRows: [[1]],
+  });
+  const result = validateLessonPackage(broken);
+  assert.equal(result.valid, false);
+  if (!result.valid) {
+    assert.ok(result.errors.some((entry) => entry.message.includes("уникальными")));
+    assert.ok(result.errors.some((entry) => entry.message.includes("expectedRows")));
+  }
+});
+
+test("SQL sandbox package has no fixed eight-task progress limit", () => {
+  const exported = exportLessonPackage(lesson, allBlockTypes);
+  const many = structuredClone(exported) as unknown as MutablePackage;
+  const homework = many.lesson.blocks.find(
+    (block) => block.type === "homework" && block.mode === "sql_sandbox",
+  )!;
+  const sandbox = homework.sandbox as { tasks: Array<Record<string, unknown>> };
+  const task = sandbox.tasks[0]!;
+  sandbox.tasks = Array.from({ length: 25 }, (_, index) => ({
+    ...task,
+    id: `task-${index + 1}`,
+  }));
+  assert.equal(validateLessonPackage(many).valid, true);
+});
+
+test("SQL sandbox admin model supports arbitrary result dimensions and catches blocking editor issues", () => {
+  const sandbox = createEmptySqlSandbox();
+  sandbox.tasks = [
+    {
+      id: createSqlSandboxTaskId(),
+      title: "JOIN результат",
+      instruction: "Верни ровно пять строк и два столбца.",
+      expectedColumns: ["user_name", "order_total"],
+      expectedRows: [
+        ["Анна", 10],
+        ["Борис", 20],
+        ["Вера", 30],
+        ["Глеб", 40],
+        ["Дина", 50],
+      ],
+      orderSensitive: false,
+      starterSql:
+        "SELECT users.name, orders.total FROM users JOIN orders ON orders.user_id = users.id;",
+    },
+  ];
+  assert.deepEqual(validateSqlSandboxEditor(sandbox), []);
+
+  sandbox.tasks = Array.from({ length: 25 }, (_, index) => ({
+    id: createSqlSandboxTaskId(),
+    title: `Задание ${index + 1}`,
+    instruction: "Верни пять строк и два столбца.",
+    expectedColumns: ["user_name", "order_total"],
+    expectedRows: [
+      ["Анна", 10],
+      ["Борис", 20],
+      ["Вера", 30],
+      ["Глеб", 40],
+      ["Дина", 50],
+    ],
+  }));
+  assert.deepEqual(validateSqlSandboxEditor(sandbox), []);
+
+  sandbox.tasks.push({ ...sandbox.tasks[0]!, title: "Другой запрос" });
+  const errors = validateSqlSandboxEditor(sandbox);
+  assert.ok(errors.some((message) => message.includes("ID заданий")));
+
+  sandbox.tasks[1]!.id = createSqlSandboxTaskId();
+  sandbox.tasks[1]!.expectedRows = [["лишняя ячейка"]];
+  const malformed = validateSqlSandboxEditor(sandbox);
+  assert.ok(malformed.some((message) => message.includes("expectedRows")));
+});
+
+test("SQL sandbox validator keeps reset safety and rejects unknown sandbox fields", () => {
+  const exported = exportLessonPackage(lesson, allBlockTypes);
+  const broken = structuredClone(exported) as unknown as MutablePackage;
+  const homework = broken.lesson.blocks.find((block) => block.mode === "sql_sandbox")!;
+  (homework.sandbox as Record<string, unknown>).resetDatabaseBeforeEachRun = false;
+  (homework.sandbox as Record<string, unknown>).connectionString = "production";
+  const result = validateLessonPackage(broken);
+  assert.equal(result.valid, false);
+  if (!result.valid) {
+    assert.ok(result.errors.some((entry) => entry.message.includes("resetDatabaseBeforeEachRun")));
+    assert.ok(result.errors.some((entry) => entry.message.includes("connectionString")));
+  }
+});
+
+test("SQL sandbox package accepts CRUD allowlists and preserves legacy SELECT-only configs", () => {
+  const writable = exportLessonPackage(lesson, allBlockTypes);
+  const writableValidation = validateLessonPackage(writable);
+  assert.equal(writableValidation.valid, true);
+
+  const legacy = structuredClone(writable) as unknown as MutablePackage;
+  const homework = legacy.lesson.blocks.find((block) => block.mode === "sql_sandbox")!;
+  const sandbox = homework.sandbox as Record<string, unknown>;
+  sandbox.readOnly = true;
+  sandbox.allowStatements = ["SELECT"];
+  const legacyValidation = validateLessonPackage(legacy);
+  assert.equal(legacyValidation.valid, true);
+
+  const contradictory = structuredClone(writable) as unknown as MutablePackage;
+  const contradictoryHomework = contradictory.lesson.blocks.find(
+    (block) => block.mode === "sql_sandbox",
+  )!;
+  const contradictorySandbox = contradictoryHomework.sandbox as Record<string, unknown>;
+  contradictorySandbox.readOnly = true;
+  const contradictoryValidation = validateLessonPackage(contradictory);
+  assert.equal(contradictoryValidation.valid, false);
+  if (!contradictoryValidation.valid) {
+    assert.ok(contradictoryValidation.errors.some((entry) => entry.message.includes("readOnly")));
+  }
+});
+
+test("manual homework completion contract is unchanged while SQL homework has its own condition", () => {
+  assert.equal(
+    blockCompletionCondition({ block_type: "homework", content: { title: "Manual" } }),
+    "homework_submitted",
+  );
+  assert.equal(
+    blockCompletionCondition({
+      block_type: "homework",
+      content: { mode: "manual", completionCondition: "homework_submitted" },
+    }),
+    "homework_submitted",
+  );
+  assert.equal(
+    blockCompletionCondition({
+      block_type: "homework",
+      content: { mode: "sql_sandbox", completionCondition: "all_sql_tasks_passed" },
+    }),
+    "all_sql_tasks_passed",
+  );
 });
 
 test("validator accepts a large lesson and repeated imports stay independent", () => {
@@ -302,6 +556,41 @@ test("import ignores legacy homework submitHint and exports never recreate it", 
 test("AI kit contains the specification, Day 1 example slots and a valid ZIP", () => {
   const exported = exportLessonPackage(lesson, allBlockTypes);
   const files = createAiKitFiles(exported, "# Правила");
+  assert.match(files["README.md"]!, /sql_sandbox/);
+  assert.match(files["README.md"]!, /SELECT, INSERT, UPDATE, DELETE/);
+  assert.match(files["README.md"]!, /Ограничения импорта/);
+  assert.match(files["README.md"]!, /от 1 до 10 колонок/);
+  assert.match(files["README.md"]!, /не более 30 строк/);
+  assert.match(files["README.md"]!, /минимум два варианта/);
+  assert.match(files["lesson-schema.json"]!, /SqlSandboxConfig|tables/);
+  assert.match(files["lesson-schema.json"]!, /"INSERT"/);
+  assert.match(files["lesson-schema.json"]!, /"DELETE"/);
+  assert.match(files["lesson-schema.json"]!, /"maxItems": 10/);
+  assert.match(files["lesson-schema.json"]!, /"maxItems": 30/);
+  assert.match(files["lesson-schema.json"]!, /"allOf"/);
+  type SchemaNode = {
+    type?: string;
+    const?: string;
+    maxItems?: number;
+    minItems?: number;
+    items?: SchemaNode;
+    properties?: Record<string, SchemaNode>;
+    allOf?: unknown[];
+    oneOf?: SchemaNode[];
+  };
+  const schema = JSON.parse(files["lesson-schema.json"]!) as SchemaNode;
+  const variants = schema.properties?.lesson?.properties?.blocks?.items?.oneOf ?? [];
+  const tableSchema = variants.find((variant) => variant.properties?.type?.const === "table");
+  const stateDiagramSchema = variants.find(
+    (variant) => variant.properties?.type?.const === "state_diagram",
+  );
+  const questionSchema = variants.find((variant) => variant.properties?.type?.const === "question");
+  const summarySchema = variants.find((variant) => variant.properties?.type?.const === "summary");
+  assert.equal(tableSchema?.properties.columns?.maxItems, 10);
+  assert.equal(tableSchema?.properties.rows?.maxItems, 30);
+  assert.equal(stateDiagramSchema?.properties.states?.minItems, 2);
+  assert.ok(questionSchema?.allOf && questionSchema.allOf.length >= 3);
+  assert.equal(summarySchema?.properties.items?.items?.type, "object");
   assert.deepEqual(Object.keys(files).sort(), [
     "LESSON_GUIDELINES.md",
     "README.md",

@@ -35,7 +35,44 @@ export type CompletionCondition =
   | "question_correct"
   | "video_watched"
   | "task_completed"
-  | "homework_submitted";
+  | "homework_submitted"
+  | "all_sql_tasks_passed";
+
+export type SqlSandboxTable = {
+  columns: Array<{ name: string; type?: "INTEGER" | "REAL" | "TEXT" | "NUMERIC" | "BLOB" }>;
+  rows: Array<Array<string | number | null>>;
+};
+
+export type SqlSandboxStatement = "SELECT" | "INSERT" | "UPDATE" | "DELETE";
+
+export type SqlSandboxTask = {
+  id: string;
+  title: string;
+  instruction: string;
+  hint?: string;
+  successMessage?: string;
+  expectedColumns: string[];
+  expectedRows: Array<Array<string | number | null>>;
+  orderSensitive?: boolean;
+  starterSql?: string;
+  /** Read-only SELECT executed after a mutation that does not use RETURNING. */
+  verificationQuery?: string;
+};
+
+export type SqlSandboxConfig = {
+  engine?: "sqlite";
+  /** Legacy true keeps older SELECT-only lesson packages read-only. */
+  readOnly?: boolean;
+  allowStatements?: SqlSandboxStatement[];
+  resetDatabaseBeforeEachRun?: true;
+  showSchema?: boolean;
+  showResultTable?: boolean;
+  showRunButton?: boolean;
+  runButtonLabel?: string;
+  progressLabel?: string;
+  tables: Record<string, SqlSandboxTable>;
+  tasks: SqlSandboxTask[];
+};
 
 export const lessonBlockLabels: Record<LessonBlockType, string> = {
   heading: "Заголовок",
@@ -82,7 +119,8 @@ export type StateDiagramTransition = {
   targetHandle?: string;
 };
 export type LessonTableColumn = { id: string; label: string };
-export type LessonTableRow = Record<string, string>;
+export type LessonTableCell = string | number | null;
+export type LessonTableRow = Record<string, LessonTableCell>;
 
 export function stateDiagramStates(content: Record<string, unknown>): StateDiagramState[] {
   return Array.isArray(content.states)
@@ -131,7 +169,12 @@ export function lessonTableRows(content: Record<string, unknown>): LessonTableRo
           typeof row === "object" &&
           row !== null &&
           !Array.isArray(row) &&
-          Object.values(row).every((cell) => typeof cell === "string"),
+          Object.values(row).every(
+            (cell) =>
+              cell === null ||
+              typeof cell === "string" ||
+              (typeof cell === "number" && Number.isFinite(cell)),
+          ),
       )
     : [];
 }
@@ -156,13 +199,15 @@ export function blockCompletionCondition(
     explicit === "question_correct" ||
     explicit === "video_watched" ||
     explicit === "task_completed" ||
-    explicit === "homework_submitted"
+    explicit === "homework_submitted" ||
+    explicit === "all_sql_tasks_passed"
   ) {
     return explicit;
   }
   if (block.block_type === "question") return "question_correct";
   if (block.block_type === "video") return "video_watched";
-  if (block.block_type === "homework") return "homework_submitted";
+  if (block.block_type === "homework")
+    return block.content.mode === "sql_sandbox" ? "all_sql_tasks_passed" : "homework_submitted";
   return "viewed";
 }
 

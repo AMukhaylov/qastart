@@ -21,6 +21,9 @@ import { InteractiveLesson } from "@/components/interactive-lesson";
 import { LessonGuide } from "@/components/lesson-guide";
 import { NotificationBell } from "@/components/notification-bell";
 import { LessonRichContent } from "@/components/lesson-rich-content";
+import { SqlSandboxHomework, type SavedSqlSandboxAttempt } from "@/components/sql-sandbox-homework";
+import type { SqlSandboxConfig } from "@/lib/interactive-lesson";
+import { getSqlSandboxProgress, type SqlSandboxResult } from "@/lib/sql-sandbox";
 import type { LessonGuideVariant } from "@/lib/lesson-guide";
 import { isBlockRequired, LessonBlock, stringValue } from "@/lib/interactive-lesson";
 import { useAuth } from "@/hooks/use-auth";
@@ -118,6 +121,7 @@ function LessonPage() {
   const [viewedBlockIds, setViewedBlockIds] = useState<string[]>([]);
   const [completingLesson, setCompletingLesson] = useState(false);
   const [submission, setSubmission] = useState<Submission | null>(null);
+  const [sqlSandboxAttempts, setSqlSandboxAttempts] = useState<SavedSqlSandboxAttempt[]>([]);
   const [messages, setMessages] = useState<HomeworkMessage[]>([]);
   const [hwText, setHwText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -133,6 +137,7 @@ function LessonPage() {
   const loadedLessonKeyRef = useRef<string | null>(null);
   const focusedHomeworkKeyRef = useRef<string | null>(null);
   const pendingBlockIdsRef = useRef(new Set<string>());
+  const sqlHomeworkCompletionAttemptsRef = useRef(new Set<string>());
 
   const leaveFinalQuiz = (destination: "dashboard" | number) => {
     setFinalQuizExitDestination(destination);
@@ -194,6 +199,7 @@ function LessonPage() {
     setDailyLimitReached(false);
     setBlocks([]);
     setViewedBlockIds([]);
+    setSqlSandboxAttempts([]);
 
     if (!session?.access_token) {
       setLoading(false);
@@ -240,6 +246,7 @@ function LessonPage() {
     setCompleted(!!lessonData.progress?.completed);
     setBlocks((lessonData.blocks ?? []) as LessonBlock[]);
     setViewedBlockIds((lessonData.blockProgress ?? []).map((row) => row.block_id));
+    setSqlSandboxAttempts((lessonData.sqlSandboxAttempts ?? []) as SavedSqlSandboxAttempt[]);
     if (lessonData.submission) {
       const currentSubmission = lessonData.submission as Submission;
       setSubmission(currentSubmission);
@@ -339,6 +346,33 @@ function LessonPage() {
     // completeLesson deliberately reads the current lesson and user from this render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blocks, completed, completingLesson, lesson, user, viewedBlockIds]);
+
+  useEffect(() => {
+    if (!lesson || loading) return;
+    const sqlHomework = blocks.find(
+      (block) => block.block_type === "homework" && block.content.mode === "sql_sandbox",
+    );
+    const config = sqlHomework?.content.sandbox as SqlSandboxConfig | undefined;
+    if (
+      !sqlHomework ||
+      !config ||
+      viewedBlockIds.includes(sqlHomework.id) ||
+      !getSqlSandboxProgress(
+        config.tasks,
+        sqlSandboxAttempts.filter((attempt) => attempt.block_id === sqlHomework.id),
+      ).isComplete
+    ) {
+      return;
+    }
+    const completionKey = `${lesson.id}:${sqlHomework.id}`;
+    if (sqlHomeworkCompletionAttemptsRef.current.has(completionKey)) return;
+    sqlHomeworkCompletionAttemptsRef.current.add(completionKey);
+    // Recover the homework block completion if every answer was saved but the
+    // progress write was interrupted before the page was refreshed.
+    void markBlocksCompleted([sqlHomework.id]);
+    // markBlocksCompleted deliberately uses this render's loaded lesson/user.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks, lesson, loading, sqlSandboxAttempts, viewedBlockIds]);
 
   async function loadMessages(currentSubmission: Submission) {
     if (!session?.access_token) {
@@ -482,6 +516,65 @@ function LessonPage() {
     }
   }
 
+  async function saveSqlSandboxAttempt(
+    block: LessonBlock,
+    taskId: string,
+    query: string,
+    result: SqlSandboxResult,
+  ) {
+    if (!lesson || !user || !session?.access_token)
+      throw new Error("Войди заново, чтобы сохранить прогресс SQL-задания.");
+    const config = block.content.sandbox as SqlSandboxConfig | undefined;
+    if (!config?.tasks.some((task) => task.id === taskId))
+      throw new Error("Задание не найдено в конфигурации урока.");
+    const row: SavedSqlSandboxAttempt = {
+      block_id: block.id,
+      task_id: taskId,
+      query_text: query,
+      passed: result.passed,
+      result_columns: result.columns,
+      result_rows: result.rows,
+      feedback: result.message,
+    };
+    const { error } = await supabase.from("sql_sandbox_attempts").upsert(
+      {
+        user_id: user.id,
+        lesson_id: lesson.id,
+        block_id: block.id,
+        task_id: taskId,
+        query_text: query,
+        passed: result.passed,
+        result_columns: result.columns,
+        result_rows: result.rows,
+        feedback: result.message,
+      },
+      { onConflict: "user_id,block_id,task_id" },
+    );
+    if (error)
+      throw new Error(
+        "Не удалось сохранить ответ и прогресс. Проверь подключение и повтори попытку.",
+      );
+    setSqlSandboxAttempts((current) => [
+      ...current.filter(
+        (attempt) => !(attempt.task_id === taskId && attempt.block_id === block.id),
+      ),
+      row,
+    ]);
+    const progress = getSqlSandboxProgress(config.tasks, [
+      ...sqlSandboxAttempts.filter(
+        (attempt) => attempt.block_id === block.id && attempt.task_id !== taskId,
+      ),
+      row,
+    ]);
+    if (progress.isComplete) {
+      const saved = await markBlocksCompleted([block.id]);
+      if (!saved)
+        throw new Error(
+          "Ответ верный, но не удалось сохранить завершение домашнего задания. Нажми «Проверить» ещё раз.",
+        );
+    }
+  }
+
   if (authLoading || rolesLoading || loading) {
     return (
       <div className="min-h-screen bg-[var(--gradient-soft)] px-6 flex items-center justify-center">
@@ -554,7 +647,10 @@ function LessonPage() {
   const showHomework =
     (Boolean(homeworkBlock) && (homeworkUnlocked || Boolean(submission))) || hasLegacyHomework;
   const hasHomework = Boolean(homeworkBlock) || hasLegacyHomework;
-  const showBottomCabinet = hasHomework ? Boolean(submission) : completed;
+  const isSqlSandboxHomework = homeworkBlock?.content.mode === "sql_sandbox";
+  const showBottomCabinet = hasHomework
+    ? Boolean(submission) || (isSqlSandboxHomework && completed)
+    : completed;
   const homeworkInstruction = homeworkBlock
     ? stringValue(homeworkBlock.content, "instruction")
     : lesson.homework_md;
@@ -566,7 +662,9 @@ function LessonPage() {
   const completionText = stringValue(
     homeworkBlock?.content ?? {},
     "completionText",
-    "Домашнее задание отправлено на проверку. Следующий урок уже доступен, а результат проверки появится здесь, как только наставник его проверит.",
+    isSqlSandboxHomework
+      ? "Все SQL-задания выполнены. Домашнее задание проверено автоматически, отправлять его наставнику не нужно."
+      : "Домашнее задание отправлено на проверку. Следующий урок уже доступен, а результат проверки появится здесь, как только наставник его проверит.",
   );
   const completionVariant = stringValue(
     homeworkBlock?.content ?? {},
@@ -656,23 +754,40 @@ function LessonPage() {
           previousDay={prevDay || undefined}
           renderHomework={(block) =>
             showHomework && block.id === homeworkBlock?.id ? (
-              <HomeworkSubmissionCard
-                title={stringValue(block.content, "title", "Домашнее задание")}
-                instruction={homeworkInstruction}
-                submission={submission}
-                messages={messages}
-                hwText={hwText}
-                setHwText={setHwText}
-                attachments={attachments}
-                onFiles={handleFiles}
-                onRemoveAttachment={(index) =>
-                  setAttachments((previous) =>
-                    previous.filter((_, itemIndex) => itemIndex !== index),
-                  )
-                }
-                onSubmit={submitHomework}
-                saving={saving}
-              />
+              block.content.mode === "sql_sandbox" && block.content.sandbox ? (
+                <SqlSandboxHomework
+                  title={stringValue(block.content, "title", "SQL-практика")}
+                  instruction={homeworkInstruction}
+                  successMessage={stringValue(
+                    block.content,
+                    "sqlSandboxCompletionMessage",
+                    "Все задания выполнены. Молодец!",
+                  )}
+                  config={block.content.sandbox as SqlSandboxConfig}
+                  attempts={sqlSandboxAttempts.filter((attempt) => attempt.block_id === block.id)}
+                  onAttemptSaved={(taskId, query, result) =>
+                    saveSqlSandboxAttempt(block, taskId, query, result)
+                  }
+                />
+              ) : (
+                <HomeworkSubmissionCard
+                  title={stringValue(block.content, "title", "Домашнее задание")}
+                  instruction={homeworkInstruction}
+                  submission={submission}
+                  messages={messages}
+                  hwText={hwText}
+                  setHwText={setHwText}
+                  attachments={attachments}
+                  onFiles={handleFiles}
+                  onRemoveAttachment={(index) =>
+                    setAttachments((previous) =>
+                      previous.filter((_, itemIndex) => itemIndex !== index),
+                    )
+                  }
+                  onSubmit={submitHomework}
+                  saving={saving}
+                />
+              )
             ) : null
           }
         />

@@ -11,7 +11,7 @@ server {
     # TanStack Start emits the SSR hydration and scroll-restoration bootstrap inline.
     # A nonce is not available at this Nginx layer, so keep inline scripts enabled until
     # the application owns nonce generation. The remaining directives stay restrictive.
-    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' wss://startqa.ru; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; font-src 'self' data: https://fonts.gstatic.com; media-src 'self'" always;
+    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' wss://startqa.ru; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; font-src 'self' data: https://fonts.gstatic.com; media-src 'self'" always;
     add_header Cross-Origin-Opener-Policy "same-origin" always;
     add_header Cross-Origin-Resource-Policy "same-origin" always;
 

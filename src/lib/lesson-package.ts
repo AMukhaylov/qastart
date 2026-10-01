@@ -4,6 +4,7 @@ import {
   type LessonBlockDraft,
   type LessonBlockType,
 } from "./interactive-lesson.ts";
+import { validateSandboxSelect } from "./sql-sandbox.ts";
 
 export const lessonPackageSchemaVersion = "1.0";
 
@@ -167,7 +168,7 @@ const commonFields: BlockField[] = [
   },
   {
     name: "completionCondition",
-    type: "viewed | question_correct | video_watched | task_completed | homework_submitted",
+    type: "viewed | question_correct | video_watched | task_completed | homework_submitted | all_sql_tasks_passed",
     description: "Когда блок считается выполненным.",
   },
 ];
@@ -293,7 +294,12 @@ export const lessonBlockCatalog: BlockCatalogEntry[] = [
     description: "Последовательность шагов.",
     fields: [
       { name: "title", type: "string", required: true, description: "Название схемы." },
-      { name: "steps", type: "string[]", required: true, description: "Шаги по порядку." },
+      {
+        name: "steps",
+        type: "string[]",
+        required: true,
+        description: "Не менее двух непустых шагов по порядку.",
+      },
       ...commonFields,
     ],
     example: { type: "diagram", title: "Проверка", steps: ["Ожидание", "Действие", "Результат"] },
@@ -308,13 +314,15 @@ export const lessonBlockCatalog: BlockCatalogEntry[] = [
         name: "states",
         type: "{ id, label, position? }[]",
         required: true,
-        description: "Состояния с уникальными идентификаторами.",
+        description:
+          "Не менее двух состояний с непустыми уникальными id и label. position, если задана, содержит конечные числа x и y.",
       },
       {
         name: "transitions",
         type: "{ id?, from, to, label?, edgeType?, sourceHandle?, targetHandle? }[]",
         required: true,
-        description: "Переходы между состояниями; label — событие или условие.",
+        description:
+          "Переходы между существующими состояниями; label — событие или условие. Допустимы ветвления, циклы и self-loop.",
       },
       { name: "initialState", type: "string", description: "Необязательное начальное состояние." },
       { name: "finalStates", type: "string[]", description: "Необязательные финальные состояния." },
@@ -355,13 +363,14 @@ export const lessonBlockCatalog: BlockCatalogEntry[] = [
         name: "columns",
         type: "{ id, label }[]",
         required: true,
-        description: "Колонки с уникальными идентификаторами и заголовками.",
+        description: "От 1 до 10 колонок с непустыми уникальными id и label.",
       },
       {
         name: "rows",
-        type: "{ [columnId]: string }[]",
+        type: "{ [columnId]: string | number | null }[]",
         required: true,
-        description: "Строки: ключ каждой ячейки совпадает с id колонки.",
+        description:
+          "Не более 30 строк: ключи каждой строки должны в точности совпадать с id всех колонок; значения — string, finite number или null.",
       },
       ...commonFields,
     ],
@@ -420,16 +429,23 @@ export const lessonBlockCatalog: BlockCatalogEntry[] = [
         description: "Вид вопроса.",
       },
       { name: "question", type: "string", required: true, description: "Вопрос." },
-      { name: "options", type: "string[]", required: true, description: "Варианты ответа." },
+      {
+        name: "options",
+        type: "string[]",
+        required: true,
+        description: "Не менее двух вариантов ответа; для true_false — ровно два.",
+      },
       {
         name: "correctIndex",
         type: "number",
-        description: "Индекс правильного ответа для одного ответа, с нуля.",
+        description:
+          "Обязателен для single_choice, true_false и scenario; индекс с нуля в пределах options.",
       },
       {
         name: "correctAnswers",
         type: "number[]",
-        description: "Индексы правильных ответов для multiple_choice, с нуля.",
+        description:
+          "Обязательный непустой список для multiple_choice; индексы с нуля и в пределах options.",
       },
       { name: "explanation", type: "string", required: true, description: "Разбор ответа." },
       ...commonFields,
@@ -467,12 +483,17 @@ export const lessonBlockCatalog: BlockCatalogEntry[] = [
     fields: [
       { name: "title", type: "string", required: true, description: "Название активности." },
       { name: "prompt", type: "string", required: true, description: "Инструкция." },
-      { name: "options", type: "string[]", required: true, description: "Варианты проверки." },
+      {
+        name: "options",
+        type: "string[]",
+        required: true,
+        description: "Не менее двух вариантов проверки.",
+      },
       {
         name: "correctAnswers",
         type: "number[]",
         required: true,
-        description: "Индексы верных вариантов, с нуля.",
+        description: "Непустой список допустимых индексов верных вариантов, с нуля.",
       },
       { name: "explanation", type: "string", required: true, description: "Разбор." },
       ...commonFields,
@@ -528,6 +549,23 @@ export const lessonBlockCatalog: BlockCatalogEntry[] = [
       { name: "title", type: "string", required: true, description: "Название задания." },
       { name: "instruction", type: "string", required: true, description: "Что сделать." },
       {
+        name: "mode",
+        type: '"manual" | "sql_sandbox"',
+        description: "Режим выполнения домашнего задания.",
+      },
+      { name: "manualReview", type: "boolean", description: "Нужна ли проверка наставника." },
+      {
+        name: "sandbox",
+        type: "SqlSandboxConfig",
+        description:
+          "Изолированная SQLite-песочница: 1–10 таблиц, до 20 колонок и 500 строк в таблице, любое количество заданий с ожидаемыми результатами. См. ограничения импорта в README.md AI-kit.",
+      },
+      {
+        name: "sqlSandboxCompletionMessage",
+        type: "string",
+        description: "Сообщение ученику после выполнения всех SQL-заданий.",
+      },
+      {
         name: "completionTitle",
         type: "string",
         description: "Заголовок карточки после отправки ДЗ.",
@@ -574,6 +612,7 @@ const completionConditions = new Set([
   "video_watched",
   "task_completed",
   "homework_submitted",
+  "all_sql_tasks_passed",
 ]);
 const questionTypes = new Set(["single_choice", "multiple_choice", "true_false", "scenario"]);
 
@@ -754,6 +793,261 @@ function validateBlock(block: unknown, index: number, errors: LessonPackageIssue
     typeof block.homeworkRequiredForCompletion !== "boolean"
   )
     errors.push(issue(path, 'поле "homeworkRequiredForCompletion" должно быть boolean.'));
+  if (type === "homework" && "manualReview" in block && typeof block.manualReview !== "boolean") {
+    errors.push(issue(path, 'поле "manualReview" должно быть boolean.'));
+  }
+  if (
+    type === "homework" &&
+    "sqlSandboxCompletionMessage" in block &&
+    typeof block.sqlSandboxCompletionMessage !== "string"
+  ) {
+    errors.push(issue(path, 'поле "sqlSandboxCompletionMessage" должно быть строкой.'));
+  }
+  if (type === "homework") validateSqlSandboxHomework(block, path, errors);
+}
+
+function validateSqlSandboxHomework(
+  block: Record<string, unknown>,
+  path: string,
+  errors: LessonPackageIssue[],
+) {
+  if (block.mode !== "sql_sandbox") {
+    if ("sandbox" in block)
+      errors.push(issue(path, 'поле "sandbox" доступно только для mode "sql_sandbox".'));
+    if ("mode" in block && block.mode !== "manual")
+      errors.push(issue(path, 'поле "mode" должно быть "manual" или "sql_sandbox".'));
+    return;
+  }
+  if (block.manualReview !== false)
+    errors.push(issue(path, 'для sql_sandbox поле "manualReview" должно быть false.'));
+  if (block.completionCondition !== "all_sql_tasks_passed")
+    errors.push(
+      issue(path, 'для sql_sandbox completionCondition должен быть "all_sql_tasks_passed".'),
+    );
+  if (!isRecord(block.sandbox)) {
+    errors.push(issue(path, 'для mode "sql_sandbox" требуется объект "sandbox".'));
+    return;
+  }
+  const sandbox = block.sandbox;
+  const allowedConfig = new Set([
+    "engine",
+    "readOnly",
+    "allowStatements",
+    "resetDatabaseBeforeEachRun",
+    "showSchema",
+    "showResultTable",
+    "showRunButton",
+    "runButtonLabel",
+    "progressLabel",
+    "tables",
+    "tasks",
+  ]);
+  for (const key of Object.keys(sandbox))
+    if (!allowedConfig.has(key)) errors.push(issue(path, `неизвестное поле sandbox."${key}".`));
+  if (sandbox.engine !== undefined && sandbox.engine !== "sqlite")
+    errors.push(issue(path, 'sandbox.engine должен быть "sqlite".'));
+  if (sandbox.readOnly !== undefined && typeof sandbox.readOnly !== "boolean")
+    errors.push(issue(path, "sandbox.readOnly должен быть boolean."));
+  if (
+    sandbox.allowStatements !== undefined &&
+    (!Array.isArray(sandbox.allowStatements) ||
+      sandbox.allowStatements.length < 1 ||
+      sandbox.allowStatements.length > 4 ||
+      new Set(sandbox.allowStatements).size !== sandbox.allowStatements.length ||
+      sandbox.allowStatements.some(
+        (statement) => !["SELECT", "INSERT", "UPDATE", "DELETE"].includes(String(statement)),
+      ))
+  )
+    errors.push(
+      issue(path, "sandbox.allowStatements может содержать SELECT, INSERT, UPDATE и/или DELETE."),
+    );
+  if (
+    sandbox.readOnly === true &&
+    Array.isArray(sandbox.allowStatements) &&
+    sandbox.allowStatements.some((statement) => statement !== "SELECT")
+  )
+    errors.push(issue(path, 'при readOnly: true разрешена только команда "SELECT".'));
+  if (
+    sandbox.resetDatabaseBeforeEachRun !== undefined &&
+    sandbox.resetDatabaseBeforeEachRun !== true
+  )
+    errors.push(issue(path, "sandbox.resetDatabaseBeforeEachRun должен быть true."));
+  for (const key of ["showSchema", "showResultTable", "showRunButton"])
+    if (key in sandbox && typeof sandbox[key] !== "boolean")
+      errors.push(issue(path, `sandbox.${key} должен быть boolean.`));
+  for (const key of ["runButtonLabel", "progressLabel"])
+    if (key in sandbox && typeof sandbox[key] !== "string")
+      errors.push(issue(path, `sandbox.${key} должен быть строкой.`));
+  if (
+    !isRecord(sandbox.tables) ||
+    Object.keys(sandbox.tables).length < 1 ||
+    Object.keys(sandbox.tables).length > 10
+  ) {
+    errors.push(issue(path, "sandbox.tables должен содержать от 1 до 10 таблиц."));
+  } else {
+    for (const [tableName, rawTable] of Object.entries(sandbox.tables)) {
+      if (
+        !/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName) ||
+        !isRecord(rawTable) ||
+        !Array.isArray(rawTable.columns) ||
+        rawTable.columns.length < 1 ||
+        rawTable.columns.length > 20 ||
+        !Array.isArray(rawTable.rows) ||
+        rawTable.rows.length > 500
+      ) {
+        errors.push(
+          issue(
+            path,
+            `таблица "${tableName}" должна содержать безопасное имя, 1–20 колонок и не более 500 строк.`,
+          ),
+        );
+        continue;
+      }
+      const names = rawTable.columns.map((column) => (isRecord(column) ? column.name : undefined));
+      if (
+        !names.every((name) => typeof name === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) ||
+        new Set(names).size !== names.length
+      )
+        errors.push(
+          issue(
+            path,
+            `имена колонок таблицы "${tableName}" должны быть безопасными и уникальными.`,
+          ),
+        );
+      for (const column of rawTable.columns)
+        if (
+          !isRecord(column) ||
+          (column.type !== undefined &&
+            !["INTEGER", "REAL", "TEXT", "NUMERIC", "BLOB"].includes(
+              String(column.type).toUpperCase(),
+            ))
+        )
+          errors.push(
+            issue(
+              path,
+              `тип колонки таблицы "${tableName}" должен быть INTEGER, REAL, TEXT, NUMERIC или BLOB.`,
+            ),
+          );
+      for (const row of rawTable.rows)
+        if (
+          !Array.isArray(row) ||
+          row.length !== rawTable.columns.length ||
+          row.some(
+            (cell) =>
+              !(
+                cell === null ||
+                typeof cell === "string" ||
+                (typeof cell === "number" && Number.isFinite(cell))
+              ),
+          )
+        )
+          errors.push(
+            issue(
+              path,
+              `строка таблицы "${tableName}" должна содержать значение для каждой колонки.`,
+            ),
+          );
+    }
+  }
+  if (!Array.isArray(sandbox.tasks) || sandbox.tasks.length < 1) {
+    errors.push(issue(path, "sandbox.tasks должен содержать хотя бы одно задание."));
+  } else {
+    const ids = sandbox.tasks.map((task) => (isRecord(task) ? task.id : undefined));
+    if (
+      !ids.every((id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(id)) ||
+      new Set(ids).size !== ids.length
+    )
+      errors.push(issue(path, "идентификаторы заданий SQL должны быть уникальными и безопасными."));
+    for (const [index, task] of sandbox.tasks.entries()) {
+      if (!isRecord(task)) {
+        errors.push(issue(path, `задание ${index + 1} должно быть объектом.`));
+        continue;
+      }
+      const keys = new Set([
+        "id",
+        "title",
+        "instruction",
+        "hint",
+        "successMessage",
+        "expectedColumns",
+        "expectedRows",
+        "orderSensitive",
+        "starterSql",
+        "verificationQuery",
+      ]);
+      for (const key of Object.keys(task))
+        if (!keys.has(key))
+          errors.push(issue(path, `неизвестное поле задания ${index + 1}: "${key}".`));
+      for (const key of ["title", "instruction"])
+        if (!nonEmptyString(task[key]))
+          errors.push(
+            issue(path, `у задания ${index + 1} поле "${key}" должно быть непустой строкой.`),
+          );
+      if ("hint" in task && typeof task.hint !== "string")
+        errors.push(issue(path, `у задания ${index + 1} поле "hint" должно быть строкой.`));
+      if ("successMessage" in task && typeof task.successMessage !== "string")
+        errors.push(
+          issue(path, `у задания ${index + 1} поле "successMessage" должно быть строкой.`),
+        );
+      if ("starterSql" in task && typeof task.starterSql !== "string")
+        errors.push(issue(path, `у задания ${index + 1} поле "starterSql" должно быть строкой.`));
+      if ("verificationQuery" in task) {
+        if (!nonEmptyString(task.verificationQuery)) {
+          errors.push(
+            issue(
+              path,
+              `у задания ${index + 1} поле "verificationQuery" должно быть непустым SELECT.`,
+            ),
+          );
+        } else {
+          const verification = validateSandboxSelect(task.verificationQuery);
+          if (!verification.valid)
+            errors.push(
+              issue(
+                path,
+                `у задания ${index + 1} verificationQuery должен быть безопасным одиночным SELECT: ${verification.message}`,
+              ),
+            );
+        }
+      }
+      if ("orderSensitive" in task && typeof task.orderSensitive !== "boolean")
+        errors.push(
+          issue(path, `у задания ${index + 1} поле "orderSensitive" должно быть boolean.`),
+        );
+      const validColumns =
+        Array.isArray(task.expectedColumns) &&
+        task.expectedColumns.length > 0 &&
+        task.expectedColumns.every((column) => typeof column === "string");
+      if (!validColumns)
+        errors.push(
+          issue(
+            path,
+            `у задания ${index + 1} expectedColumns должен быть непустым массивом строк.`,
+          ),
+        );
+      const expectedWidth = Array.isArray(task.expectedColumns) ? task.expectedColumns.length : -1;
+      const validRows =
+        Array.isArray(task.expectedRows) &&
+        task.expectedRows.every(
+          (row) =>
+            Array.isArray(row) &&
+            row.length === expectedWidth &&
+            row.every(
+              (cell) =>
+                cell === null ||
+                typeof cell === "string" ||
+                (typeof cell === "number" && Number.isFinite(cell)),
+            ),
+        );
+      if (!validRows)
+        errors.push(
+          issue(
+            path,
+            `у задания ${index + 1} expectedRows должен быть массивом строк, совпадающих по ширине с expectedColumns.`,
+          ),
+        );
+    }
+  }
 }
 
 function validateStateDiagram(
@@ -852,8 +1146,15 @@ function validateTable(block: Record<string, unknown>, path: string, errors: Les
       return;
     }
     for (const columnId of columnIds) {
-      if (typeof row[columnId] !== "string")
-        errors.push(issue(path, `в строке ${index + 1} нет текстовой ячейки "${columnId}".`));
+      const cell = row[columnId];
+      if (
+        !(
+          cell === null ||
+          typeof cell === "string" ||
+          (typeof cell === "number" && Number.isFinite(cell))
+        )
+      )
+        errors.push(issue(path, `в строке ${index + 1} нет допустимой ячейки "${columnId}".`));
     }
     for (const key of Object.keys(row)) {
       if (!columnIdSet.has(key))
@@ -1073,9 +1374,109 @@ export function importLessonPackage(value: LessonPackage): {
 type LessonJsonSchemaNode = Record<string, unknown>;
 
 function jsonType(type: string): LessonJsonSchemaNode {
+  if (type === '"manual" | "sql_sandbox"') return { enum: ["manual", "sql_sandbox"] };
+  if (
+    type ===
+    "viewed | question_correct | video_watched | task_completed | homework_submitted | all_sql_tasks_passed"
+  )
+    return {
+      enum: [
+        "viewed",
+        "question_correct",
+        "video_watched",
+        "task_completed",
+        "homework_submitted",
+        "all_sql_tasks_passed",
+      ],
+    };
+  if (type === "character key") return { enum: characterCatalog.map((character) => character.key) };
+  if (type === "SqlSandboxConfig") {
+    const cell = { type: ["string", "number", "null"] };
+    return {
+      type: "object",
+      additionalProperties: false,
+      required: ["tables", "tasks"],
+      properties: {
+        engine: { const: "sqlite" },
+        readOnly: { type: "boolean" },
+        allowStatements: {
+          type: "array",
+          minItems: 1,
+          maxItems: 4,
+          uniqueItems: true,
+          items: { enum: ["SELECT", "INSERT", "UPDATE", "DELETE"] },
+        },
+        resetDatabaseBeforeEachRun: { const: true },
+        showSchema: { type: "boolean" },
+        showResultTable: { type: "boolean" },
+        showRunButton: { type: "boolean" },
+        runButtonLabel: { type: "string" },
+        progressLabel: { type: "string" },
+        tables: {
+          type: "object",
+          minProperties: 1,
+          maxProperties: 10,
+          propertyNames: { pattern: "^[A-Za-z_][A-Za-z0-9_]*$" },
+          additionalProperties: {
+            type: "object",
+            additionalProperties: false,
+            required: ["columns", "rows"],
+            properties: {
+              columns: {
+                type: "array",
+                minItems: 1,
+                maxItems: 20,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["name"],
+                  properties: {
+                    name: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]*$" },
+                    type: { enum: ["INTEGER", "REAL", "TEXT", "NUMERIC", "BLOB"] },
+                  },
+                },
+              },
+              rows: { type: "array", maxItems: 500, items: { type: "array", items: cell } },
+            },
+          },
+        },
+        tasks: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "title", "instruction", "expectedColumns", "expectedRows"],
+            properties: {
+              id: { type: "string", pattern: "^[A-Za-z0-9_-]{1,80}$" },
+              title: { type: "string", minLength: 1 },
+              instruction: { type: "string", minLength: 1 },
+              hint: { type: "string" },
+              successMessage: {
+                type: "string",
+                description: "Необязательное сообщение ученику после успешной проверки задания.",
+              },
+              starterSql: { type: "string" },
+              verificationQuery: {
+                type: "string",
+                minLength: 1,
+                description:
+                  "Необязательный безопасный одиночный SELECT. Запускается после INSERT/UPDATE/DELETE без RETURNING; его результат сравнивается с expectedColumns и expectedRows.",
+              },
+              orderSensitive: { type: "boolean" },
+              expectedColumns: { type: "array", minItems: 1, items: { type: "string" } },
+              expectedRows: { type: "array", items: { type: "array", items: cell } },
+            },
+          },
+        },
+      },
+    };
+  }
   if (type === "{ id, label }[]" || type === "{ id, label, position? }[]") {
     return {
       type: "array",
+      minItems: type.includes("position") ? 2 : 1,
+      ...(type.includes("position") ? {} : { maxItems: 10 }),
       items: {
         type: "object",
         additionalProperties: false,
@@ -1132,9 +1533,29 @@ function jsonType(type: string): LessonJsonSchemaNode {
       },
     };
   }
-  if (type === "{ [columnId]: string }[]") {
-    return { type: "array", items: { type: "object", additionalProperties: { type: "string" } } };
+  if (type === "{ term, definition }[]") {
+    return {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["term", "definition"],
+        properties: {
+          term: { type: "string", minLength: 1 },
+          definition: { type: "string", minLength: 1 },
+        },
+      },
+    };
   }
+  if (type === "{ [columnId]: string | number | null }[]") {
+    return {
+      type: "array",
+      maxItems: 30,
+      items: { type: "object", additionalProperties: { type: ["string", "number", "null"] } },
+    };
+  }
+  if (type.includes(" | "))
+    return { enum: type.split(" | ").map((value) => value.replace(/^"|"$/g, "")) };
   if (type.endsWith("[]")) {
     const itemType = type.slice(0, -2);
     return { type: "array", items: jsonType(itemType) };
@@ -1179,6 +1600,80 @@ export function getLessonJsonSchema() {
                   ["type", { const: entry.type }],
                   ...entry.fields.map((field) => [field.name, jsonType(field.type)]),
                 ]),
+                ...(entry.type === "diagram"
+                  ? {
+                      properties: {
+                        ...Object.fromEntries([
+                          ["type", { const: entry.type }],
+                          ...entry.fields.map((field) => [field.name, jsonType(field.type)]),
+                        ]),
+                        steps: {
+                          type: "array",
+                          minItems: 2,
+                          items: { type: "string", minLength: 1 },
+                        },
+                      },
+                    }
+                  : {}),
+                ...(entry.type === "question"
+                  ? {
+                      allOf: [
+                        {
+                          if: { properties: { questionType: { enum: [...questionTypes] } } },
+                          then: {
+                            properties: {
+                              options: { minItems: 2, items: { type: "string" } },
+                            },
+                          },
+                        },
+                        {
+                          if: { properties: { questionType: { const: "true_false" } } },
+                          then: { properties: { options: { maxItems: 2 } } },
+                        },
+                        {
+                          if: { properties: { questionType: { const: "multiple_choice" } } },
+                          then: {
+                            required: ["correctAnswers"],
+                            properties: {
+                              correctAnswers: {
+                                type: "array",
+                                minItems: 1,
+                                items: { type: "integer", minimum: 0 },
+                              },
+                            },
+                          },
+                        },
+                        {
+                          if: {
+                            properties: {
+                              questionType: { enum: ["single_choice", "true_false", "scenario"] },
+                            },
+                          },
+                          then: { required: ["correctIndex"] },
+                        },
+                      ],
+                    }
+                  : {}),
+                ...(entry.type === "visual_choice"
+                  ? {
+                      properties: {
+                        ...Object.fromEntries([
+                          ["type", { const: entry.type }],
+                          ...entry.fields.map((field) => [field.name, jsonType(field.type)]),
+                        ]),
+                        options: {
+                          type: "array",
+                          minItems: 2,
+                          items: { type: "string" },
+                        },
+                        correctAnswers: {
+                          type: "array",
+                          minItems: 1,
+                          items: { type: "integer", minimum: 0 },
+                        },
+                      },
+                    }
+                  : {}),
               })),
             },
           },
@@ -1189,7 +1684,47 @@ export function getLessonJsonSchema() {
 }
 
 export function buildAiKitReadme() {
-  return `# QA Start AI kit\n\nЭтот набор помогает подготовить урок QA Start в JSON и импортировать его через админку.\n\n## Как работать\n\n1. Прочитайте LESSON_GUIDELINES.md.\n2. Изучите example-lesson.json. Это экспорт актуального Дня 1, эталона качества QA Start.\n3. Выберите только подходящие блоки из block-catalog.json.\n4. Используйте изображения персонажа только из character-catalog.json.\n5. Проверьте lesson-schema.json и создайте JSON с schemaVersion "${lessonPackageSchemaVersion}".\n\n## Важное\n\n- Урок описывается структурированным JSON, а не одним HTML-файлом.\n- Порядок элементов в blocks определяет порядок урока.\n- Не указывайте ID базы данных.\n- Для подсказки проводника используйте type "guide" и ключ character, например "character_explain".\n- Используйте только реально поддерживаемые типы блоков.\n- Для state_diagram задавайте states с id, label и необязательными position { x, y }; transitions могут образовывать ветвления, возвраты, циклы и self-loop.\n- Для table задавайте произвольные columns { id, label } и rows с текстовыми значениями по этим id.\n- Каждый следующий блок должен логично отвечать на предыдущий или развивать его.\n`;
+  return `# QA Start AI kit
+
+Этот набор помогает подготовить урок QA Start в JSON и импортировать его через админку.
+
+## Как работать
+
+1. Прочитайте LESSON_GUIDELINES.md.
+2. Изучите example-lesson.json. Это экспорт актуального Дня 1, эталона качества QA Start.
+3. Выберите только подходящие блоки из block-catalog.json.
+4. Используйте изображения персонажа только из character-catalog.json.
+5. Проверьте lesson-schema.json и создайте JSON с schemaVersion "${lessonPackageSchemaVersion}".
+
+## Важное
+
+- Урок описывается структурированным JSON, а не одним HTML-файлом.
+- Порядок элементов в blocks определяет порядок урока.
+- Не указывайте ID базы данных.
+- Для подсказки проводника используйте type "guide" и ключ character, например "character_explain".
+- Используйте только реально поддерживаемые типы блоков.
+- Для state_diagram задавайте states с id, label и необязательными position { x, y }; transitions могут образовывать ветвления, возвраты, циклы и self-loop.
+- Для table задавайте произвольные columns { id, label } и rows с текстовыми значениями по этим id.
+- Для автоматического SQL-ДЗ используйте homework.mode "sql_sandbox" и укажите sandbox с учебными tables и tasks. Можно задать любое количество заданий: прогресс и завершение рассчитываются по фактическому списку tasks. Для каждого задания нужны title, instruction, expectedColumns и expectedRows; hint, successMessage, starterSql, verificationQuery и orderSensitive необязательны. successMessage позволяет задать короткое подтверждение правильного ответа; если результат пустой, по умолчанию отображается ясное сообщение вместо пустой таблицы. starterSql задаёт начальный текст редактора ученика. При orderSensitive: true проверяется порядок строк. Для текста после успешного выполнения всех заданий задайте необязательное поле sqlSandboxCompletionMessage (по умолчанию: "Все задания выполнены. Молодец!"). Разрешённые команды задавайте в allowStatements из списка SELECT, INSERT, UPDATE, DELETE. По умолчанию выполняется только SELECT; readOnly: true принудительно оставляет режим только для чтения. Для INSERT, UPDATE и DELETE предпочтительно используйте RETURNING: фактический результат сравнивается с expectedColumns/expectedRows. Если проверяемая мутация выполняется без RETURNING, задайте для этого задания verificationQuery — безопасный одиночный SELECT, который проверит итоговое состояние базы сразу после запроса; результат именно этого SELECT сравнивается с expectedColumns/expectedRows. verificationQuery сам по себе не может менять данные и не может содержать несколько команд. Учебная SQLite-база пересоздаётся из исходных данных перед каждой проверкой. Supabase, production- и проектная базы не используются.
+- Каждый следующий блок должен логично отвечать на предыдущий или развивать его.
+
+## Ограничения импорта
+
+Следуйте этим правилам, даже если JSON Schema или пример допускают более свободную форму. Импорт дополнительно проверяет связи и содержимое полей; его runtime-валидатор является окончательной проверкой.
+
+- Корень файла содержит только schemaVersion и lesson. В lesson обязательны целые day >= 1, непустой title, строковый description и непустой массив blocks. Не добавляйте ID урока или блоков из базы.
+- Используйте только type из block-catalog.json. Для полей блока сверяйтесь с fields и example у соответствующего типа.
+- diagram.steps — минимум два непустых шага.
+- state_diagram.states — минимум два состояния с непустыми уникальными id и label. position, если задана, содержит конечные числовые x и y. Каждый transition.from/to должен ссылаться на существующее состояние; допустимы ветвления, возвраты, циклы и self-loop. initialState и все значения finalStates должны ссылаться на существующие id. edgeType: auto | straight | bezier | smoothstep. viewport.zoom должен быть больше нуля.
+- table.columns — от 1 до 10 колонок с непустыми уникальными id и label. rows — не более 30 строк. Каждая строка должна содержать ровно по одному значению для каждого id колонки; лишние ключи запрещены. Значения ячеек: строка, конечное число или null.
+- question.options — минимум два варианта. Для single_choice, true_false и scenario укажите correctIndex, индекс начинается с нуля; для true_false требуется ровно два варианта. Для multiple_choice задайте непустой correctAnswers со всеми индексами внутри options.
+- visual_choice.options — минимум два варианта; correctAnswers — непустой список индексов внутри options.
+- summary.items — массив объектов { term, definition }; points — массив строк.
+- SQL sandbox: sandbox.tables содержит от 1 до 10 таблиц; имена таблиц и колонок — безопасные SQL-идентификаторы из латинских букв, цифр и _. В таблице 1–20 уникальных колонок и не более 500 строк; каждая строка содержит значение для каждой колонки (строка, конечное число или null).
+- У каждого SQL-задания id должен быть уникальным, состоять из латинских букв, цифр, _ или - и иметь длину не более 80 символов. title и instruction — непустые строки; expectedColumns — непустой массив строк; каждая строка expectedRows должна иметь ту же длину и содержать только строки, конечные числа или null. Количество заданий не фиксировано.
+- allowStatements содержит только уникальные команды SELECT, INSERT, UPDATE и/или DELETE. readOnly: true совместим только с SELECT. На каждую попытку разрешён один запрос; несколько команд, DDL, транзакции и опасные SQLite-функции запрещены. Для INSERT/UPDATE/DELETE без RETURNING задайте verificationQuery — одиночный безопасный SELECT.
+- completionCondition может быть только viewed, question_correct, video_watched, task_completed, homework_submitted или all_sql_tasks_passed. all_sql_tasks_passed используйте только для homework.mode: sql_sandbox.
+`;
 }
 
 function crc32(bytes: Uint8Array) {

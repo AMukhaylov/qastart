@@ -21,6 +21,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { InteractiveLesson } from "@/components/interactive-lesson";
+import { AdminSqlSandboxEditor } from "@/components/admin-sql-sandbox-editor";
+import { createEmptySqlSandbox, validateSqlSandboxEditor } from "@/lib/sql-sandbox-editor";
 import {
   Dialog,
   DialogContent,
@@ -425,6 +427,17 @@ function AdminLessons() {
 
   async function save() {
     if (!active) return;
+    const sandboxIssues = blocks.flatMap((block, index) =>
+      block.block_type === "homework" && block.content.mode === "sql_sandbox"
+        ? validateSqlSandboxEditor(block.content.sandbox).map(
+            (message) => `Домашнее задание, блок ${index + 1}: ${message}`,
+          )
+        : [],
+    );
+    if (sandboxIssues.length) {
+      toast.error(sandboxIssues[0]);
+      return;
+    }
     if (active.id.startsWith("new-")) {
       setSaving(true);
       try {
@@ -874,7 +887,7 @@ function ImportDialog({
     <Dialog open={opened} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         ref={previewScroll.ref}
-        className="max-h-[90vh] max-w-6xl overflow-y-auto"
+        className="max-h-[90vh] w-[calc(100vw-2rem)] max-w-6xl min-w-0 overflow-x-hidden overflow-y-auto"
         onScroll={previewScroll.onScroll}
       >
         <DialogHeader>
@@ -895,8 +908,8 @@ function ImportDialog({
           </ul>
         )}
         {preview && imported && (
-          <div className="space-y-5">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="min-w-0 max-w-full space-y-5">
+            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <ImportMetric label="Название" value={preview.package.lesson.title} />
               <ImportMetric label="День" value={String(preview.package.lesson.day)} />
               <ImportMetric label="Блоков" value={String(blocks.length)} />
@@ -904,11 +917,13 @@ function ImportDialog({
               <ImportMetric label="Подсказок" value={String(hints)} />
               <ImportMetric label="Изображений персонажа" value={String(hints)} />
               <ImportMetric label="Обычных изображений" value={String(images)} />
-              <div className="rounded-xl border border-border bg-muted/30 p-3 sm:col-span-2">
+              <div className="min-w-0 rounded-xl border border-border bg-muted/30 p-3 sm:col-span-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Типы блоков
                 </p>
-                <p className="mt-1 text-sm font-semibold">{types.map(labelFor).join(", ")}</p>
+                <p className="mt-1 break-words text-sm font-semibold">
+                  {types.map(labelFor).join(", ")}
+                </p>
               </div>
             </div>
             {preview.warnings.length > 0 && (
@@ -929,7 +944,7 @@ function ImportDialog({
                   Существующий урок «{preview.existingLesson.title}» не будет перезаписан без
                   выбора.
                 </p>
-                <div className="grid gap-2 md:grid-cols-2">
+                <div className="grid min-w-0 gap-2 md:grid-cols-2">
                   <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3">
                     <input
                       type="radio"
@@ -963,7 +978,7 @@ function ImportDialog({
             ) : null}
             <details className="rounded-xl border border-border bg-muted/20 p-4">
               <summary className="cursor-pointer font-semibold">Предпросмотр для ученика</summary>
-              <div className="mt-5 rounded-xl border border-border bg-background p-4 md:p-6">
+              <div className="mt-5 min-w-0 max-w-full rounded-xl border border-border bg-background p-4 md:p-6">
                 <InteractiveLesson
                   blocks={studentBlocks}
                   completedBlockIds={new Set()}
@@ -1000,7 +1015,7 @@ function ImportDialog({
 
 function ImportMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border bg-muted/30 p-3">
+    <div className="min-w-0 rounded-xl border border-border bg-muted/30 p-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="mt-1 truncate text-sm font-bold" title={value}>
         {value}
@@ -1798,6 +1813,60 @@ function BlockEditor({
         </p>
         {simple("Название домашнего задания", "title")}
         {simple("Задание для ученика", "instruction", true)}
+        <Field label="Режим домашнего задания">
+          <select
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={stringValue(c, "mode", "manual")}
+            onChange={(event) => {
+              if (event.target.value === "sql_sandbox") {
+                onChange({
+                  ...c,
+                  mode: "sql_sandbox",
+                  manualReview: false,
+                  homeworkRequiredForCompletion: true,
+                  completionCondition: "all_sql_tasks_passed",
+                  sandbox: c.sandbox ?? createEmptySqlSandbox(),
+                });
+              } else {
+                const next: Record<string, unknown> = { ...c, mode: "manual" };
+                delete next.sandbox;
+                delete next.manualReview;
+                if (c.mode === "sql_sandbox") {
+                  next.homeworkRequiredForCompletion = false;
+                  next.completionCondition = "homework_submitted";
+                }
+                onChange(next);
+              }
+            }}
+          >
+            <option value="manual">Обычная отправка наставнику</option>
+            <option value="sql_sandbox">Автоматическая SQL-песочница</option>
+          </select>
+        </Field>
+        {c.mode === "sql_sandbox" && (
+          <>
+            <p className="rounded-xl border border-primary/20 bg-primary-soft/40 p-3 text-sm text-muted-foreground">
+              Запросы выполняются только в отдельной учебной SQLite-базе в браузере. Сконструируйте
+              таблицы и ожидаемые результаты ниже: конфигурация автоматически сохраняется вместе с
+              блоком и используется ученическим preview.
+            </p>
+            <AdminSqlSandboxEditor
+              value={c.sandbox}
+              onChange={(sandbox) => onChange({ ...c, sandbox })}
+            />
+            <Field label="Сообщение после выполнения всех SQL-заданий">
+              <Textarea
+                rows={2}
+                value={stringValue(
+                  c,
+                  "sqlSandboxCompletionMessage",
+                  "Все задания выполнены. Молодец!",
+                )}
+                onChange={(event) => set("sqlSandboxCompletionMessage", event.target.value)}
+              />
+            </Field>
+          </>
+        )}
         <div className="mt-5 border-t border-border pt-5">
           <h3 className="text-sm font-bold">После отправки ДЗ — «День пройден»</h3>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -1979,6 +2048,7 @@ function BlockEditor({
                 <option value="video_watched">Видео просмотрено</option>
                 <option value="task_completed">Задание выполнено</option>
                 <option value="homework_submitted">Домашнее задание отправлено</option>
+                <option value="all_sql_tasks_passed">Все SQL-задания выполнены</option>
               </select>
             </Field>
             {block.block_type === "homework" && (
@@ -2023,7 +2093,9 @@ function BlockPreview({ block }: { block: LessonBlockDraft }) {
         ? stringValue(c, "text")
         : block.block_type === "question"
           ? stringValue(c, "question")
-          : "";
+          : block.block_type === "homework" && c.mode === "sql_sandbox"
+            ? `SQL-песочница · ${Array.isArray((c.sandbox as Record<string, unknown> | undefined)?.tasks) ? (c.sandbox as { tasks: unknown[] }).tasks.length : 0} заданий`
+            : "";
   return (
     <div className="mt-1 max-w-2xl truncate text-xs text-muted-foreground">
       <span className="font-semibold text-foreground/70">{title}</span>
