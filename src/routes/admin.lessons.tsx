@@ -638,7 +638,7 @@ function AdminLessons() {
       </div>
     );
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-x-clip">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">Управление уроками</h1>
         <p className="mt-1 text-muted-foreground">
@@ -667,9 +667,9 @@ function AdminLessons() {
         </div>
       </div>
       <div
-        className={`grid gap-6 ${lessonListOpen ? "lg:grid-cols-[280px_1fr]" : "lg:grid-cols-[52px_1fr]"}`}
+        className={`grid min-w-0 grid-cols-1 gap-6 ${lessonListOpen ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "lg:grid-cols-[52px_minmax(0,1fr)]"}`}
       >
-        <aside className="h-fit rounded-2xl border border-border bg-card p-3 lg:sticky lg:top-32">
+        <aside className="h-fit min-w-0 rounded-2xl border border-border bg-card p-3 lg:sticky lg:top-32">
           <div
             className={`flex items-center ${lessonListOpen ? "justify-between" : "justify-center"}`}
           >
@@ -718,7 +718,7 @@ function AdminLessons() {
           )}
         </aside>
         {active ? (
-          <section className="space-y-6 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)] md:p-7">
+          <section className="min-w-0 space-y-6 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)] md:p-7">
             <div
               data-testid="lesson-actions-bar"
               className="sticky top-[calc(var(--admin-header-height)+0.75rem)] z-20 -mx-2 flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/95 px-2 py-2 shadow-[var(--shadow-soft)] backdrop-blur md:-mx-3 md:px-3"
@@ -858,9 +858,30 @@ function ImportDialog({
   onConfirm: () => void;
 }) {
   const opened = Boolean(preview) || issues.length > 0;
+  const [viewportWidth, setViewportWidth] = useState<number | null>(null);
   const previewScroll = usePreviewScrollPosition(
     Boolean(preview),
     preview ? `import:${preview.previewId}` : null,
+  );
+  const previewDialogRef = previewScroll.ref;
+  useEffect(() => {
+    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
+    updateViewportWidth();
+    window.addEventListener("resize", updateViewportWidth);
+    return () => window.removeEventListener("resize", updateViewportWidth);
+  }, []);
+  const dialogWidth = viewportWidth
+    ? `${Math.max(0, Math.min(viewportWidth - 32, 1152))}px`
+    : "calc(100vw - 2rem)";
+  const setDialogRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      previewDialogRef(node);
+      if (!node) return;
+      node.style.setProperty("width", dialogWidth, "important");
+      node.style.setProperty("max-width", dialogWidth, "important");
+      node.style.setProperty("min-width", "0px", "important");
+    },
+    [dialogWidth, previewDialogRef],
   );
   const imported = preview ? importLessonPackage(preview.package) : null;
   const blocks = imported?.blocks ?? [];
@@ -886,8 +907,8 @@ function ImportDialog({
   return (
     <Dialog open={opened} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        ref={previewScroll.ref}
-        className="max-h-[90vh] w-[calc(100vw-2rem)] max-w-6xl min-w-0 overflow-x-hidden overflow-y-auto"
+        ref={setDialogRef}
+        className="flex flex-col gap-4 max-h-[90vh] max-w-6xl min-w-0 overflow-x-hidden overflow-y-auto"
         onScroll={previewScroll.onScroll}
       >
         <DialogHeader>

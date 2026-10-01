@@ -126,7 +126,14 @@ def test_lesson_import_shows_preview_before_any_save(admin_page):
     )
 
     admin_page.set_viewport_size({"width": 390, "height": 844})
+    admin_page.wait_for_function(
+        "() => { const dialog = document.querySelector('[role=dialog]'); "
+        "if (!dialog) return false; const box = dialog.getBoundingClientRect(); "
+        "return box.left >= 0 && box.right <= window.innerWidth + 1; }"
+    )
     assert dialog.evaluate("element => element.scrollWidth <= element.clientWidth + 1")
+    dialog_box = dialog.bounding_box()
+    assert dialog_box and dialog_box["x"] >= 0 and dialog_box["x"] + dialog_box["width"] <= 390
     assert admin_page.evaluate(
         "document.documentElement.scrollWidth <= window.innerWidth + 1"
     )
