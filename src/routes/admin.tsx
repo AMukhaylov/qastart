@@ -1,13 +1,6 @@
 import { createFileRoute, Link, Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import { useEffect } from "react";
-import {
-  ClipboardCheck,
-  BookOpen,
-  Users,
-  ArrowLeft,
-  CalendarDays,
-  ClipboardList,
-} from "lucide-react";
+import { ClipboardCheck, BookOpen, Users, ArrowLeft, CalendarDays } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -52,7 +45,6 @@ function AdminLayout() {
   const tabs = [
     { to: "/admin/homework", label: "Проверка ДЗ", icon: ClipboardCheck },
     { to: "/admin/lessons", label: "Уроки", icon: BookOpen },
-    { to: "/admin/quiz", label: "Итоговый тест", icon: ClipboardList },
     { to: "/admin/meetings", label: "Встречи", icon: CalendarDays },
     { to: "/admin/students", label: "Студенты", icon: Users },
   ] as const;

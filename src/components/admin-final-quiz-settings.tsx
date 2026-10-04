@@ -1,4 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Download, Loader2, Save, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
@@ -12,8 +11,6 @@ import {
   saveAdminFinalQuizSettings,
 } from "@/server/final-quiz.functions";
 
-export const Route = createFileRoute("/admin/quiz")({ component: AdminFinalQuizSettings });
-
 type QuizSettings = Awaited<ReturnType<typeof getAdminFinalQuizSettings>>;
 type EditableSettings = {
   questionsPerAttempt: number;
@@ -26,7 +23,7 @@ const inputClassName =
   "mt-1 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const MAX_VIDEO_SIZE = 512 * 1024 * 1024;
 
-function AdminFinalQuizSettings() {
+export function AdminFinalQuizSettingsPanel() {
   const { session, isAdmin } = useAuth();
   const [settings, setSettings] = useState<QuizSettings | null>(null);
   const [draft, setDraft] = useState<EditableSettings>({
@@ -188,10 +185,10 @@ function AdminFinalQuizSettings() {
     );
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="space-y-6">
       <section className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-soft)] sm:p-8">
         <div>
-          <h1 className="text-2xl font-extrabold">Настройки итогового теста</h1>
+          <h2 className="text-xl font-extrabold">Настройки итогового теста</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Эти параметры применяются при начале следующей попытки. Текущая активная попытка
             продолжится с исходными настройками.

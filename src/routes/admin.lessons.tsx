@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { InteractiveLesson } from "@/components/interactive-lesson";
 import { AdminSqlSandboxEditor } from "@/components/admin-sql-sandbox-editor";
+import { AdminFinalQuizSettingsPanel } from "@/components/admin-final-quiz-settings";
 import { createEmptySqlSandbox, validateSqlSandboxEditor } from "@/lib/sql-sandbox-editor";
 import {
   Dialog,
@@ -759,6 +760,11 @@ function AdminLessons() {
                 />
               </Field>
             </div>
+            {active.day_number === 14 ? (
+              <section aria-label="Настройки итогового теста">
+                <AdminFinalQuizSettingsPanel />
+              </section>
+            ) : null}
             <BlockBuilder
               blocks={blocks}
               loading={blocksLoading}
