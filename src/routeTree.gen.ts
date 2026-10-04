@@ -23,6 +23,7 @@ import { Route as LessonsDayRouteImport } from './routes/lessons.$day'
 import { Route as CertificatesCodeRouteImport } from './routes/certificates.$code'
 import { Route as ApiAvatarRouteImport } from './routes/api.avatar'
 import { Route as AdminStudentsRouteImport } from './routes/admin.students'
+import { Route as AdminQuizRouteImport } from './routes/admin.quiz'
 import { Route as AdminMeetingsRouteImport } from './routes/admin.meetings'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminLessonsRouteImport } from './routes/admin.lessons'
@@ -98,6 +99,11 @@ const AdminStudentsRoute = AdminStudentsRouteImport.update({
   path: '/students',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminQuizRoute = AdminQuizRouteImport.update({
+  id: '/quiz',
+  path: '/quiz',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminMeetingsRoute = AdminMeetingsRouteImport.update({
   id: '/meetings',
   path: '/meetings',
@@ -133,6 +139,7 @@ export interface FileRoutesByFullPath {
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/meetings': typeof AdminMeetingsRoute
+  '/admin/quiz': typeof AdminQuizRoute
   '/admin/students': typeof AdminStudentsRoute
   '/api/avatar': typeof ApiAvatarRoute
   '/certificates/$code': typeof CertificatesCodeRoute
@@ -152,6 +159,7 @@ export interface FileRoutesByTo {
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/meetings': typeof AdminMeetingsRoute
+  '/admin/quiz': typeof AdminQuizRoute
   '/admin/students': typeof AdminStudentsRoute
   '/api/avatar': typeof ApiAvatarRoute
   '/certificates/$code': typeof CertificatesCodeRoute
@@ -173,6 +181,7 @@ export interface FileRoutesById {
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/meetings': typeof AdminMeetingsRoute
+  '/admin/quiz': typeof AdminQuizRoute
   '/admin/students': typeof AdminStudentsRoute
   '/api/avatar': typeof ApiAvatarRoute
   '/certificates/$code': typeof CertificatesCodeRoute
@@ -195,6 +204,7 @@ export interface FileRouteTypes {
     | '/admin/lessons'
     | '/admin/login'
     | '/admin/meetings'
+    | '/admin/quiz'
     | '/admin/students'
     | '/api/avatar'
     | '/certificates/$code'
@@ -214,6 +224,7 @@ export interface FileRouteTypes {
     | '/admin/lessons'
     | '/admin/login'
     | '/admin/meetings'
+    | '/admin/quiz'
     | '/admin/students'
     | '/api/avatar'
     | '/certificates/$code'
@@ -234,6 +245,7 @@ export interface FileRouteTypes {
     | '/admin/lessons'
     | '/admin/login'
     | '/admin/meetings'
+    | '/admin/quiz'
     | '/admin/students'
     | '/api/avatar'
     | '/certificates/$code'
@@ -356,6 +368,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminStudentsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/quiz': {
+      id: '/admin/quiz'
+      path: '/quiz'
+      fullPath: '/admin/quiz'
+      preLoaderRoute: typeof AdminQuizRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/meetings': {
       id: '/admin/meetings'
       path: '/meetings'
@@ -392,6 +411,7 @@ interface AdminRouteChildren {
   AdminLessonsRoute: typeof AdminLessonsRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AdminMeetingsRoute: typeof AdminMeetingsRoute
+  AdminQuizRoute: typeof AdminQuizRoute
   AdminStudentsRoute: typeof AdminStudentsRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -401,6 +421,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminLessonsRoute: AdminLessonsRoute,
   AdminLoginRoute: AdminLoginRoute,
   AdminMeetingsRoute: AdminMeetingsRoute,
+  AdminQuizRoute: AdminQuizRoute,
   AdminStudentsRoute: AdminStudentsRoute,
   AdminIndexRoute: AdminIndexRoute,
 }

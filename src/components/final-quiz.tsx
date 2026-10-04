@@ -40,7 +40,15 @@ type QuizResult = {
 
 type QuizState =
   | { status: "loading" }
-  | { status: "ready"; attemptsUsed: number; maxAttempts: number }
+  | {
+      status: "ready";
+      attemptsUsed: number;
+      maxAttempts: number;
+      questionsPerAttempt: number;
+      durationMinutes: number;
+      passingPercent: number;
+      introVideoUrl: string | null;
+    }
   | {
       status: "active";
       attemptId: string;
@@ -109,7 +117,15 @@ export function FinalQuiz({
       setCurrentIndex(0);
       autoFinishRef.current = false;
     } catch (error) {
-      setState({ status: "ready", attemptsUsed: 0, maxAttempts: 3 });
+      setState({
+        status: "ready",
+        attemptsUsed: 0,
+        maxAttempts: 3,
+        questionsPerAttempt: 30,
+        durationMinutes: 30,
+        passingPercent: 70,
+        introVideoUrl: null,
+      });
       toast.error(quizErrorMessage(error, "Не удалось загрузить тест"));
     }
   };
@@ -268,11 +284,30 @@ export function FinalQuiz({
 
   if (state.status === "ready") {
     return (
-      <QuizIntro
-        attemptsUsed={state.attemptsUsed}
-        maxAttempts={state.maxAttempts}
-        onStart={() => void load(true)}
-      />
+      <div className="space-y-6">
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7">
+          <h2 className="text-xl font-extrabold">Перед итоговым тестом</h2>
+          {state.introVideoUrl ? (
+            <video
+              className="mt-4 max-h-[520px] w-full rounded-xl bg-black"
+              controls
+              preload="metadata"
+              src={state.introVideoUrl}
+            />
+          ) : null}
+          <p className="mt-3 text-sm text-muted-foreground">
+            Небольшое напутствие перед завершением QA Start
+          </p>
+        </section>
+        <QuizIntro
+          attemptsUsed={state.attemptsUsed}
+          maxAttempts={state.maxAttempts}
+          questionsPerAttempt={state.questionsPerAttempt}
+          durationMinutes={state.durationMinutes}
+          passingPercent={state.passingPercent}
+          onStart={() => void load(true)}
+        />
+      </div>
     );
   }
 
@@ -357,10 +392,16 @@ export function FinalQuiz({
 function QuizIntro({
   attemptsUsed,
   maxAttempts,
+  questionsPerAttempt,
+  durationMinutes,
+  passingPercent,
   onStart,
 }: {
   attemptsUsed: number;
   maxAttempts: number;
+  questionsPerAttempt: number;
+  durationMinutes: number;
+  passingPercent: number;
   onStart: () => void;
 }) {
   return (
@@ -372,20 +413,20 @@ function QuizIntro({
         <div>
           <h2 className="text-xl font-extrabold">Итоговый тест</h2>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Тебе предстоит 30 вопросов по всему курсу. На выполнение даётся 30 минут. Не
-            переключайся на другую вкладку и не сворачивай браузер: попытка будет завершена как не
-            сданная.
+            Тебе предстоит {questionsPerAttempt} вопросов по всему курсу. На выполнение даётся{" "}
+            {durationMinutes} минут. Не переключайся на другую вкладку и не сворачивай браузер:
+            попытка будет завершена как не сданная.
           </p>
         </div>
       </div>
       <div className="mt-6 grid gap-3 text-sm sm:grid-cols-3">
         <div className="rounded-xl bg-muted p-4">
-          <strong>70%</strong>
+          <strong>{passingPercent}%</strong>
           <br />
           <span className="text-muted-foreground">проходной балл</span>
         </div>
         <div className="rounded-xl bg-muted p-4">
-          <strong>30 минут</strong>
+          <strong>{durationMinutes} минут</strong>
           <br />
           <span className="text-muted-foreground">на попытку</span>
         </div>
@@ -459,6 +500,15 @@ function QuizResultView({ result, onRetry }: { result: QuizResult; onRetry?: () 
           ) : null}
         </div>
       </div>
+
+      {result.passed ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900 shadow-[var(--shadow-soft)] sm:p-7">
+          <h2 className="text-xl font-extrabold">Поздравляем с завершением QA Start!</h2>
+          <p className="mt-2 text-sm leading-relaxed">
+            Ты успешно прошёл итоговый тест и завершил курс. Отличная работа!
+          </p>
+        </div>
+      ) : null}
 
       {result.passed ? (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7">

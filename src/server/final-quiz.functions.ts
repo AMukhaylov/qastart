@@ -3,13 +3,22 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getRolesForAccessToken, getUserIdForAccessToken } from "./admin-auth.server";
-import { FINAL_QUIZ_QUESTIONS } from "./final-quiz.questions";
+import {
+  FINAL_QUIZ_QUESTIONS,
+  LEGACY_FINAL_QUIZ_QUESTIONS,
+  type FinalQuizQuestion,
+} from "./final-quiz.questions";
+import { validateFinalQuizBank } from "./final-quiz.bank";
 
-const QUIZ_DURATION_MS = 30 * 60 * 1000;
-const PASSING_PERCENT = 70;
-const BASE_MAX_ATTEMPTS = 3;
-const QUESTIONS_PER_ATTEMPT = 30;
+const DEFAULT_QUIZ_SETTINGS = {
+  questionsPerAttempt: 30,
+  durationMinutes: 30,
+  maxAttempts: 3,
+  passingPercent: 70,
+};
+const QUESTIONS_PER_ATTEMPT = DEFAULT_QUIZ_SETTINGS.questionsPerAttempt;
 const RESERVED_ATTEMPT_KEY = "__reserved_final_quiz_attempt";
+const FINAL_QUIZ_SETTINGS_TABLE = "final_quiz_settings" as const;
 
 const accessTokenInput = z.object({
   accessToken: z.string().min(20),
@@ -40,7 +49,54 @@ type QuizAttempt = {
 type QuestionOrder = {
   questionIds: string[];
   optionIdsByQuestion: Record<string, string[]>;
+  questionsById?: Record<string, FinalQuizQuestion>;
+  durationMinutes?: number;
+  passingPercent?: number;
 };
+
+type FinalQuizSettings = typeof DEFAULT_QUIZ_SETTINGS & {
+  questions: FinalQuizQuestion[];
+  introVideoUrl: string | null;
+};
+
+async function getQuizSettings(): Promise<FinalQuizSettings> {
+  const { data, error } = await supabaseAdmin
+    .from(FINAL_QUIZ_SETTINGS_TABLE)
+    .select(
+      "questions_per_attempt, duration_minutes, max_attempts, passing_percent, bank_questions, intro_video_url",
+    )
+    .eq("id", true)
+    .maybeSingle();
+  if (error) throw error;
+  const row = data as {
+    questions_per_attempt: number;
+    duration_minutes: number;
+    max_attempts: number;
+    passing_percent: number;
+    bank_questions: unknown;
+    intro_video_url: string | null;
+  } | null;
+  return {
+    questionsPerAttempt: row?.questions_per_attempt ?? DEFAULT_QUIZ_SETTINGS.questionsPerAttempt,
+    durationMinutes: row?.duration_minutes ?? DEFAULT_QUIZ_SETTINGS.durationMinutes,
+    maxAttempts: row?.max_attempts ?? DEFAULT_QUIZ_SETTINGS.maxAttempts,
+    passingPercent: row?.passing_percent ?? DEFAULT_QUIZ_SETTINGS.passingPercent,
+    questions: row?.bank_questions
+      ? validateFinalQuizBank(row.bank_questions)
+      : FINAL_QUIZ_QUESTIONS,
+    introVideoUrl: row?.intro_video_url ?? null,
+  };
+}
+
+function questionMap(order?: QuestionOrder) {
+  return new Map(
+    [
+      ...FINAL_QUIZ_QUESTIONS,
+      ...LEGACY_FINAL_QUIZ_QUESTIONS,
+      ...Object.values(order?.questionsById ?? {}),
+    ].map((question) => [question.id, question]),
+  );
+}
 
 function shuffle<T>(items: T[]) {
   const result = [...items];
@@ -51,11 +107,17 @@ function shuffle<T>(items: T[]) {
   return result;
 }
 
-function makeQuestionOrder(): QuestionOrder {
-  const selectedQuestions = shuffle(FINAL_QUIZ_QUESTIONS).slice(0, QUESTIONS_PER_ATTEMPT);
+function makeQuestionOrder(settings?: FinalQuizSettings): QuestionOrder {
+  const selectedQuestions = shuffle(settings?.questions ?? FINAL_QUIZ_QUESTIONS).slice(
+    0,
+    settings?.questionsPerAttempt ?? QUESTIONS_PER_ATTEMPT,
+  );
   const questionIds = selectedQuestions.map((question) => question.id);
   return {
     questionIds,
+    questionsById: Object.fromEntries(selectedQuestions.map((question) => [question.id, question])),
+    durationMinutes: settings?.durationMinutes ?? DEFAULT_QUIZ_SETTINGS.durationMinutes,
+    passingPercent: settings?.passingPercent ?? DEFAULT_QUIZ_SETTINGS.passingPercent,
     optionIdsByQuestion: Object.fromEntries(
       selectedQuestions.map((question) => [
         question.id,
@@ -70,8 +132,8 @@ function parseQuestionOrder(value: unknown): QuestionOrder {
   if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
   const parsed = value as Partial<QuestionOrder>;
   if (!Array.isArray(parsed.questionIds) || !parsed.optionIdsByQuestion) return fallback;
-  if (parsed.questionIds.length !== QUESTIONS_PER_ATTEMPT) return fallback;
-  if (new Set(parsed.questionIds).size !== QUESTIONS_PER_ATTEMPT) return fallback;
+  if (parsed.questionIds.length < 1 || parsed.questionIds.length > 90) return fallback;
+  if (new Set(parsed.questionIds).size !== parsed.questionIds.length) return fallback;
   return {
     questionIds: parsed.questionIds.filter((id): id is string => typeof id === "string"),
     optionIdsByQuestion: Object.fromEntries(
@@ -82,6 +144,13 @@ function parseQuestionOrder(value: unknown): QuestionOrder {
           : [],
       ]),
     ),
+    questionsById:
+      parsed.questionsById && typeof parsed.questionsById === "object"
+        ? (parsed.questionsById as Record<string, FinalQuizQuestion>)
+        : undefined,
+    durationMinutes:
+      typeof parsed.durationMinutes === "number" ? parsed.durationMinutes : undefined,
+    passingPercent: typeof parsed.passingPercent === "number" ? parsed.passingPercent : undefined,
   };
 }
 
@@ -101,7 +170,7 @@ function isReservedAttempt(attempt: QuizAttempt) {
 }
 
 function visibleQuestions(order: QuestionOrder) {
-  const byId = new Map(FINAL_QUIZ_QUESTIONS.map((question) => [question.id, question]));
+  const byId = questionMap(order);
   return order.questionIds.flatMap((questionId) => {
     const question = byId.get(questionId);
     if (!question) return [];
@@ -122,7 +191,12 @@ function visibleQuestions(order: QuestionOrder) {
 }
 
 function expiresAt(attempt: QuizAttempt) {
-  return new Date(new Date(attempt.started_at).getTime() + QUIZ_DURATION_MS).toISOString();
+  const durationMinutes =
+    parseQuestionOrder(attempt.question_order).durationMinutes ??
+    DEFAULT_QUIZ_SETTINGS.durationMinutes;
+  return new Date(
+    new Date(attempt.started_at).getTime() + durationMinutes * 60 * 1000,
+  ).toISOString();
 }
 
 function isExpired(attempt: QuizAttempt) {
@@ -134,13 +208,14 @@ async function finalizeAttempt(attempt: QuizAttempt, timedOut: boolean, disquali
 
   const answers = parseAnswers(attempt.answers);
   const order = parseQuestionOrder(attempt.question_order);
-  const questionsById = new Map(FINAL_QUIZ_QUESTIONS.map((question) => [question.id, question]));
+  const questionsById = questionMap(order);
   const score = order.questionIds.reduce((total, questionId) => {
     const question = questionsById.get(questionId);
     return total + Number(Boolean(question && answers[questionId] === question.correctOptionId));
   }, 0);
   const percentage = Math.round((score / order.questionIds.length) * 100);
-  const passed = !disqualified && percentage >= PASSING_PERCENT;
+  const passed =
+    !disqualified && percentage >= (order.passingPercent ?? DEFAULT_QUIZ_SETTINGS.passingPercent);
   const { data, error } = await supabaseAdmin
     .from("quiz_attempts")
     .update({
@@ -223,7 +298,7 @@ async function getAttemptForUser(userId: string, attemptId: string) {
 async function quizResult(attempt: QuizAttempt, attemptsUsed: number, maxAttempts: number) {
   const answers = parseAnswers(attempt.answers);
   const order = parseQuestionOrder(attempt.question_order);
-  const byId = new Map(FINAL_QUIZ_QUESTIONS.map((question) => [question.id, question]));
+  const byId = questionMap(order);
   return {
     attemptId: attempt.id,
     score: attempt.score ?? 0,
@@ -261,6 +336,7 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
   .inputValidator((data) => accessTokenInput.parse(data))
   .handler(async ({ data }) => {
     const userId = await getUserIdForAccessToken(data.accessToken);
+    const settings = await getQuizSettings();
     await assertFinalQuizUnlocked(userId);
     await closeExpiredAttempts(userId);
 
@@ -278,7 +354,7 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
       .order("started_at", { ascending: false });
     if (attemptsError) throw attemptsError;
     const allAttempts = (attempts ?? []) as QuizAttempt[];
-    const maxAttempts = Math.max(BASE_MAX_ATTEMPTS, allAttempts.length);
+    const maxAttempts = Math.max(settings.maxAttempts, allAttempts.length);
     const active = allAttempts.find(
       (attempt) => !attempt.finished_at && !isReservedAttempt(attempt),
     );
@@ -310,10 +386,14 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
         status: "ready" as const,
         attemptsUsed: completedAttempts.length,
         maxAttempts,
+        questionsPerAttempt: settings.questionsPerAttempt,
+        durationMinutes: settings.durationMinutes,
+        passingPercent: settings.passingPercent,
+        introVideoUrl: settings.introVideoUrl,
       };
     }
 
-    const questionOrder = makeQuestionOrder();
+    const questionOrder = makeQuestionOrder(settings);
     const reserved = allAttempts.find(isReservedAttempt);
     const attemptPayload = {
       question_order: questionOrder,
@@ -350,6 +430,10 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
       questions: visibleQuestions(questionOrder),
       attemptsUsed: completedAttempts.length,
       maxAttempts,
+      questionsPerAttempt: settings.questionsPerAttempt,
+      durationMinutes: settings.durationMinutes,
+      passingPercent: settings.passingPercent,
+      introVideoUrl: settings.introVideoUrl,
     };
   });
 
@@ -364,10 +448,12 @@ export const saveFinalQuizAnswers = createServerFn({ method: "POST" })
       throw new Error("Время теста истекло");
     }
 
-    const allowedQuestionIds = new Set(parseQuestionOrder(attempt.question_order).questionIds);
+    const order = parseQuestionOrder(attempt.question_order);
+    const allowedQuestionIds = new Set(order.questionIds);
+    const questionsById = questionMap(order);
     const allowedAnswers = Object.fromEntries(
       Object.entries(data.answers).filter(([questionId, optionId]) => {
-        const question = FINAL_QUIZ_QUESTIONS.find((item) => item.id === questionId);
+        const question = questionsById.get(questionId);
         return (
           allowedQuestionIds.has(questionId) &&
           question?.options.some((option) => option.id === optionId)
@@ -388,6 +474,7 @@ export const finishFinalQuiz = createServerFn({ method: "POST" })
   .inputValidator((data) => finishInput.parse(data))
   .handler(async ({ data }) => {
     const userId = await getUserIdForAccessToken(data.accessToken);
+    const settings = await getQuizSettings();
     let attempt = await getAttemptForUser(userId, data.attemptId);
     if (!attempt.finished_at) {
       attempt = await finalizeAttempt(attempt, isExpired(attempt), data.disqualified);
@@ -401,7 +488,7 @@ export const finishFinalQuiz = createServerFn({ method: "POST" })
       .not("finished_at", "is", null);
     if (error) throw error;
     const attemptsUsed = count ?? 1;
-    return quizResult(attempt, attemptsUsed, Math.max(BASE_MAX_ATTEMPTS, attemptsUsed));
+    return quizResult(attempt, attemptsUsed, Math.max(settings.maxAttempts, attemptsUsed));
   });
 
 export const grantAdditionalFinalQuizAttempt = createServerFn({ method: "POST" })
@@ -409,6 +496,7 @@ export const grantAdditionalFinalQuizAttempt = createServerFn({ method: "POST" }
   .handler(async ({ data }) => {
     const roles = await getRolesForAccessToken(data.accessToken);
     if (!roles.includes("admin")) throw new Error("Недостаточно прав");
+    const settings = await getQuizSettings();
     const { data: lesson, error: lessonError } = await supabaseAdmin
       .from("lessons")
       .select("id")
@@ -424,16 +512,18 @@ export const grantAdditionalFinalQuizAttempt = createServerFn({ method: "POST" }
     const completed = (attempts ?? []).filter((attempt) => attempt.finished_at);
     const hasAvailableAttempt = (attempts ?? []).some((attempt) => !attempt.finished_at);
     if (
-      completed.length < BASE_MAX_ATTEMPTS ||
+      completed.length < settings.maxAttempts ||
       completed.some((attempt) => attempt.passed) ||
       hasAvailableAttempt
     ) {
-      throw new Error("Дополнительную попытку можно выдать после трёх неуспешных попыток");
+      throw new Error(
+        `Дополнительную попытку можно выдать после ${settings.maxAttempts} неуспешных попыток`,
+      );
     }
     const { error } = await supabaseAdmin.from("quiz_attempts").insert({
       user_id: data.userId,
       lesson_id: lesson.id,
-      question_order: makeQuestionOrder(),
+      question_order: makeQuestionOrder(settings),
       answers: { [RESERVED_ATTEMPT_KEY]: "true" },
       score: null,
       percentage: null,
@@ -447,11 +537,108 @@ export const grantAdditionalFinalQuizAttempt = createServerFn({ method: "POST" }
     return { availableAttempts: 1, maxAttempts: completed.length + 1 };
   });
 
+export const getAdminFinalQuizSettings = createServerFn({ method: "POST" })
+  .inputValidator((data) => z.object({ accessToken: z.string().min(20) }).parse(data))
+  .handler(async ({ data }) => {
+    const roles = await getRolesForAccessToken(data.accessToken);
+    if (!roles.includes("admin")) throw new Error("Недостаточно прав");
+    const settings = await getQuizSettings();
+    return {
+      questionsPerAttempt: settings.questionsPerAttempt,
+      durationMinutes: settings.durationMinutes,
+      maxAttempts: settings.maxAttempts,
+      passingPercent: settings.passingPercent,
+      bankQuestionCount: settings.questions.length,
+      introVideoUrl: settings.introVideoUrl,
+      questions: settings.questions,
+    };
+  });
+
+export const saveAdminFinalQuizSettings = createServerFn({ method: "POST" })
+  .inputValidator((data) =>
+    z
+      .object({
+        accessToken: z.string().min(20),
+        questionsPerAttempt: z.number().int().min(1).max(90),
+        durationMinutes: z.number().int().min(1).max(240),
+        maxAttempts: z.number().int().min(1).max(20),
+        passingPercent: z.number().int().min(1).max(100),
+        questions: z.unknown().optional(),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    const roles = await getRolesForAccessToken(data.accessToken);
+    if (!roles.includes("admin")) throw new Error("Недостаточно прав");
+    const questions =
+      data.questions === undefined ? undefined : validateFinalQuizBank(data.questions);
+    const { error } = await supabaseAdmin
+      .from(FINAL_QUIZ_SETTINGS_TABLE)
+      .update({
+        questions_per_attempt: data.questionsPerAttempt,
+        duration_minutes: data.durationMinutes,
+        max_attempts: data.maxAttempts,
+        passing_percent: data.passingPercent,
+        ...(questions ? { bank_questions: questions } : {}),
+      })
+      .eq("id", true);
+    if (error) throw error;
+    return { bankQuestionCount: questions?.length ?? (await getQuizSettings()).questions.length };
+  });
+
+export const saveAdminFinalQuizIntroVideoUrl = createServerFn({ method: "POST" })
+  .inputValidator((data) =>
+    z
+      .object({
+        accessToken: z.string().min(20),
+        videoUrl: z.string().url().max(2048).nullable(),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    const roles = await getRolesForAccessToken(data.accessToken);
+    if (!roles.includes("admin")) throw new Error("Недостаточно прав");
+    const { error } = await supabaseAdmin
+      .from(FINAL_QUIZ_SETTINGS_TABLE)
+      .update({ intro_video_url: data.videoUrl })
+      .eq("id", true);
+    if (error) throw error;
+    return { introVideoUrl: data.videoUrl };
+  });
+
+export const createAdminFinalQuizVideoUpload = createServerFn({ method: "POST" })
+  .inputValidator((data) =>
+    z
+      .object({
+        accessToken: z.string().min(20),
+        extension: z.enum(["mp4", "webm", "mov", "ogg"]),
+        contentType: z.enum(["video/mp4", "video/webm", "video/quicktime", "video/ogg"]),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    const roles = await getRolesForAccessToken(data.accessToken);
+    if (!roles.includes("admin")) throw new Error("Недостаточно прав");
+    const path = `author/${crypto.randomUUID()}.${data.extension}`;
+    const { data: signedUpload, error } = await supabaseAdmin.storage
+      .from("final-quiz-author")
+      .createSignedUploadUrl(path);
+    if (error) throw error;
+    const { data: publicUrl } = supabaseAdmin.storage.from("final-quiz-author").getPublicUrl(path);
+    return {
+      path,
+      token: signedUpload.token,
+      publicUrl: publicUrl.publicUrl,
+      contentType: data.contentType,
+    };
+  });
+
 export const listAdminFinalQuizEligibility = createServerFn({ method: "POST" })
   .inputValidator((data) => z.object({ accessToken: z.string().min(20) }).parse(data))
   .handler(async ({ data }) => {
     const roles = await getRolesForAccessToken(data.accessToken);
     if (!roles.includes("admin")) throw new Error("Недостаточно прав");
+    const settings = await getQuizSettings();
     const { data: lesson, error: lessonError } = await supabaseAdmin
       .from("lessons")
       .select("id")
@@ -478,7 +665,7 @@ export const listAdminFinalQuizEligibility = createServerFn({ method: "POST" })
     return Object.fromEntries(
       [...byUser].map(([userId, result]) => [
         userId,
-        result.failed >= BASE_MAX_ATTEMPTS && !result.passed && !result.active,
+        result.failed >= settings.maxAttempts && !result.passed && !result.active,
       ]),
     );
   });

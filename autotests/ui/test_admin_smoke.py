@@ -141,6 +141,28 @@ def test_lesson_import_shows_preview_before_any_save(admin_page):
 
 @pytest.mark.authenticated
 @pytest.mark.admin
+def test_admin_final_quiz_settings_are_available(admin_page):
+    admin_page.goto("/admin/quiz", wait_until="domcontentloaded")
+
+    expect(admin_page.get_by_role("heading", name="Настройки итогового теста")).to_be_visible()
+    expect(admin_page.get_by_text("Сейчас в банке:", exact=False)).to_contain_text("90 вопросов")
+    expect(admin_page.get_by_label("Вопросов в попытке")).to_have_value("30")
+    expect(admin_page.get_by_label("Время на попытку (минут)")).to_have_value("30")
+    expect(admin_page.get_by_label("Количество попыток")).to_have_value("3")
+    expect(admin_page.get_by_label("Проходной балл (%)")).to_have_value("70")
+    expect(admin_page.get_by_role("button", name="Скачать текущий банк")).to_be_enabled()
+    with admin_page.expect_download() as download_info:
+        admin_page.get_by_role("button", name="Скачать текущий банк").click()
+    bank = json.loads(download_info.value.path().read_text(encoding="utf-8"))
+    assert len(bank) == 90
+    assert all(
+        question["correctOptionId"] in {option["id"] for option in question["options"]}
+        for question in bank
+    )
+
+
+@pytest.mark.authenticated
+@pytest.mark.admin
 def test_day_one_export_can_be_opened_in_the_import_preview(admin_page):
     admin_page.goto("/admin/lessons", wait_until="domcontentloaded")
     with admin_page.expect_download() as download_info:

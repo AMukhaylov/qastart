@@ -86,6 +86,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      final_quiz_settings: {
+        Row: {
+          bank_questions: Json | null;
+          duration_minutes: number;
+          id: boolean;
+          intro_video_url: string | null;
+          max_attempts: number;
+          passing_percent: number;
+          questions_per_attempt: number;
+          updated_at: string;
+        };
+        Insert: {
+          bank_questions?: Json | null;
+          duration_minutes?: number;
+          id?: boolean;
+          intro_video_url?: string | null;
+          max_attempts?: number;
+          passing_percent?: number;
+          questions_per_attempt?: number;
+          updated_at?: string;
+        };
+        Update: {
+          bank_questions?: Json | null;
+          duration_minutes?: number;
+          id?: boolean;
+          intro_video_url?: string | null;
+          max_attempts?: number;
+          passing_percent?: number;
+          questions_per_attempt?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       student_groups: {
         Row: {
           id: string;
