@@ -9,6 +9,10 @@ from autotests.conftest import require_mutation
 def _start_final_quiz_with_available_attempt(student_page, settings) -> None:
     """Ensure the disposable account has an available attempt before exercising it."""
     student_page.goto("/lessons/14", wait_until="domcontentloaded")
+    heading = student_page.locator("h1")
+    heading.wait_for()
+    if "Урок пока закрыт" in heading.inner_text():
+        pytest.skip("The disposable account has not completed the lessons required for the final quiz.")
     start_button = student_page.get_by_role("button", name=re.compile(r"^(Начать|Повторить) тест$"))
     expect(start_button).to_be_visible()
     start_button.click()
@@ -21,6 +25,10 @@ def test_disposable_student_can_start_final_quiz(student_page, settings):
     """Run only with a disposable account: starting a quiz consumes an attempt."""
     require_mutation(settings)
     student_page.goto("/lessons/14", wait_until="domcontentloaded")
+    heading = student_page.locator("h1")
+    heading.wait_for()
+    if "Урок пока закрыт" in heading.inner_text():
+        pytest.skip("The disposable account has not completed the lessons required for the final quiz.")
 
     expect(student_page.get_by_role("heading", name="Итоговый тест")).to_be_visible()
     _start_final_quiz_with_available_attempt(student_page, settings)

@@ -122,10 +122,12 @@ def test_homework_and_guide_are_independent_sortable_blocks():
 def test_admin_builder_exposes_all_block_types_and_order_controls():
     source = ADMIN.read_text(encoding="utf-8")
 
-    assert "lessonBlockTypes.map" in source
+    assert "lessonBlockTypes" in source
+    assert ".filter((type) => type !== \"final_quiz\" || lessonDay === 14)" in source
+    assert ".map((type) => (" in source
     assert "createLessonBlock(type)" in source
     assert "onUp" in source and "onDown" in source and "onDelete" in source
-    assert 'from("lesson_blocks").delete()' in source
+    assert "onDelete={() => setBlocks((all) => all.filter" in source
     assert 'value={positionValue}' in source
     assert 'setPositionValue(String(index + 1))' in source
     assert 'const lineList = (label: string, key: string' in source
@@ -314,7 +316,9 @@ def test_dashboard_refreshes_progress_when_returning_from_a_lesson():
     assert 'value={`${hwApproved} / ${homeworkLessonIds.size}`}' in source
     assert "getStudentDashboardData" in source
     dashboard_server = (ROOT / "src/server/dashboard.functions.ts").read_text(encoding="utf-8")
-    assert 'from("lesson_blocks").select("lesson_id").eq("block_type", "homework")' in dashboard_server
+    assert '.from("lesson_blocks")' in dashboard_server
+    assert '.select("id,lesson_id,content")' in dashboard_server
+    assert '.from("sql_sandbox_attempts")' in dashboard_server
     assert 'aria-label="Урок пройден"' in source
     assert "text-emerald-600" in source
 
@@ -325,8 +329,8 @@ def test_admin_lesson_save_does_not_delete_blocks_during_transient_load():
     assert "blocksLoadRequestRef" in source
     assert "blocksLoading" in source
     assert 'if (error) {' in source
-    assert "Блоки ещё загружаются. Повторите сохранение через секунду." in source
-    assert "databaseBlocks?.length ?? 0" in source
+    assert "setBlocksLoadError(true)" in source
+    assert "saving || blocksLoading || !dirty" in source
 
 
 def test_notifications_use_realtime_fallback_and_unlocked_sound():
@@ -339,7 +343,8 @@ def test_notifications_use_realtime_fallback_and_unlocked_sound():
     assert "seenNotificationIdsRef" in source
     assert "audioContextRef" in source
     assert 'proxy_set_header Upgrade $http_upgrade;' in nginx
-    assert 'proxy_set_header Connection "upgrade";' in nginx
+    assert "map $http_upgrade $qastart_connection_upgrade" in nginx
+    assert "proxy_set_header Connection $qastart_connection_upgrade;" in nginx
 
 
 def test_notifications_are_always_available_and_can_be_cleared():

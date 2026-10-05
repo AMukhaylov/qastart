@@ -56,14 +56,13 @@ type QuestionOrder = {
 
 type FinalQuizSettings = typeof DEFAULT_QUIZ_SETTINGS & {
   questions: FinalQuizQuestion[];
-  introVideoUrl: string | null;
 };
 
 async function getQuizSettings(): Promise<FinalQuizSettings> {
   const { data, error } = await supabaseAdmin
     .from(FINAL_QUIZ_SETTINGS_TABLE)
     .select(
-      "questions_per_attempt, duration_minutes, max_attempts, passing_percent, bank_questions, intro_video_url",
+      "questions_per_attempt, duration_minutes, max_attempts, passing_percent, bank_questions",
     )
     .eq("id", true)
     .maybeSingle();
@@ -74,7 +73,6 @@ async function getQuizSettings(): Promise<FinalQuizSettings> {
     max_attempts: number;
     passing_percent: number;
     bank_questions: unknown;
-    intro_video_url: string | null;
   } | null;
   return {
     questionsPerAttempt: row?.questions_per_attempt ?? DEFAULT_QUIZ_SETTINGS.questionsPerAttempt,
@@ -84,7 +82,6 @@ async function getQuizSettings(): Promise<FinalQuizSettings> {
     questions: row?.bank_questions
       ? validateFinalQuizBank(row.bank_questions)
       : FINAL_QUIZ_QUESTIONS,
-    introVideoUrl: row?.intro_video_url ?? null,
   };
 }
 
@@ -389,7 +386,6 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
         questionsPerAttempt: settings.questionsPerAttempt,
         durationMinutes: settings.durationMinutes,
         passingPercent: settings.passingPercent,
-        introVideoUrl: settings.introVideoUrl,
       };
     }
 
@@ -433,7 +429,6 @@ export const startFinalQuiz = createServerFn({ method: "POST" })
       questionsPerAttempt: settings.questionsPerAttempt,
       durationMinutes: settings.durationMinutes,
       passingPercent: settings.passingPercent,
-      introVideoUrl: settings.introVideoUrl,
     };
   });
 
@@ -549,7 +544,6 @@ export const getAdminFinalQuizSettings = createServerFn({ method: "POST" })
       maxAttempts: settings.maxAttempts,
       passingPercent: settings.passingPercent,
       bankQuestionCount: settings.questions.length,
-      introVideoUrl: settings.introVideoUrl,
       questions: settings.questions,
     };
   });
@@ -584,53 +578,6 @@ export const saveAdminFinalQuizSettings = createServerFn({ method: "POST" })
       .eq("id", true);
     if (error) throw error;
     return { bankQuestionCount: questions?.length ?? (await getQuizSettings()).questions.length };
-  });
-
-export const saveAdminFinalQuizIntroVideoUrl = createServerFn({ method: "POST" })
-  .inputValidator((data) =>
-    z
-      .object({
-        accessToken: z.string().min(20),
-        videoUrl: z.string().url().max(2048).nullable(),
-      })
-      .parse(data),
-  )
-  .handler(async ({ data }) => {
-    const roles = await getRolesForAccessToken(data.accessToken);
-    if (!roles.includes("admin")) throw new Error("Недостаточно прав");
-    const { error } = await supabaseAdmin
-      .from(FINAL_QUIZ_SETTINGS_TABLE)
-      .update({ intro_video_url: data.videoUrl })
-      .eq("id", true);
-    if (error) throw error;
-    return { introVideoUrl: data.videoUrl };
-  });
-
-export const createAdminFinalQuizVideoUpload = createServerFn({ method: "POST" })
-  .inputValidator((data) =>
-    z
-      .object({
-        accessToken: z.string().min(20),
-        extension: z.enum(["mp4", "webm", "mov", "ogg"]),
-        contentType: z.enum(["video/mp4", "video/webm", "video/quicktime", "video/ogg"]),
-      })
-      .parse(data),
-  )
-  .handler(async ({ data }) => {
-    const roles = await getRolesForAccessToken(data.accessToken);
-    if (!roles.includes("admin")) throw new Error("Недостаточно прав");
-    const path = `author/${crypto.randomUUID()}.${data.extension}`;
-    const { data: signedUpload, error } = await supabaseAdmin.storage
-      .from("final-quiz-author")
-      .createSignedUploadUrl(path);
-    if (error) throw error;
-    const { data: publicUrl } = supabaseAdmin.storage.from("final-quiz-author").getPublicUrl(path);
-    return {
-      path,
-      token: signedUpload.token,
-      publicUrl: publicUrl.publicUrl,
-      contentType: data.contentType,
-    };
   });
 
 export const listAdminFinalQuizEligibility = createServerFn({ method: "POST" })

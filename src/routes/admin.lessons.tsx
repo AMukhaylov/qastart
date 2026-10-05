@@ -103,6 +103,28 @@ function downloadFile(filename: string, body: BlobPart, type: string) {
   URL.revokeObjectURL(url);
 }
 
+function getWriteErrorMessage(error: unknown, operation: "сохранение" | "импорт") {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" &&
+          error &&
+          "message" in error &&
+          typeof error.message === "string"
+        ? error.message
+        : "";
+  if (/<(?:!doctype\s+html|html|head|body)\b/i.test(message)) {
+    if (/\b502\s+Bad Gateway\b/i.test(message)) {
+      return `Связь с сервером временно прервалась (502). ${operation} не подтверждено; данные остались в окне — повторите действие.`;
+    }
+    return `Сервер вернул техническую ошибку. ${operation} не подтверждено; данные остались в окне — повторите действие.`;
+  }
+  if (/failed to fetch|networkerror|network request failed/i.test(message)) {
+    return `Временно нет связи с сервером. ${operation} не подтверждено; данные остались в окне — повторите действие.`;
+  }
+  return message || `Не удалось выполнить ${operation}`;
+}
+
 function usePreviewScrollPosition(open: boolean, previewKey: string | null) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const lastScrollTopRef = useRef(0);
@@ -178,6 +200,7 @@ function AdminLessons() {
   const [blocks, setBlocks] = useState<LessonBlockDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [blocksLoading, setBlocksLoading] = useState(false);
+  const [blocksLoadError, setBlocksLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [editorPreviewOpen, setEditorPreviewOpen] = useState(false);
@@ -188,6 +211,7 @@ function AdminLessons() {
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const blocksLoadRequestRef = useRef(0);
+  const blocksLoadAbortRef = useRef<AbortController | null>(null);
   const loadedBlocksLessonRef = useRef<string | null>(null);
   const loadedBlockIdsRef = useRef<Set<string>>(new Set());
   const loadedBlockOrderRef = useRef<string[]>([]);
@@ -202,8 +226,13 @@ function AdminLessons() {
       loadedBlockIdsRef.current = new Set();
       loadedBlockOrderRef.current = [];
       setBlocks([]);
+      setBlocksLoadError(false);
       void loadBlocks(activeId);
     }
+    return () => {
+      blocksLoadRequestRef.current += 1;
+      blocksLoadAbortRef.current?.abort();
+    };
   }, [activeId]);
 
   const editorPreviewScroll = usePreviewScrollPosition(
@@ -221,28 +250,42 @@ function AdminLessons() {
   }
   async function loadBlocks(lessonId: string) {
     const requestId = ++blocksLoadRequestRef.current;
+    blocksLoadAbortRef.current?.abort();
+    const controller = new AbortController();
+    blocksLoadAbortRef.current = controller;
+    const timeoutId = window.setTimeout(() => controller.abort(), 20_000);
     setBlocksLoading(true);
-    const { data, error } = await supabase
-      .from("lesson_blocks")
-      .select("*")
-      .eq("lesson_id", lessonId)
-      .order("position");
-    if (requestId !== blocksLoadRequestRef.current) return;
-    if (error) {
-      toast.error("Не удалось загрузить блоки урока");
-      setBlocksLoading(false);
-      return;
+    setBlocksLoadError(false);
+    try {
+      const { data, error } = await supabase
+        .from("lesson_blocks")
+        .select("*")
+        .eq("lesson_id", lessonId)
+        .order("position")
+        .abortSignal(controller.signal);
+      if (requestId !== blocksLoadRequestRef.current) return;
+      if (error) throw error;
+
+      const loaded = ((data ?? []) as DbBlock[]).map(({ id, block_type, content }) => ({
+        id,
+        block_type: block_type as LessonBlockType,
+        content: content as Record<string, unknown>,
+      }));
+      setBlocks(loaded);
+      loadedBlocksLessonRef.current = lessonId;
+      loadedBlockIdsRef.current = new Set(loaded.map((block) => block.id).filter(Boolean));
+      loadedBlockOrderRef.current = loaded.map((block) => block.id).filter(Boolean) as string[];
+    } catch {
+      if (requestId !== blocksLoadRequestRef.current) return;
+      setBlocksLoadError(true);
+      toast.error("Не удалось загрузить блоки урока. Попробуйте ещё раз.");
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (requestId === blocksLoadRequestRef.current) {
+        blocksLoadAbortRef.current = null;
+        setBlocksLoading(false);
+      }
     }
-    const loaded = ((data ?? []) as DbBlock[]).map(({ id, block_type, content }) => ({
-      id,
-      block_type: block_type as LessonBlockType,
-      content: content as Record<string, unknown>,
-    }));
-    setBlocks(loaded);
-    loadedBlocksLessonRef.current = lessonId;
-    loadedBlockIdsRef.current = new Set(loaded.map((block) => block.id).filter(Boolean));
-    loadedBlockOrderRef.current = loaded.map((block) => block.id).filter(Boolean) as string[];
-    setBlocksLoading(false);
   }
   const active = lessons.find((lesson) => lesson.id === activeId) ?? null;
   function updateLesson<K extends keyof Lesson>(key: K, value: Lesson[K]) {
@@ -400,7 +443,8 @@ function AdminLessons() {
         name: string,
         args: Record<string, unknown>,
       ) => Promise<{ data: string | null; error: { message: string } | null }>;
-      const { data, error } = await rpc("admin_import_lesson_package", {
+      const { data, error } = await rpc("admin_import_lesson_package_once", {
+        p_request_id: importPreview.previewId,
         p_mode: mode,
         p_existing_lesson_id: existingId,
         p_day_number: targetDay,
@@ -420,7 +464,7 @@ function AdminLessons() {
       setImportPreview(null);
       toast.success(importMode === "replace" ? "Урок заменён" : "Урок импортирован");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Не удалось импортировать урок");
+      toast.error(getWriteErrorMessage(error, "импорт"));
     } finally {
       setImporting(false);
     }
@@ -439,194 +483,56 @@ function AdminLessons() {
       toast.error(sandboxIssues[0]);
       return;
     }
-    if (active.id.startsWith("new-")) {
-      setSaving(true);
-      try {
-        const { data, error } = await supabase
-          .from("lessons")
-          .insert({
-            day_number: active.day_number,
-            title: active.title,
-            description: active.description,
-            video_url: active.video_url,
-            content_md: active.content_md,
-            homework_md: active.homework_md,
-          })
-          .select("id")
-          .single();
-        if (error || !data) throw error ?? new Error("Не удалось создать урок");
-        if (blocks.length) {
-          const { error: blocksError } = await supabase.from("lesson_blocks").insert(
-            blocks.map((block, index) => ({
-              lesson_id: data.id,
-              block_type: block.block_type,
-              content: block.content as Json,
-              position: index,
-            })),
-          );
-          if (blocksError) throw blocksError;
-        }
-        await loadLessons();
-        setActiveId(data.id);
-        setDirty(false);
-        toast.success("Урок создан");
-      } catch {
-        toast.error("Не удалось создать урок");
-      } finally {
-        setSaving(false);
-      }
-      return;
-    }
+    const isNewLesson = active.id.startsWith("new-");
+    const lessonId = isNewLesson ? active.id.slice("new-".length) : active.id;
+    const blocksWithStableIds = blocks.map((block) => ({
+      ...block,
+      id: block.id ?? crypto.randomUUID(),
+    }));
+
+    // Keep generated IDs in editor state before sending. If the response is
+    // lost after PostgreSQL commits, resubmitting the same payload is safe.
+    setBlocks(blocksWithStableIds);
     setSaving(true);
     try {
-      if (loadedBlocksLessonRef.current !== active.id) {
-        throw new Error("Блоки урока ещё не загружены. Обновите страницу и повторите сохранение.");
-      }
-      const { data: databaseBlocks, error: dbError } = await supabase
-        .from("lesson_blocks")
-        .select("id")
-        .eq("lesson_id", active.id);
-      if (dbError) throw dbError;
-      const loadedIds = loadedBlockIdsRef.current;
-      const databaseIds = new Set((databaseBlocks ?? []).map((block) => block.id));
-      if (
-        databaseIds.size !== loadedIds.size ||
-        [...databaseIds].some((id) => !loadedIds.has(id))
-      ) {
-        await loadBlocks(active.id);
-        throw new Error(
-          "Данные урока изменились. Блоки перезагружены, проверьте их перед сохранением.",
-        );
-      }
-      if (blocks.length === 0 && (databaseBlocks?.length ?? 0) > 0) {
-        await loadBlocks(active.id);
-        throw new Error("Блоки ещё загружаются. Повторите сохранение через секунду.");
-      }
-      const saved = blocks.filter((block): block is LessonBlockDraft & { id: string } =>
-        Boolean(block.id),
-      );
-      const removed = (databaseBlocks ?? [])
-        .map((block) => block.id)
-        .filter((id) => !saved.some((block) => block.id === id));
-
-      // The common case is editing text/content without changing the block order.
-      // Persist all existing blocks in one upsert instead of issuing one update per
-      // block (large lessons otherwise make Save appear to hang and can hit request
-      // limits). Position values are unchanged in this path, so the unique
-      // (lesson_id, position) constraint cannot be violated.
-      const currentOrder = saved.map((block) => block.id);
-      const orderUnchanged =
-        removed.length === 0 &&
-        blocks.length === saved.length &&
-        currentOrder.length === loadedBlockOrderRef.current.length &&
-        currentOrder.every((id, index) => id === loadedBlockOrderRef.current[index]);
-      if (orderUnchanged) {
-        const lessonPayload = {
-          title: active.title,
-          description: active.description,
-          video_url: active.video_url,
-          content_md: active.content_md,
-          homework_md: active.homework_md,
-        };
-        const blockPayload = blocks.map((block, index) => ({
+      const rpc = supabase.rpc.bind(supabase) as unknown as (
+        name: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ data: string | null; error: { message: string } | null }>;
+      const { data, error } = await rpc("admin_save_lesson_package", {
+        p_lesson_id: lessonId,
+        p_day_number: active.day_number,
+        p_title: active.title,
+        p_description: active.description,
+        p_video_url: active.video_url,
+        p_content_md: active.content_md,
+        p_homework_md: active.homework_md,
+        p_blocks: blocksWithStableIds.map((block, position) => ({
           id: block.id,
-          lesson_id: active.id,
           block_type: block.block_type,
           content: block.content as Json,
-          position: index,
-        }));
-        const [lessonResult, blocksResult] = await Promise.all([
-          supabase.from("lessons").update(lessonPayload).eq("id", active.id),
-          blockPayload.length
-            ? supabase.from("lesson_blocks").upsert(blockPayload, { onConflict: "id" })
-            : Promise.resolve({ error: null }),
-        ]);
-        if (lessonResult.error) throw lessonResult.error;
-        if (blocksResult.error) throw blocksResult.error;
-        loadedBlocksLessonRef.current = active.id;
-        loadedBlockIdsRef.current = new Set(currentOrder);
-        loadedBlockOrderRef.current = currentOrder;
-        setDirty(false);
-        toast.success("Урок и его блоки сохранены");
-        return;
-      }
-      // Shift persisted blocks first so exchanging two positions never violates the unique index.
-      const [lessonResult, removedResult, shiftResults] = await Promise.all([
-        supabase
-          .from("lessons")
-          .update({
-            title: active.title,
-            description: active.description,
-            video_url: active.video_url,
-            content_md: active.content_md,
-            homework_md: active.homework_md,
-          })
-          .eq("id", active.id),
-        removed.length
-          ? supabase.from("lesson_blocks").delete().in("id", removed)
-          : Promise.resolve({ error: null }),
-        Promise.all(
-          saved.map((block, index) =>
-            supabase
-              .from("lesson_blocks")
-              .update({ position: 100000 + index })
-              .eq("id", block.id),
-          ),
-        ),
-      ]);
-      if (lessonResult.error) throw lessonResult.error;
-      if (removedResult.error) throw removedResult.error;
-      const shiftError = shiftResults.find((result) => result.error)?.error;
-      if (shiftError) throw shiftError;
-      const blockResults = await Promise.all(
-        blocks.map((block, index) => {
-          const payload = {
-            block_type: block.block_type,
-            content: block.content as Json,
-            position: index,
-          };
-          return block.id
-            ? supabase.from("lesson_blocks").update(payload).eq("id", block.id)
-            : supabase
-                .from("lesson_blocks")
-                .insert({ ...payload, lesson_id: active.id })
-                .select("id")
-                .single();
-        }),
-      );
-      const blockError = blockResults.find((result) => result.error)?.error;
-      if (blockError) throw blockError;
-      // Keep the editor state in place after saving. Refetching every block here
-      // made the Save button wait on a second network request and could leave it
-      // spinning even though the writes had already completed. Capture IDs for
-      // blocks created in this save so future edits update instead of inserting
-      // duplicates.
-      setBlocks(
-        blocks.map((block, index) => {
-          if (block.id) return block;
-          const insertedId = (blockResults[index] as { data?: { id?: string } | null }).data?.id;
-          return insertedId ? { ...block, id: insertedId } : block;
-        }),
-      );
-      loadedBlocksLessonRef.current = active.id;
-      loadedBlockIdsRef.current = new Set(
-        blocks
-          .map(
-            (block, index) =>
-              block.id ?? (blockResults[index] as { data?: { id?: string } | null }).data?.id,
-          )
-          .filter(Boolean) as string[],
-      );
-      loadedBlockOrderRef.current = blocks
-        .map(
-          (block, index) =>
-            block.id ?? (blockResults[index] as { data?: { id?: string } | null }).data?.id,
-        )
-        .filter(Boolean) as string[];
+          position,
+        })),
+      });
+      if (error || !data) throw error ?? new Error("Не удалось сохранить урок");
+
+      const persistedLesson = { ...active, id: data };
+      setLessons((all) => {
+        const index = all.findIndex((lesson) => lesson.id === active.id || lesson.id === data);
+        const next = [...all];
+        if (index < 0) next.push(persistedLesson);
+        else next[index] = persistedLesson;
+        return next.sort((left, right) => left.day_number - right.day_number);
+      });
+      setActiveId(data);
+      setBlocks(blocksWithStableIds);
+      loadedBlocksLessonRef.current = data;
+      loadedBlockIdsRef.current = new Set(blocksWithStableIds.map((block) => block.id));
+      loadedBlockOrderRef.current = blocksWithStableIds.map((block) => block.id);
       setDirty(false);
-      toast.success("Урок и его блоки сохранены");
+      toast.success(isNewLesson ? "Урок создан" : "Урок и его блоки сохранены");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Не удалось сохранить урок");
+      toast.error(getWriteErrorMessage(error, "сохранение"));
     } finally {
       setSaving(false);
     }
@@ -760,14 +666,11 @@ function AdminLessons() {
                 />
               </Field>
             </div>
-            {active.day_number === 14 ? (
-              <section aria-label="Настройки итогового теста">
-                <AdminFinalQuizSettingsPanel />
-              </section>
-            ) : null}
             <BlockBuilder
               blocks={blocks}
               loading={blocksLoading}
+              loadError={blocksLoadError}
+              onRetry={() => void loadBlocks(active.id)}
               setBlocks={(updater) => {
                 setDirty(true);
                 setBlocks(updater);
@@ -1054,6 +957,8 @@ function ImportMetric({ label, value }: { label: string; value: string }) {
 function BlockBuilder({
   blocks,
   loading,
+  loadError,
+  onRetry,
   setBlocks,
   updateBlock,
   moveBlock,
@@ -1062,6 +967,8 @@ function BlockBuilder({
 }: {
   blocks: LessonBlockDraft[];
   loading: boolean;
+  loadError: boolean;
+  onRetry: () => void;
   setBlocks: React.Dispatch<React.SetStateAction<LessonBlockDraft[]>>;
   updateBlock: (index: number, value: Record<string, unknown>) => void;
   moveBlock: (index: number, direction: -1 | 1) => void;
@@ -1084,24 +991,36 @@ function BlockBuilder({
         </p>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        {lessonBlockTypes.map((type) => (
-          <Button
-            key={type}
-            size="sm"
-            variant="soft"
-            disabled={loading}
-            onClick={() => setBlocks((all) => [...all, createLessonBlock(type)])}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {lessonBlockLabels[type]}
-          </Button>
-        ))}
+        {lessonBlockTypes
+          .filter((type) => type !== "final_quiz" || lessonDay === 14)
+          .map((type) => (
+            <Button
+              key={type}
+              size="sm"
+              variant="soft"
+              disabled={
+                loading ||
+                (type === "final_quiz" && blocks.some((block) => block.block_type === "final_quiz"))
+              }
+              onClick={() => setBlocks((all) => [...all, createLessonBlock(type)])}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {lessonBlockLabels[type]}
+            </Button>
+          ))}
       </div>
       <div className="mt-5 space-y-4">
         {loading ? (
-          <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
+          <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground" role="status">
             Загружаем блоки урока…
           </p>
+        ) : loadError ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
+            <p role="alert">Не удалось загрузить блоки урока.</p>
+            <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+              Загрузить ещё раз
+            </Button>
+          </div>
         ) : blocks.length === 0 ? (
           <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
             В этом уроке пока нет интерактивных блоков. Добавьте первый блок выше.
@@ -1831,6 +1750,15 @@ function BlockEditor({
         {lineList("Главные мысли, по одной на строке", "points", 4)}
       </>
     );
+  else if (block.block_type === "final_quiz")
+    fields =
+      lessonDay === 14 ? (
+        <AdminFinalQuizSettingsPanel />
+      ) : (
+        <p className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm">
+          Блок итогового теста доступен только в Дне 14.
+        </p>
+      );
   else if (block.block_type === "homework")
     fields = (
       <>

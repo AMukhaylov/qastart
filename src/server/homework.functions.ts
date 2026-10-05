@@ -33,9 +33,10 @@ const listMessagesInput = z.object({
   submissionId: z.string().uuid(),
 });
 
-const adminSubmissionAccessInput = z.object({
+const adminHomeworkListInput = z.object({
   accessToken: z.string().min(20),
-  submissionId: z.string().uuid(),
+  status: z.enum(["pending", "approved", "rejected", "awaiting_mentor"]),
+  submissionId: z.string().uuid().optional(),
 });
 
 const reviewHomeworkInput = z.object({
@@ -77,6 +78,18 @@ function isMissingMessagesTable(error: unknown) {
 }
 
 type IncomingAttachment = z.infer<typeof attachmentSchema>;
+
+async function awaitHomeworkRead<T>(query: {
+  abortSignal: (signal: AbortSignal) => PromiseLike<T>;
+}): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    return await query.abortSignal(controller.signal);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 type StoredAttachment = {
   name: string;
@@ -255,19 +268,60 @@ export const listHomeworkMessages = createServerFn({ method: "POST" })
     );
   });
 
-/** Server-side authorization gate for deep links from admin notifications. */
-export const getAdminHomeworkSubmissionAccess = createServerFn({ method: "POST" })
-  .inputValidator((data) => adminSubmissionAccessInput.parse(data))
+/** Load the admin review queue on the server, after verifying the caller's role. */
+export const listAdminHomeworkSubmissions = createServerFn({ method: "POST" })
+  .inputValidator((data) => adminHomeworkListInput.parse(data))
   .handler(async ({ data }) => {
     const roles = await getRolesForAccessToken(data.accessToken);
     if (!roles.includes("admin")) throw new Error("Недостаточно прав для просмотра ДЗ");
-    const { data: submission, error } = await supabaseAdmin
+
+    let query = supabaseAdmin
       .from("homework_submissions")
-      .select("id")
-      .eq("id", data.submissionId)
-      .maybeSingle();
-    if (error || !submission) throw error ?? new Error("Домашнее задание не найдено");
-    return submission;
+      .select(
+        "id,user_id,lesson_id,content,status,feedback,created_at,updated_at,reviewed_at,reviewed_by",
+      )
+      .order("created_at", { ascending: false });
+
+    if (data.submissionId) query = query.eq("id", data.submissionId);
+    else query = query.eq("status", data.status).limit(120);
+
+    const { data: submissions, error: submissionsError } = await awaitHomeworkRead(query);
+    if (submissionsError) throw submissionsError;
+
+    const rows = submissions ?? [];
+    const userIds = Array.from(
+      new Set(
+        rows
+          .flatMap((submission) => [submission.user_id, submission.reviewed_by])
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const lessonIds = Array.from(new Set(rows.map((submission) => submission.lesson_id)));
+
+    const [profilesResult, lessonsResult] = await Promise.all([
+      userIds.length
+        ? awaitHomeworkRead(
+            supabaseAdmin.from("profiles").select("id,full_name,avatar_url").in("id", userIds),
+          )
+        : Promise.resolve({ data: [], error: null }),
+      lessonIds.length
+        ? awaitHomeworkRead(
+            supabaseAdmin
+              .from("lessons")
+              .select("id,day_number,title,homework_md")
+              .in("id", lessonIds),
+          )
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (profilesResult.error) throw profilesResult.error;
+    if (lessonsResult.error) throw lessonsResult.error;
+
+    return {
+      submissions: rows,
+      profiles: profilesResult.data ?? [],
+      lessons: lessonsResult.data ?? [],
+    };
   });
 
 export const reviewHomeworkSubmission = createServerFn({ method: "POST" })

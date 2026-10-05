@@ -29,6 +29,14 @@ import { isBlockRequired, LessonBlock, stringValue } from "@/lib/interactive-les
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import {
+  persistProgressWithRecovery,
+  progressQueueKey,
+  queuePendingProgressIds,
+  readPendingProgressIds,
+  removePendingProgressIds,
+  runProgressRequest,
+} from "@/lib/lesson-progress";
 import { listHomeworkMessages, submitHomeworkForCurrentUser } from "@/server/homework.functions";
 import { getStudentLessonData } from "@/server/lesson-content.functions";
 import {
@@ -117,6 +125,7 @@ function LessonPage() {
 
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [completed, setCompleted] = useState(false);
+  const [finalQuizPassed, setFinalQuizPassed] = useState(false);
   const [blocks, setBlocks] = useState<LessonBlock[]>([]);
   const [viewedBlockIds, setViewedBlockIds] = useState<string[]>([]);
   const [completingLesson, setCompletingLesson] = useState(false);
@@ -137,6 +146,7 @@ function LessonPage() {
   const loadedLessonKeyRef = useRef<string | null>(null);
   const focusedHomeworkKeyRef = useRef<string | null>(null);
   const pendingBlockIdsRef = useRef(new Set<string>());
+  const progressSyncInFlightRef = useRef(false);
   const sqlHomeworkCompletionAttemptsRef = useRef(new Set<string>());
 
   const leaveFinalQuiz = (destination: "dashboard" | number) => {
@@ -192,6 +202,7 @@ function LessonPage() {
 
   async function load() {
     setLoading(true);
+    setFinalQuizPassed(false);
     setSubmission(null);
     setMessages([]);
     setAttachments([]);
@@ -243,9 +254,16 @@ function LessonPage() {
       }
     }
     setLesson(l as Lesson);
-    setCompleted(!!lessonData.progress?.completed);
+    const hasPassedFinalQuiz = Boolean(lessonData.finalQuizPassed);
+    setFinalQuizPassed(hasPassedFinalQuiz);
+    setCompleted(dayNum === 14 ? hasPassedFinalQuiz : !!lessonData.progress?.completed);
     setBlocks((lessonData.blocks ?? []) as LessonBlock[]);
-    setViewedBlockIds((lessonData.blockProgress ?? []).map((row) => row.block_id));
+    const serverViewedIds = (lessonData.blockProgress ?? []).map((row) => row.block_id);
+    const queuedViewedIds =
+      typeof window === "undefined" || !user?.id
+        ? []
+        : readPendingProgressIds(window.localStorage, progressQueueKey(user.id, l.id));
+    setViewedBlockIds(Array.from(new Set([...serverViewedIds, ...queuedViewedIds])));
     setSqlSandboxAttempts((lessonData.sqlSandboxAttempts ?? []) as SavedSqlSandboxAttempt[]);
     if (lessonData.submission) {
       const currentSubmission = lessonData.submission as Submission;
@@ -266,41 +284,132 @@ function LessonPage() {
     );
     if (pendingIds.length === 0) return true;
     pendingIds.forEach((id) => pendingBlockIdsRef.current.add(id));
-    // Move the learner forward immediately; the write is persisted in the
-    // background and rolled back if Supabase rejects it.
+    const key = progressQueueKey(user.id, lesson.id);
+    if (typeof window !== "undefined") {
+      queuePendingProgressIds(window.localStorage, key, pendingIds);
+    }
+    // Move the learner forward immediately; local pending marks survive reloads
+    // and are retried until the server confirms them.
     setViewedBlockIds((ids) => Array.from(new Set([...ids, ...pendingIds])));
-    let error: { message: string } | null = null;
-    try {
-      const result = await Promise.race([
-        supabase.from("lesson_block_progress").upsert(
-          pendingIds.map((blockId) => ({
-            user_id: user.id,
-            lesson_id: lesson.id,
-            block_id: blockId,
-          })),
-          { onConflict: "user_id,block_id" },
-        ),
-        new Promise<never>((_, reject) =>
-          window.setTimeout(() => reject(new Error("Превышено время сохранения прогресса")), 12000),
-        ),
-      ]);
-      error = result.error;
-    } catch (caught) {
-      error = {
-        message: caught instanceof Error ? caught.message : "Не удалось сохранить прогресс",
-      };
-    } finally {
-      pendingIds.forEach((id) => pendingBlockIdsRef.current.delete(id));
+    const rows = pendingIds.map((blockId) => ({
+      user_id: user.id,
+      lesson_id: lesson.id,
+      block_id: blockId,
+    }));
+    const saveResult = await persistProgressWithRecovery(
+      async () => {
+        const result = await runProgressRequest((signal) =>
+          supabase
+            .from("lesson_block_progress")
+            .upsert(rows, { onConflict: "user_id,block_id" })
+            .abortSignal(signal),
+        );
+        return { error: result.error };
+      },
+      async () => {
+        const result = await runProgressRequest((signal) =>
+          supabase
+            .from("lesson_block_progress")
+            .select("block_id")
+            .eq("user_id", user.id)
+            .eq("lesson_id", lesson.id)
+            .in("block_id", pendingIds)
+            .abortSignal(signal),
+        );
+        return {
+          persisted:
+            !result.error &&
+            new Set((result.data ?? []).map((row) => row.block_id)).size === pendingIds.length,
+          error: result.error,
+        };
+      },
+    );
+    pendingIds.forEach((id) => pendingBlockIdsRef.current.delete(id));
+    if (!saveResult.saved) {
+      // Keep the learner moving and retain the unsynced marks locally. The
+      // background sync below retries on reconnect, focus, and a short interval.
+      return true;
     }
-    if (error) {
-      setViewedBlockIds((ids) =>
-        ids.filter((id) => previouslyViewed.has(id) || !pendingIds.includes(id)),
-      );
-      toast.error("Не удалось сохранить прогресс. Попробуйте ещё раз.");
-      return false;
-    }
+    if (typeof window !== "undefined")
+      removePendingProgressIds(window.localStorage, key, pendingIds);
     return true;
   }
+
+  useEffect(() => {
+    if (!lesson || !user || blocks.length === 0 || typeof window === "undefined") return;
+
+    const key = progressQueueKey(user.id, lesson.id);
+    const validBlockIds = new Set(blocks.map((block) => block.id));
+    let disposed = false;
+
+    const syncQueuedProgress = async () => {
+      if (disposed || progressSyncInFlightRef.current || !navigator.onLine) return;
+      const queuedIds = readPendingProgressIds(window.localStorage, key);
+      const validIds = queuedIds.filter((id) => validBlockIds.has(id));
+      const staleIds = queuedIds.filter((id) => !validBlockIds.has(id));
+      if (staleIds.length > 0) removePendingProgressIds(window.localStorage, key, staleIds);
+      if (validIds.length === 0) return;
+
+      progressSyncInFlightRef.current = true;
+      const rows = validIds.map((blockId) => ({
+        user_id: user.id,
+        lesson_id: lesson.id,
+        block_id: blockId,
+      }));
+      try {
+        const result = await persistProgressWithRecovery(
+          async () => {
+            const response = await runProgressRequest((signal) =>
+              supabase
+                .from("lesson_block_progress")
+                .upsert(rows, { onConflict: "user_id,block_id" })
+                .abortSignal(signal),
+            );
+            return { error: response.error };
+          },
+          async () => {
+            const response = await runProgressRequest((signal) =>
+              supabase
+                .from("lesson_block_progress")
+                .select("block_id")
+                .eq("user_id", user.id)
+                .eq("lesson_id", lesson.id)
+                .in("block_id", validIds)
+                .abortSignal(signal),
+            );
+            return {
+              persisted:
+                !response.error &&
+                new Set((response.data ?? []).map((row) => row.block_id)).size === validIds.length,
+              error: response.error,
+            };
+          },
+        );
+        if (result.saved) {
+          removePendingProgressIds(window.localStorage, key, validIds);
+          setViewedBlockIds((ids) => Array.from(new Set([...ids, ...validIds])));
+        }
+      } catch {
+        // Keep queued marks for the next online/focus retry.
+      } finally {
+        progressSyncInFlightRef.current = false;
+      }
+    };
+
+    void syncQueuedProgress();
+    const intervalId = window.setInterval(() => void syncQueuedProgress(), 20_000);
+    const onReconnect = () => void syncQueuedProgress();
+    const onFocus = () => void syncQueuedProgress();
+    window.addEventListener("online", onReconnect);
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("online", onReconnect);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [blocks, lesson, user]);
 
   async function completeLesson() {
     if (!lesson || !user || lesson.day_number === 14 || completed) return;
@@ -790,27 +899,32 @@ function LessonPage() {
               )
             ) : null
           }
+          renderFinalQuiz={(block) =>
+            lesson.day_number === 14 && session?.access_token ? (
+              <FinalQuiz
+                accessToken={session.access_token}
+                exitRequest={finalQuizExitRequest}
+                onActiveChange={setFinalQuizActive}
+                onPassed={() => {
+                  void markBlocksCompleted([block.id]);
+                  setFinalQuizPassed(true);
+                  setCompleted(true);
+                }}
+                onExitComplete={() => {
+                  const destination = finalQuizExitDestination;
+                  setFinalQuizExitDestination(null);
+                  if (typeof destination === "number") {
+                    navigate({ to: "/lessons/$day", params: { day: String(destination) } });
+                    return;
+                  }
+                  navigate({ to: "/dashboard" });
+                }}
+              />
+            ) : null
+          }
         />
 
-        {lesson.day_number === 14 ? (
-          session?.access_token ? (
-            <FinalQuiz
-              accessToken={session.access_token}
-              exitRequest={finalQuizExitRequest}
-              onActiveChange={setFinalQuizActive}
-              onPassed={() => setCompleted(true)}
-              onExitComplete={() => {
-                const destination = finalQuizExitDestination;
-                setFinalQuizExitDestination(null);
-                if (typeof destination === "number") {
-                  navigate({ to: "/lessons/$day", params: { day: String(destination) } });
-                  return;
-                }
-                navigate({ to: "/dashboard" });
-              }}
-            />
-          ) : null
-        ) : showHomework && !homeworkBlock ? (
+        {lesson.day_number !== 14 && showHomework && !homeworkBlock ? (
           <HomeworkSubmissionCard
             title="Домашнее задание"
             instruction={homeworkInstruction}
@@ -875,7 +989,7 @@ function LessonPage() {
                 </Link>
               </LessonNavigationButton>
             ) : null
-          ) : (
+          ) : completed && finalQuizPassed ? (
             <LessonNavigationButton
               tone="next"
               className="self-start sm:self-auto"
@@ -883,7 +997,7 @@ function LessonPage() {
             >
               Завершить курс <CheckCircle2 className="h-4 w-4" />
             </LessonNavigationButton>
-          )}
+          ) : null}
         </div>
       </footer>
     </div>

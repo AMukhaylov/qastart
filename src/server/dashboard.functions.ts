@@ -14,8 +14,10 @@ export const getStudentDashboardData = createServerFn({ method: "POST" })
       { data: progress, error: progressError },
       { data: homework, error: homeworkError },
       { data: homeworkBlocks, error: homeworkBlocksError },
+      { data: sqlSandboxAttempts, error: sqlSandboxAttemptsError },
       { data: certificate, error: certificateError },
       { data: profile, error: profileError },
+      { data: passedFinalQuizAttempts, error: passedFinalQuizError },
     ] = await Promise.all([
       supabaseAdmin
         .from("lessons")
@@ -31,7 +33,14 @@ export const getStudentDashboardData = createServerFn({ method: "POST" })
         .select("lesson_id,status,created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false }),
-      supabaseAdmin.from("lesson_blocks").select("lesson_id").eq("block_type", "homework"),
+      supabaseAdmin
+        .from("lesson_blocks")
+        .select("id,lesson_id,content")
+        .eq("block_type", "homework"),
+      supabaseAdmin
+        .from("sql_sandbox_attempts")
+        .select("lesson_id,block_id,task_id,passed")
+        .eq("user_id", userId),
       supabaseAdmin
         .from("certificates")
         .select(
@@ -42,22 +51,37 @@ export const getStudentDashboardData = createServerFn({ method: "POST" })
         .limit(1)
         .maybeSingle(),
       supabaseAdmin.from("profiles").select("full_name,avatar_url").eq("id", userId).maybeSingle(),
+      supabaseAdmin
+        .from("quiz_attempts")
+        .select("lesson_id")
+        .eq("user_id", userId)
+        .eq("passed", true),
     ]);
     for (const error of [
       lessonsError,
       progressError,
       homeworkError,
       homeworkBlocksError,
+      sqlSandboxAttemptsError,
       certificateError,
       profileError,
+      passedFinalQuizError,
     ]) {
       if (error) throw error;
     }
     return {
       lessons: lessons ?? [],
       progress: progress ?? [],
+      finalQuizPassed: Boolean(
+        lessons?.some(
+          (lesson) =>
+            lesson.day_number === 14 &&
+            passedFinalQuizAttempts?.some((attempt) => attempt.lesson_id === lesson.id),
+        ),
+      ),
       homework: homework ?? [],
       homeworkBlocks: homeworkBlocks ?? [],
+      sqlSandboxAttempts: sqlSandboxAttempts ?? [],
       certificate: certificate ?? null,
       profile: profile ?? null,
     };

@@ -15,7 +15,10 @@ const serviceRoleKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ??
   env.SUPABASE_SERVICE_ROLE_KEY;
 const expectedBrowserSupabaseUrl =
-  process.env.SMOKE_EXPECTED_BROWSER_SUPABASE_URL ?? "https://startqa.ru/supabase";
+  process.env.SMOKE_EXPECTED_BROWSER_SUPABASE_URL ?? "https://bhvbydcddoxjfpcschzw.supabase.co";
+const browserSupabaseUrl = stripTrailingSlash(
+  process.env.SMOKE_SUPABASE_URL ?? expectedBrowserSupabaseUrl,
+);
 const oldSupabaseRefs = ["utrimncqlzfbvocvednd"];
 
 const checks = [
@@ -28,10 +31,11 @@ const checks = [
   ["Оферта", () => expectHtml("/offer")],
   ["Контакты", () => expectHtml("/contacts")],
   ["Фронтовый Supabase URL", () => expectClientBundleConfig()],
-  ["Supabase Auth proxy", () => expectSupabase("/supabase/auth/v1/settings", [200])],
+  ["Supabase Auth direct", () => expectSupabase("/auth/v1/settings", [200])],
+  ["Supabase write RPC CORS", expectAdminRpcCors],
   [
-    "Supabase REST proxy",
-    () => expectSupabase("/supabase/rest/v1/lessons?select=id&limit=1", [200, 401, 403]),
+    "Supabase REST direct",
+    () => expectSupabase("/rest/v1/lessons?select=id&limit=1", [200, 401, 403]),
   ],
   ["Storage bucket для вложений", () => expectStorageBucket("homework-attachments")],
 ];
@@ -85,7 +89,7 @@ async function expectSupabase(path, okStatuses) {
     throw new Error("не найден SUPABASE_PUBLISHABLE_KEY или VITE_SUPABASE_PUBLISHABLE_KEY");
   }
 
-  const response = await fetchWithTimeout(`${baseUrl}${path}`, {
+  const response = await fetchWithTimeout(`${browserSupabaseUrl}${path}`, {
     headers: {
       apikey: publishableKey,
       Authorization: `Bearer ${publishableKey}`,
@@ -101,12 +105,32 @@ async function expectSupabase(path, okStatuses) {
   return `HTTP ${response.status}`;
 }
 
+async function expectAdminRpcCors() {
+  const response = await fetchWithTimeout(
+    `${browserSupabaseUrl}/rest/v1/rpc/admin_save_lesson_package`,
+    {
+      method: "OPTIONS",
+      headers: {
+        Origin: baseUrl,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "authorization,apikey,content-type,x-client-info",
+      },
+    },
+  );
+  await response.arrayBuffer();
+  const allowOrigin = response.headers.get("access-control-allow-origin") ?? "";
+  if (!response.ok || !(allowOrigin === "*" || allowOrigin === baseUrl)) {
+    throw new Error(`CORS preflight HTTP ${response.status}, ACAO ${allowOrigin || "missing"}`);
+  }
+  return `HTTP ${response.status}`;
+}
+
 async function expectStorageBucket(bucketId) {
   if (!serviceRoleKey) {
     return "SKIP: не найден SUPABASE_SERVICE_ROLE_KEY";
   }
 
-  const response = await fetchWithTimeout(`${baseUrl}/supabase/storage/v1/bucket/${bucketId}`, {
+  const response = await fetchWithTimeout(`${browserSupabaseUrl}/storage/v1/bucket/${bucketId}`, {
     headers: {
       apikey: serviceRoleKey,
       Authorization: `Bearer ${serviceRoleKey}`,

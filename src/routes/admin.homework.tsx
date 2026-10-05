@@ -28,7 +28,7 @@ import { withRetry } from "@/lib/admin-diagnostics";
 import {
   answerHomeworkQuestion,
   editHomeworkMessage,
-  getAdminHomeworkSubmissionAccess,
+  listAdminHomeworkSubmissions,
   listHomeworkMessages,
   reviewHomeworkSubmission,
 } from "@/server/homework.functions";
@@ -120,64 +120,18 @@ function AdminHomework() {
     setLoading(true);
     setLoadError(null);
     try {
-      if (targetId) {
-        if (!session?.access_token) throw new Error("Не удалось подтвердить админ-сессию");
-        await getAdminHomeworkSubmissionAccess({
-          data: { accessToken: session.access_token, submissionId: targetId },
-        });
-      }
-      const subsRes = await withRetry(
-        targetId ? `homework.target[${targetId}]` : `homework.list[${filter}]`,
-        () => {
-          const query = supabase
-            .from("homework_submissions")
-            .select(
-              "id,user_id,lesson_id,content,status,feedback,created_at,updated_at,reviewed_at,reviewed_by",
-            )
-            .order("created_at", { ascending: false });
-          return targetId ? query.eq("id", targetId) : query.eq("status", filter).limit(120);
+      if (!session?.access_token) throw new Error("Не удалось подтвердить админ-сессию");
+      const result = await listAdminHomeworkSubmissions({
+        data: {
+          accessToken: session.access_token,
+          status: filter,
+          submissionId: targetId,
         },
-        { retries: 2, timeoutMs: 5000 },
-      );
+      });
 
-      if (subsRes.error) {
-        setItems([]);
-        setLoadError("База временно недоступна. Повторим автоматически…");
-        window.setTimeout(() => void load(targetId), 2500);
-        return;
-      }
-
-      const list = groupSubmissions((subsRes.data ?? []) as Submission[]);
-      const userIds = Array.from(
-        new Set(
-          list.flatMap((s) => [s.user_id, s.reviewed_by]).filter((id): id is string => Boolean(id)),
-        ),
-      );
-      const lessonIds = Array.from(new Set(list.map((s) => s.lesson_id)));
-
-      const [profilesRes, lessonsRes] = await Promise.all([
-        userIds.length
-          ? withRetry(
-              "profiles.byIds",
-              () => supabase.from("profiles").select("id,full_name,avatar_url").in("id", userIds),
-              { retries: 2, timeoutMs: 5000 },
-            )
-          : Promise.resolve({ data: [] as ProfileMini[], error: null }),
-        lessonIds.length
-          ? withRetry(
-              "lessons.byIds",
-              () =>
-                supabase
-                  .from("lessons")
-                  .select("id,day_number,title,homework_md")
-                  .in("id", lessonIds),
-              { retries: 2, timeoutMs: 5000 },
-            )
-          : Promise.resolve({ data: [] as LessonMini[], error: null }),
-      ]);
-
-      const profileRows = (profilesRes.data ?? []) as ProfileMini[];
-      const lessonRows = (lessonsRes.data ?? []) as LessonMini[];
+      const list = groupSubmissions(result.submissions as Submission[]);
+      const profileRows = result.profiles as ProfileMini[];
+      const lessonRows = result.lessons as LessonMini[];
       const pMap = new Map(
         profileRows.map((p) => [p.id, { full_name: p.full_name, avatar_url: p.avatar_url }]),
       );
@@ -521,7 +475,9 @@ function AdminHomework() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-medium">Найдено: {items.length}</span>
+        <span className="font-medium">
+          {loading ? "Загружаем работы…" : `Найдено: ${items.length}`}
+        </span>
         <span>по фильтрам:</span>
         <div className="flex gap-2 flex-wrap">
           {tabs.map((t) => (
@@ -572,13 +528,16 @@ function AdminHomework() {
           onEditedMessageChange={setEditingMessageBody}
           onSaveEditedMessage={saveEditedMessage}
         />
+      ) : loadError ? (
+        <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-card p-12 text-center text-muted-foreground">
+          <p>{loadError}</p>
+          <Button variant="outline" onClick={() => void load(targetSubmissionId)}>
+            Попробовать ещё раз
+          </Button>
+        </div>
       ) : loading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
-        </div>
-      ) : loadError ? (
-        <div className="rounded-2xl border border-border bg-card p-12 text-center text-muted-foreground">
-          {loadError}
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card p-12 text-center text-muted-foreground">

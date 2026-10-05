@@ -29,6 +29,7 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
         blocks: [],
         blockProgress: [],
         sqlSandboxAttempts: [],
+        finalQuizPassed: false,
       };
     }
 
@@ -39,6 +40,7 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       { data: blockProgress, error: blockProgressError },
       { data: sqlSandboxAttempts, error: sqlSandboxAttemptsError },
       { data: previousProgress, error: previousProgressError },
+      { data: passedFinalQuiz, error: passedFinalQuizError },
     ] = await Promise.all([
       supabaseAdmin
         .from("lesson_progress")
@@ -74,6 +76,15 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
             .eq("completed", true)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
+      data.dayNumber === 14
+        ? supabaseAdmin
+            .from("quiz_attempts")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("lesson_id", lesson.id)
+            .eq("passed", true)
+            .limit(1)
+        : Promise.resolve({ data: [], error: null }),
     ]);
     for (const error of [
       progressError,
@@ -81,6 +92,7 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       blocksError,
       blockProgressError,
       previousProgressError,
+      passedFinalQuizError,
     ]) {
       if (error) throw error;
     }
@@ -98,5 +110,6 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       blocks: blocks ?? [],
       blockProgress: blockProgress ?? [],
       sqlSandboxAttempts: sqlSandboxAttemptsError ? [] : (sqlSandboxAttempts ?? []),
+      finalQuizPassed: (passedFinalQuiz?.length ?? 0) > 0,
     };
   });

@@ -77,7 +77,7 @@ upsert_env "SUPABASE_URL" "https://bhvbydcddoxjfpcschzw.supabase.co"
 upsert_env "SUPABASE_PUBLISHABLE_KEY" "sb_publishable_EihhWnfiwTJYBiHQXvah1g_xCqt0t5r"
 upsert_env "VITE_SUPABASE_PROJECT_ID" "bhvbydcddoxjfpcschzw"
 upsert_env "VITE_SUPABASE_PUBLISHABLE_KEY" "sb_publishable_EihhWnfiwTJYBiHQXvah1g_xCqt0t5r"
-upsert_env "VITE_SUPABASE_URL" "https://startqa.ru/supabase"
+upsert_env "VITE_SUPABASE_URL" "https://bhvbydcddoxjfpcschzw.supabase.co"
 
 if ! grep -q "bhvbydcddoxjfpcschzw" .env; then
   echo "Server .env points to an unexpected Supabase project; refusing to deploy" >&2
@@ -89,7 +89,8 @@ rm -rf /tmp/qastart-deploy-unpack
 mkdir -p /tmp/qastart-deploy-unpack
 tar -xzf /tmp/qastart-deploy-src.tgz -C /tmp/qastart-deploy-unpack
 
-find "$APP_DIR" -mindepth 1 -maxdepth 1 ! -name ".env" -exec rm -rf {} +
+# Keep operator-managed rollback snapshots in the app directory across deploys.
+find "$APP_DIR" -mindepth 1 -maxdepth 1 ! -name ".env" ! -name ".qastart-*" -exec rm -rf {} +
 cp -a /tmp/qastart-deploy-unpack/. "$APP_DIR/"
 cp /tmp/qastart-env.backup "$APP_DIR/.env"
 chmod 600 "$APP_DIR/.env"

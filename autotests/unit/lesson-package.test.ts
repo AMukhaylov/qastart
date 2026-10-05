@@ -206,6 +206,32 @@ test("export → validate → import keeps every supported block without databas
   assert.equal(JSON.stringify(exported).includes('"block_id"'), false);
 });
 
+test("final quiz block round-trips only in Day 14 and rejects duplicates", () => {
+  const dayFourteen = { ...lesson, day_number: 14 };
+  const quizBlocks: LessonBlockDraft[] = [{ block_type: "final_quiz", content: {} }];
+  const exported = exportLessonPackage(dayFourteen, quizBlocks);
+  const valid = validateLessonPackage(exported);
+  assert.equal(valid.valid, true);
+  if (!valid.valid) return;
+  assert.equal(importLessonPackage(valid.value).blocks[0]?.block_type, "final_quiz");
+
+  const wrongDay = exportLessonPackage({ ...lesson, day_number: 13 }, quizBlocks);
+  const wrongDayValidation = validateLessonPackage(wrongDay);
+  assert.equal(wrongDayValidation.valid, false);
+  if (!wrongDayValidation.valid)
+    assert.ok(
+      wrongDayValidation.errors.some((entry) => entry.message.includes("только в День 14")),
+    );
+
+  const duplicate = exportLessonPackage(dayFourteen, [...quizBlocks, ...quizBlocks]);
+  const duplicateValidation = validateLessonPackage(duplicate);
+  assert.equal(duplicateValidation.valid, false);
+  if (!duplicateValidation.valid)
+    assert.ok(
+      duplicateValidation.errors.some((entry) => entry.message.includes("только один блок")),
+    );
+});
+
 test("validator reports malformed JSON structures, unknown fields and suggestions", () => {
   const exported = exportLessonPackage(lesson, allBlockTypes);
   const broken = structuredClone(exported) as unknown as MutablePackage;

@@ -541,6 +541,13 @@ export const lessonBlockCatalog: BlockCatalogEntry[] = [
     },
   },
   {
+    type: "final_quiz",
+    title: "Итоговый тест",
+    description: "Запускает итоговый тест QA Start. Настройки и банк вопросов общие для курса.",
+    fields: [...commonFields],
+    example: { type: "final_quiz" },
+  },
+  {
     type: "homework",
     title: "Домашнее задание",
     description:
@@ -733,6 +740,7 @@ function validateBlock(block: unknown, index: number, errors: LessonPackageIssue
     visual_choice: ["title", "prompt", "explanation"],
     code: ["language", "code"],
     summary: ["title"],
+    final_quiz: [],
     homework: ["title", "instruction"],
   } as const;
   for (const key of mustBeStrings[type]) {
@@ -1242,6 +1250,19 @@ export function validateLessonPackage(raw: unknown): LessonPackageValidation {
   if (!Array.isArray(lesson.blocks) || lesson.blocks.length === 0)
     errors.push(issue("Урок", "нужен хотя бы один блок."));
   else lesson.blocks.forEach((block, index) => validateBlock(block, index, errors));
+  if (
+    Array.isArray(lesson.blocks) &&
+    lesson.blocks.some((block) => isRecord(block) && block.type === "final_quiz") &&
+    Number(lesson.day) !== 14
+  ) {
+    errors.push(issue("Урок", "блок итогового теста можно добавить только в День 14."));
+  }
+  if (
+    Array.isArray(lesson.blocks) &&
+    lesson.blocks.filter((block) => isRecord(block) && block.type === "final_quiz").length > 1
+  ) {
+    errors.push(issue("Урок", "можно добавить только один блок итогового теста."));
+  }
   if (
     Array.isArray(lesson.blocks) &&
     !lesson.blocks.some((block) => isRecord(block) && block.type === "summary")

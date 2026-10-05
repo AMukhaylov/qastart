@@ -15,6 +15,7 @@ export const lessonBlockTypes = [
   "visual_choice",
   "code",
   "summary",
+  "final_quiz",
   "homework",
 ] as const;
 
@@ -91,6 +92,7 @@ export const lessonBlockLabels: Record<LessonBlockType, string> = {
   visual_choice: "Визуальная активность",
   code: "Код",
   summary: "Главное из урока",
+  final_quiz: "Итоговый тест",
   homework: "Домашнее задание",
 };
 
@@ -276,6 +278,7 @@ export function createLessonBlock(type: LessonBlockType): LessonBlockDraft {
     },
     code: { language: "text", code: "" },
     summary: { title: "Главное из урока", items: [], points: [] },
+    final_quiz: {},
     homework: {
       title: "Домашнее задание",
       instruction: "Опишите задание для ученика.",

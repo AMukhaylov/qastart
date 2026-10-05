@@ -9,6 +9,8 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "test:autotests": "python -m pytest autotests",
+    "test:admin-rpc-retry": "node --experimental-strip-types --test autotests/unit/admin-rpc-retry.test.ts",
+    "test:final-quiz-bank": "node --experimental-strip-types --test autotests/unit/final-quiz-bank.test.ts",
     "test:lesson-package": "node --experimental-strip-types --test autotests/unit/lesson-package.test.ts",
     "test:sql-sandbox": "node --experimental-strip-types --test autotests/unit/sql-sandbox.test.ts",
     "preview": "vite preview",

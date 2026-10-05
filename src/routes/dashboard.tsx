@@ -25,6 +25,8 @@ import { NotificationBell } from "@/components/notification-bell";
 import { useAuth } from "@/hooks/use-auth";
 import { ensureCurrentUserCertificate } from "@/server/certificates.functions";
 import { getStudentDashboardData } from "@/server/dashboard.functions";
+import { applyFinalQuizCompletion } from "@/lib/course-completion";
+import { getAcceptedSqlHomeworkLessonIds } from "@/lib/homework-status";
 import { listPublishedMeetings } from "@/server/meetings.functions";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -109,7 +111,12 @@ function Dashboard() {
             : Promise.resolve({ meetings: [], error: null }),
         ]);
         const loadedLessons = dashboardData.lessons as Lesson[];
-        const loadedCompleted = new Set(dashboardData.progress.map((p) => p.lesson_id as string));
+        const finalLessonId = loadedLessons.find((lesson) => lesson.day_number === 14)?.id;
+        const loadedCompleted = applyFinalQuizCompletion(
+          dashboardData.progress.map((p) => p.lesson_id as string),
+          finalLessonId,
+          dashboardData.finalQuizPassed,
+        );
         const loadedHomeworkLessonIds = new Set<string>(
           loadedLessons.filter((item) => Boolean(item.homework_md?.trim())).map((item) => item.id),
         );
@@ -143,6 +150,21 @@ function Dashboard() {
                 ? "rejected"
                 : "pending";
           latestHomeworkStatus[submission.lesson_id as string] = status;
+        }
+        for (const lessonId of getAcceptedSqlHomeworkLessonIds(
+          dashboardData.homeworkBlocks as Array<{
+            id: string;
+            lesson_id: string;
+            content: Record<string, unknown>;
+          }>,
+          dashboardData.sqlSandboxAttempts as Array<{
+            block_id: string;
+            lesson_id: string;
+            task_id: string;
+            passed: boolean;
+          }>,
+        )) {
+          latestHomeworkStatus[lessonId] = "approved";
         }
         setHomeworkStatusByLessonId(latestHomeworkStatus);
         setHwApproved(

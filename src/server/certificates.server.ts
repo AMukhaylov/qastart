@@ -61,21 +61,39 @@ export async function maybeIssueCertificate(userId: string) {
   const existing = await findActiveCertificate(userId);
   if (existing) return existing;
 
-  const [{ data: lessons, error: lessonsError }, { data: progress, error: progressError }] =
-    await Promise.all([
-      supabaseAdmin.from("lessons").select("id"),
-      supabaseAdmin
-        .from("lesson_progress")
-        .select("lesson_id")
-        .eq("user_id", userId)
-        .eq("completed", true),
-    ]);
+  const [
+    { data: lessons, error: lessonsError },
+    { data: progress, error: progressError },
+    { data: passedFinalQuizAttempts, error: passedFinalQuizError },
+  ] = await Promise.all([
+    supabaseAdmin.from("lessons").select("id,day_number"),
+    supabaseAdmin
+      .from("lesson_progress")
+      .select("lesson_id")
+      .eq("user_id", userId)
+      .eq("completed", true),
+    supabaseAdmin
+      .from("quiz_attempts")
+      .select("lesson_id")
+      .eq("user_id", userId)
+      .eq("passed", true),
+  ]);
 
   if (lessonsError) throw lessonsError;
   if (progressError) throw progressError;
+  if (passedFinalQuizError) throw passedFinalQuizError;
 
-  const lessonCount = lessons?.length ?? 0;
-  if (lessonCount === 0 || (progress?.length ?? 0) < lessonCount) return null;
+  const finalLesson = lessons?.find((lesson) => lesson.day_number === 14);
+  const hasPassedFinalQuiz = Boolean(
+    finalLesson && passedFinalQuizAttempts?.some((attempt) => attempt.lesson_id === finalLesson.id),
+  );
+  if (!hasPassedFinalQuiz) return null;
+
+  const completedLessonIds = new Set(progress?.map((item) => item.lesson_id) ?? []);
+  completedLessonIds.add(finalLesson!.id);
+  const lessonIds = new Set(lessons?.map((lesson) => lesson.id) ?? []);
+  if (lessonIds.size === 0 || [...lessonIds].some((lessonId) => !completedLessonIds.has(lessonId)))
+    return null;
 
   const studentName = await getStudentName(userId);
 

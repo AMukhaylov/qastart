@@ -46,9 +46,10 @@ type InteractiveLessonProps = {
   previousDay?: number;
   previewMode?: boolean;
   renderHomework?: (block: LessonBlock) => ReactNode;
+  renderFinalQuiz?: (block: LessonBlock) => ReactNode;
 };
 
-type StepKind = "material" | "question" | "video" | "homework";
+type StepKind = "material" | "question" | "video" | "homework" | "final_quiz";
 type LessonStep = { kind: StepKind; blocks: LessonBlock[] };
 
 function isRequiredVideo(block: LessonBlock) {
@@ -71,7 +72,8 @@ function createSteps(blocks: LessonBlock[]): LessonStep[] {
       ((block.block_type === "question" || block.block_type === "homework") &&
         isBlockRequired(block) &&
         blocksNext(block)) ||
-      isRequiredVideo(block)
+      isRequiredVideo(block) ||
+      (block.block_type === "final_quiz" && isBlockRequired(block) && blocksNext(block))
     ) {
       flushMaterial();
       steps.push({
@@ -80,7 +82,9 @@ function createSteps(blocks: LessonBlock[]): LessonStep[] {
             ? "question"
             : block.block_type === "homework"
               ? "homework"
-              : "video",
+              : block.block_type === "final_quiz"
+                ? "final_quiz"
+                : "video",
         blocks: [block],
       });
     } else {
@@ -100,6 +104,7 @@ export function InteractiveLesson({
   previousDay,
   previewMode = false,
   renderHomework,
+  renderFinalQuiz,
 }: InteractiveLessonProps) {
   const [completingStep, setCompletingStep] = useState<number | null>(null);
   const steps = useMemo(() => createSteps(blocks), [blocks]);
@@ -175,6 +180,9 @@ export function InteractiveLesson({
               if (block.block_type === "homework" && renderHomework) {
                 return <div key={block.id}>{renderHomework(block)}</div>;
               }
+              if (block.block_type === "final_quiz" && renderFinalQuiz) {
+                return <div key={block.id}>{renderFinalQuiz(block)}</div>;
+              }
               return (
                 <LessonBlockView
                   key={block.id}
@@ -201,8 +209,13 @@ export function InteractiveLesson({
                   disabled={completingStep !== null}
                   onClick={() => void completeStep(index, requiredIds)}
                 >
-                  {completingStep === index && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Продолжить
+                  {completingStep !== null ? (
+                    <span className="inline-flex items-center gap-2" aria-live="polite">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Сохраняем прогресс…
+                    </span>
+                  ) : (
+                    "Продолжить"
+                  )}
                 </Button>
               </div>
             )}
@@ -222,8 +235,13 @@ export function InteractiveLesson({
                   disabled={completingStep !== null}
                   onClick={() => void completeStep(index, requiredIds)}
                 >
-                  {completingStep === index && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {"Я посмотрел видео — продолжить"}
+                  {completingStep !== null ? (
+                    <span className="inline-flex items-center gap-2" aria-live="polite">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Сохраняем прогресс…
+                    </span>
+                  ) : (
+                    "Я посмотрел видео — продолжить"
+                  )}
                 </Button>
               </div>
             )}
@@ -496,6 +514,16 @@ function LessonBlockView({
             </Button>
           </section>
         ) : null;
+      break;
+    case "final_quiz":
+      content = previewMode ? (
+        <section className="rounded-2xl border border-primary/20 bg-primary-soft/40 p-5 md:p-7">
+          <h3 className="text-xl font-extrabold">Итоговый тест</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Здесь ученик сможет пройти итоговый тест курса.
+          </p>
+        </section>
+      ) : null;
       break;
   }
   return content ? <div className="space-y-6 md:space-y-7">{content}</div> : null;
@@ -840,10 +868,7 @@ function SummaryBlock({ content }: { content: Record<string, unknown> }) {
   const points = stringList(content, "points");
   return (
     <section className="rounded-2xl border border-primary/20 bg-primary-soft p-5 md:p-7">
-      <h2 className="text-2xl font-extrabold text-primary">
-        {stringValue(content, "title", "Главное из урока")}
-      </h2>
-      <dl className="mt-5 grid gap-3">
+      <dl className="grid gap-3">
         {items.map(([term, definition]) => (
           <div key={term} className="rounded-xl bg-background/80 p-4">
             <dt className="font-bold">{term}</dt>

@@ -121,6 +121,19 @@ def require_mutation(settings: TestSettings) -> None:
         pytest.skip("Production mutations need QA_RUN_PROD_MUTATION=true as a second confirmation.")
 
 
+def _open_login_route(page, route: str) -> None:
+    """Retry a read-only login-page navigation once after transient production timeouts."""
+    from playwright.sync_api import Error
+
+    for attempt in range(2):
+        try:
+            page.goto(route, wait_until="domcontentloaded")
+            return
+        except Error:
+            if attempt == 1:
+                raise
+
+
 @pytest.fixture
 def student_page(page, settings: TestSettings):
     if not settings.student_login or not settings.student_password:
@@ -128,7 +141,7 @@ def student_page(page, settings: TestSettings):
     # Wait for the route's hydration marker instead of a timing guess. The page
     # intentionally keeps background requests alive, so networkidle is not a
     # useful readiness signal here.
-    page.goto("/auth", wait_until="domcontentloaded")
+    _open_login_route(page, "/auth")
     page.locator('[data-testid="student-login-ready"][data-hydrated="true"]').wait_for()
     page.locator("#login").fill(settings.student_login)
     page.locator("#password").fill(settings.student_password)
@@ -141,7 +154,7 @@ def student_page(page, settings: TestSettings):
 def admin_page(page, settings: TestSettings):
     if not settings.admin_email or not settings.admin_password:
         pytest.skip("Set QA_ADMIN_EMAIL and QA_ADMIN_PASSWORD to run administrator scenarios.")
-    page.goto("/admin/login", wait_until="domcontentloaded")
+    _open_login_route(page, "/admin/login")
     page.locator('[data-testid="admin-login-ready"][data-hydrated="true"]').wait_for()
     page.locator("#admin-email").fill(settings.admin_email)
     page.locator("#admin-password").fill(settings.admin_password)

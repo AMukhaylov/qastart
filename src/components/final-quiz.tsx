@@ -47,7 +47,6 @@ type QuizState =
       questionsPerAttempt: number;
       durationMinutes: number;
       passingPercent: number;
-      introVideoUrl: string | null;
     }
   | {
       status: "active";
@@ -124,7 +123,6 @@ export function FinalQuiz({
         questionsPerAttempt: 30,
         durationMinutes: 30,
         passingPercent: 70,
-        introVideoUrl: null,
       });
       toast.error(quizErrorMessage(error, "Не удалось загрузить тест"));
     }
@@ -284,30 +282,14 @@ export function FinalQuiz({
 
   if (state.status === "ready") {
     return (
-      <div className="space-y-6">
-        <section className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7">
-          <h2 className="text-xl font-extrabold">Перед итоговым тестом</h2>
-          {state.introVideoUrl ? (
-            <video
-              className="mt-4 max-h-[520px] w-full rounded-xl bg-black"
-              controls
-              preload="metadata"
-              src={state.introVideoUrl}
-            />
-          ) : null}
-          <p className="mt-3 text-sm text-muted-foreground">
-            Небольшое напутствие перед завершением QA Start
-          </p>
-        </section>
-        <QuizIntro
-          attemptsUsed={state.attemptsUsed}
-          maxAttempts={state.maxAttempts}
-          questionsPerAttempt={state.questionsPerAttempt}
-          durationMinutes={state.durationMinutes}
-          passingPercent={state.passingPercent}
-          onStart={() => void load(true)}
-        />
-      </div>
+      <QuizIntro
+        attemptsUsed={state.attemptsUsed}
+        maxAttempts={state.maxAttempts}
+        questionsPerAttempt={state.questionsPerAttempt}
+        durationMinutes={state.durationMinutes}
+        passingPercent={state.passingPercent}
+        onStart={() => void load(true)}
+      />
     );
   }
 
@@ -453,12 +435,12 @@ function QuizResultView({ result, onRetry }: { result: QuizResult; onRetry?: () 
   return (
     <section className="space-y-6">
       <div
-        className={`rounded-2xl border p-6 shadow-[var(--shadow-soft)] sm:p-8 ${result.passed ? "border-primary/25 bg-primary-soft" : "border-destructive/25 bg-destructive/5"}`}
+        className={`rounded-2xl border p-6 shadow-[var(--shadow-soft)] sm:p-8 ${result.passed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-red-200 bg-red-50 text-red-950"}`}
       >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div
-              className={`flex h-12 w-12 items-center justify-center rounded-xl ${result.passed ? "bg-primary text-primary-foreground" : "bg-destructive text-destructive-foreground"}`}
+              className={`flex h-12 w-12 items-center justify-center rounded-xl ${result.passed ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}
             >
               {result.passed ? (
                 <CheckCircle2 className="h-6 w-6" />
@@ -468,14 +450,16 @@ function QuizResultView({ result, onRetry }: { result: QuizResult; onRetry?: () 
             </div>
             <div>
               <h2 className="text-2xl font-extrabold">
-                {result.passed ? "Тест пройден" : "Тест не пройден"}
+                {result.passed ? "Поздравляю, тест успешно пройден!" : "Тест не сдан"}
               </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {result.disqualified
-                  ? "Тест завершён: во время попытки была открыта другая вкладка или браузер был свёрнут."
-                  : result.timedOut
-                    ? "Время вышло: тест завершён автоматически."
-                    : "Результат сохранён в твоём кабинете."}
+              <p className={`mt-1 text-sm ${result.passed ? "text-emerald-800" : "text-red-800"}`}>
+                {result.passed
+                  ? "Результат сохранён в твоём кабинете."
+                  : result.disqualified
+                    ? "Попытка аннулирована, поэтому тест не засчитан."
+                    : result.timedOut
+                      ? "Время вышло, проходной балл не набран."
+                      : "Проходной балл не набран. Разбери ошибки и попробуй ещё раз."}
               </p>
             </div>
           </div>
@@ -488,7 +472,7 @@ function QuizResultView({ result, onRetry }: { result: QuizResult; onRetry?: () 
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
           <Badge variant={result.passed ? "default" : "destructive"}>
-            {result.passed ? "Пройден" : "Не пройден"}
+            {result.passed ? "Пройден" : "Не сдан"}
           </Badge>
           <span className="text-muted-foreground">
             Попытка {result.attemptsUsed} из {result.attemptsUsed + result.attemptsLeft}
@@ -500,15 +484,6 @@ function QuizResultView({ result, onRetry }: { result: QuizResult; onRetry?: () 
           ) : null}
         </div>
       </div>
-
-      {result.passed ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900 shadow-[var(--shadow-soft)] sm:p-7">
-          <h2 className="text-xl font-extrabold">Поздравляем с завершением QA Start!</h2>
-          <p className="mt-2 text-sm leading-relaxed">
-            Ты успешно прошёл итоговый тест и завершил курс. Отличная работа!
-          </p>
-        </div>
-      ) : null}
 
       {result.passed ? (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7">
