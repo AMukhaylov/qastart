@@ -434,6 +434,60 @@ export type Database = {
           },
         ];
       };
+      lesson_question_answers: {
+        Row: {
+          answered_at: string;
+          block_id: string;
+          correct_indexes: number[];
+          id: string;
+          is_correct: boolean;
+          lesson_id: string;
+          options: string[];
+          question_text: string;
+          selected_indexes: number[];
+          user_id: string;
+        };
+        Insert: {
+          answered_at?: string;
+          block_id: string;
+          correct_indexes: number[];
+          id?: string;
+          is_correct: boolean;
+          lesson_id: string;
+          options: string[];
+          question_text: string;
+          selected_indexes: number[];
+          user_id: string;
+        };
+        Update: {
+          answered_at?: string;
+          block_id?: string;
+          correct_indexes?: number[];
+          id?: string;
+          is_correct?: boolean;
+          lesson_id?: string;
+          options?: string[];
+          question_text?: string;
+          selected_indexes?: number[];
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lesson_question_answers_block_id_fkey";
+            columns: ["block_id"];
+            isOneToOne: false;
+            referencedRelation: "lesson_blocks";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lesson_question_answers_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       sql_sandbox_attempts: {
         Row: {
           block_id: string;

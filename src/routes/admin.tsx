@@ -1,6 +1,13 @@
 import { createFileRoute, Link, Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { ClipboardCheck, BookOpen, Users, ArrowLeft, CalendarDays } from "lucide-react";
+import {
+  ClipboardCheck,
+  BookOpen,
+  Users,
+  ArrowLeft,
+  CalendarDays,
+  ChartNoAxesCombined,
+} from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -47,6 +54,7 @@ function AdminLayout() {
     { to: "/admin/lessons", label: "Уроки", icon: BookOpen },
     { to: "/admin/meetings", label: "Встречи", icon: CalendarDays },
     { to: "/admin/students", label: "Студенты", icon: Users },
+    { to: "/admin/analytics", label: "Аналитика", icon: ChartNoAxesCombined },
   ] as const;
 
   return (

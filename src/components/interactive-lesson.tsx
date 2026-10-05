@@ -40,6 +40,7 @@ type InteractiveLessonProps = {
   blocks: LessonBlock[];
   completedBlockIds: Set<string>;
   onBlocksCompleted: (blockIds: string[]) => Promise<boolean> | void;
+  onQuestionAnswered?: (blockId: string, selectedIndexes: number[]) => Promise<boolean> | void;
   legacyContent?: string;
   lessonDay: number;
   lessonTitle: string;
@@ -99,6 +100,7 @@ export function InteractiveLesson({
   blocks,
   completedBlockIds,
   onBlocksCompleted,
+  onQuestionAnswered,
   legacyContent,
   lessonDay,
   previousDay,
@@ -189,6 +191,9 @@ export function InteractiveLesson({
                   block={block}
                   completed={completedBlockIds.has(block.id)}
                   onComplete={() => onBlocksCompleted([block.id])}
+                  onQuestionAnswered={(selectedIndexes) =>
+                    onQuestionAnswered?.(block.id, selectedIndexes)
+                  }
                   previewMode={previewMode}
                 />
               );
@@ -266,11 +271,13 @@ function LessonBlockView({
   block,
   completed,
   onComplete,
+  onQuestionAnswered,
   previewMode = false,
 }: {
   block: LessonBlock;
   completed: boolean;
   onComplete: () => Promise<boolean> | void;
+  onQuestionAnswered?: (selectedIndexes: number[]) => Promise<boolean> | void;
   previewMode?: boolean;
 }) {
   const c = block.content;
@@ -455,7 +462,14 @@ function LessonBlockView({
       break;
     }
     case "question":
-      content = <QuestionBlock content={c} completed={completed} onComplete={onComplete} />;
+      content = (
+        <QuestionBlock
+          content={c}
+          completed={completed}
+          onComplete={onComplete}
+          onQuestionAnswered={onQuestionAnswered}
+        />
+      );
       break;
     case "reflection":
       content = <ReflectionBlock content={c} />;
@@ -713,10 +727,12 @@ function QuestionBlock({
   content,
   completed,
   onComplete,
+  onQuestionAnswered,
 }: {
   content: Record<string, unknown>;
   completed: boolean;
   onComplete: () => Promise<boolean> | void;
+  onQuestionAnswered?: (selectedIndexes: number[]) => Promise<boolean> | void;
 }) {
   const options = stringList(content, "options");
   const correctIndex = typeof content.correctIndex === "number" ? content.correctIndex : 0;
@@ -736,10 +752,14 @@ function QuestionBlock({
     selected.length === correctAnswers.length &&
     selected.every((index) => correctAnswers.includes(index));
   const answered = submitted || completed;
-  const saveAnswer = async () => {
+  const saveAnswer = async (selectedIndexes = selected) => {
     setSaving(true);
     setSaveFailed(false);
     try {
+      if ((await onQuestionAnswered?.(selectedIndexes)) === false) {
+        setSaveFailed(true);
+        return;
+      }
       if ((await onComplete()) === false) setSaveFailed(true);
     } catch {
       setSaveFailed(true);
@@ -757,7 +777,7 @@ function QuestionBlock({
     }
     setSelected([index]);
     setSubmitted(true);
-    void saveAnswer();
+    void saveAnswer([index]);
   };
   const submitMultiple = () => {
     if (answered) return;

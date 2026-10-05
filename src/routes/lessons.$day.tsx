@@ -39,6 +39,7 @@ import {
 } from "@/lib/lesson-progress";
 import { listHomeworkMessages, submitHomeworkForCurrentUser } from "@/server/homework.functions";
 import { getStudentLessonData } from "@/server/lesson-content.functions";
+import { saveLessonQuestionAnswer } from "@/server/lesson-question-answers.functions";
 import {
   completeLessonForCurrentUser,
   getLessonDailyAccessForCurrentUser,
@@ -333,6 +334,18 @@ function LessonPage() {
     if (typeof window !== "undefined")
       removePendingProgressIds(window.localStorage, key, pendingIds);
     return true;
+  }
+
+  async function saveQuestionAnswer(blockId: string, selectedIndexes: number[]) {
+    if (!lesson || !session?.access_token) return false;
+    try {
+      const result = await saveLessonQuestionAnswer({
+        data: { accessToken: session.access_token, blockId, selectedIndexes },
+      });
+      return result.saved;
+    } catch {
+      return false;
+    }
   }
 
   useEffect(() => {
@@ -882,6 +895,7 @@ function LessonPage() {
           }
           completedBlockIds={new Set(viewedBlockIds)}
           onBlocksCompleted={markBlocksCompleted}
+          onQuestionAnswered={isAdmin ? undefined : saveQuestionAnswer}
           legacyContent={lesson.content_md}
           lessonDay={lesson.day_number}
           lessonTitle={lesson.title}
