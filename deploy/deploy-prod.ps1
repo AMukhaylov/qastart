@@ -105,7 +105,7 @@ if [ -f "$APP_DIR/deploy/nginx-startqa.ru" ]; then
 fi
 
 npm ci
-npm run lint
+npm run lint -- --ignore-pattern '**/.qastart-*/**'
 npm run build
 pm2 restart qastart --update-env
 pm2 flush qastart
