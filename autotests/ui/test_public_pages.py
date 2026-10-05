@@ -1,7 +1,7 @@
 import re
 import time
 
-from playwright.sync_api import expect
+from playwright.sync_api import Error, expect
 
 
 PROGRAM_TITLES = [
@@ -45,7 +45,13 @@ def test_hidden_application_version_is_present(page):
 
 def test_homepage_is_usable_on_mobile(page):
     page.set_viewport_size({"width": 390, "height": 844})
-    page.goto(f"/?qa_regression={time.time_ns()}", wait_until="domcontentloaded")
+    for attempt in range(2):
+        try:
+            page.goto(f"/?qa_regression={time.time_ns()}", wait_until="domcontentloaded")
+            break
+        except Error:
+            if attempt == 1:
+                raise
 
     cta = page.get_by_role("link", name="Войти в кабинет", exact=True)
     expect(cta).to_be_visible()

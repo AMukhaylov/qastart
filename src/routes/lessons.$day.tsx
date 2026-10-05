@@ -419,6 +419,27 @@ function LessonPage() {
       toast.error("Не удалось подтвердить сессию. Войди заново");
       return;
     }
+    const requiredBlockIds = blocks.filter(isBlockRequired).map((block) => block.id);
+    if (requiredBlockIds.length > 0) {
+      const saveBlocks = await runProgressRequest((signal) =>
+        supabase
+          .from("lesson_block_progress")
+          .upsert(
+            requiredBlockIds.map((blockId) => ({
+              user_id: user.id,
+              lesson_id: lesson.id,
+              block_id: blockId,
+            })),
+            { onConflict: "user_id,block_id" },
+          )
+          .abortSignal(signal),
+      );
+      if (saveBlocks.error) {
+        setCompletingLesson(false);
+        toast.error("Не удалось сохранить шаги урока. Проверь подключение и попробуй ещё раз.");
+        return;
+      }
+    }
     let result: Awaited<ReturnType<typeof completeLessonForCurrentUser>>;
     try {
       result = await completeLessonForCurrentUser({
@@ -431,8 +452,12 @@ function LessonPage() {
     }
     setCompletingLesson(false);
     if (!result.completed) {
-      setDailyLimitReached(true);
-      toast.error(`Сегодня можно завершить не больше ${MAX_NEW_LESSONS_PER_DAY} новых уроков.`);
+      if (result.requirementsIncomplete) {
+        toast.error("Сначала выполни обязательные шаги текущего и предыдущего урока.");
+      } else {
+        setDailyLimitReached(true);
+        toast.error(`Сегодня можно завершить не больше ${MAX_NEW_LESSONS_PER_DAY} новых уроков.`);
+      }
       return;
     }
     setCompleted(true);
