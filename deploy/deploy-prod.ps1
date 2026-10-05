@@ -120,6 +120,9 @@ tail -n 50 /root/.pm2/logs/qastart-error.log || true
 '@
 
 $remoteScript = $remoteScript.Replace("__APP_DIR__", $AppDir)
+# PowerShell here-strings inherit Windows CRLF line endings. Normalize the
+# payload so bash on the production host does not parse a trailing `\r`.
+$remoteScript = $remoteScript.Replace("`r`n", "`n")
 $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($remoteScript))
 ssh -i $KeyPath -p $Port -o StrictHostKeyChecking=no "${User}@${HostName}" "printf '%s' '$encoded' | base64 -d | bash"
 if ($LASTEXITCODE -ne 0) {
