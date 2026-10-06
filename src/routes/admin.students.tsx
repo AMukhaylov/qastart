@@ -1,10 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import {
+  Activity,
   Award,
   Ban,
+  BookOpen,
+  CalendarDays,
   Check,
   ClipboardCheck,
+  ClipboardList,
   Copy,
   Eye,
   EyeOff,
@@ -14,13 +18,17 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Rocket,
   RefreshCw,
   RotateCcw,
   Search,
   Save,
   Trash2,
   Unlock,
+  UserRound,
+  UsersRound,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -680,43 +688,74 @@ function AdminStudents() {
         open={Boolean(selectedStudent)}
         onOpenChange={(open) => !open && setSelectedStudent(null)}
       >
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>{selectedStudent?.full_name ?? "Ученик"}</DialogTitle>
-            <DialogDescription>Подробная информация об обучении и прогрессе.</DialogDescription>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto p-4 sm:p-6">
+          <DialogHeader className="relative overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-5 pr-12 text-left">
+            <div className="absolute -right-5 -top-8 text-blue-100/80" aria-hidden="true">
+              <BookOpen className="h-36 w-36 -rotate-12" strokeWidth={1.1} />
+            </div>
+            {selectedStudent && (
+              <div className="relative flex items-center gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-xl font-bold text-white shadow-lg shadow-blue-200">
+                  {(selectedStudent.full_name ?? selectedStudent.login)[0]?.toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="truncate text-xl">
+                    {selectedStudent.full_name ?? "Ученик"}
+                  </DialogTitle>
+                  <DialogDescription className="mt-1">
+                    Профиль ученика · {selectedStudent.login}
+                  </DialogDescription>
+                </div>
+              </div>
+            )}
+            {selectedStudent && <StudentStatusBadge row={selectedStudent} />}
           </DialogHeader>
           {selectedStudent && (
             <div className="grid gap-3 sm:grid-cols-2">
-              <StudentDetail label="Логин" value={selectedStudent.login} />
               <StudentDetail
-                label="Регистрация"
-                value={formatCourseDateTime(selectedStudent.created_at)}
+                icon={UserRound}
+                label="Логин"
+                value={selectedStudent.login}
+                tone="blue"
               />
               <StudentDetail
+                icon={CalendarDays}
+                label="Регистрация"
+                value={formatCourseDateTime(selectedStudent.created_at)}
+                tone="violet"
+              />
+              <StudentDetail
+                icon={Rocket}
                 label="Начало обучения"
                 value={
                   selectedStudent.course_start_at
                     ? formatCourseDateTime(selectedStudent.course_start_at)
                     : "Не назначено"
                 }
+                tone="blue"
               />
               <StudentDetail
+                icon={BookOpen}
                 label="Текущий день / доступ"
                 value={
                   selectedStudent.currentDay
                     ? `День ${selectedStudent.currentDay} · доступны уроки 1–${selectedStudent.currentAvailableLesson}`
                     : "Обучение ещё не началось"
                 }
+                tone="indigo"
               />
               <StudentDetail
+                icon={UsersRound}
                 label="Группа"
                 value={
                   selectedStudent.groups.length
                     ? selectedStudent.groups.map((group) => group.name).join(", ")
                     : "Без группы"
                 }
+                tone="cyan"
               />
               <StudentDetail
+                icon={Activity}
                 label="Статус"
                 value={
                   selectedStudent.blocked
@@ -729,16 +768,22 @@ function AdminStudents() {
                           ? "Ожидает старта"
                           : "Без даты старта"
                 }
+                tone={selectedStudent.blocked ? "rose" : "green"}
               />
               <StudentDetail
+                icon={BookOpen}
                 label="Прогресс уроков"
                 value={`${selectedStudent.completed} из ${totalLessons} пройдено`}
+                tone="indigo"
               />
               <StudentDetail
+                icon={ClipboardList}
                 label="Домашние задания"
                 value={`${selectedStudent.homeworkCounts.submitted} отправлено · ${selectedStudent.homeworkCounts.notSubmitted} не отправлено · ${selectedStudent.homeworkCounts.assigned} всего`}
+                tone="cyan"
               />
               <StudentDetail
+                icon={Award}
                 label="Сертификат"
                 value={
                   !selectedStudent.certificate
@@ -746,6 +791,11 @@ function AdminStudents() {
                     : selectedStudent.certificate.revoked_at
                       ? "Аннулирован"
                       : "Действителен"
+                }
+                tone={
+                  selectedStudent.certificate && !selectedStudent.certificate.revoked_at
+                    ? "green"
+                    : "amber"
                 }
               />
             </div>
@@ -1008,11 +1058,58 @@ function AdminStudents() {
     </div>
   );
 }
-function StudentDetail({ label, value }: { label: string; value: string }) {
+function StudentDetail({
+  icon: Icon,
+  label,
+  value,
+  tone = "blue",
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  tone?: "blue" | "violet" | "indigo" | "cyan" | "green" | "rose" | "amber";
+}) {
+  const tones = {
+    blue: "bg-blue-100 text-blue-700",
+    violet: "bg-violet-100 text-violet-700",
+    indigo: "bg-indigo-100 text-indigo-700",
+    cyan: "bg-cyan-100 text-cyan-700",
+    green: "bg-emerald-100 text-emerald-700",
+    rose: "bg-rose-100 text-rose-700",
+    amber: "bg-amber-100 text-amber-700",
+  };
   return (
-    <div className="min-w-0 rounded-xl border border-border bg-muted/30 p-3">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div className="mt-1 break-words text-sm font-medium">{value}</div>
+    <div className="flex min-w-0 items-center gap-3 rounded-xl border border-blue-100 bg-white p-3 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/40">
+      <div
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}
+      >
+        <Icon className="h-5 w-5" strokeWidth={1.9} aria-hidden="true" />
+      </div>
+      <div className="min-w-0">
+        <div className="text-xs font-medium text-muted-foreground">{label}</div>
+        <div className="mt-1 break-words text-sm font-semibold text-foreground">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+function StudentStatusBadge({ row }: { row: Row }) {
+  const { label, color } = row.blocked
+    ? { label: "Заблокирован", color: "border-rose-200 bg-rose-50 text-rose-700" }
+    : row.courseStatus === "completed"
+      ? { label: "Курс завершён", color: "border-emerald-200 bg-emerald-50 text-emerald-700" }
+      : row.courseStatus === "in_progress"
+        ? { label: "Обучается", color: "border-blue-200 bg-blue-50 text-blue-700" }
+        : row.courseStatus === "upcoming"
+          ? { label: "Ожидает старта", color: "border-amber-200 bg-amber-50 text-amber-700" }
+          : { label: "Без даты старта", color: "border-slate-200 bg-slate-50 text-slate-600" };
+
+  return (
+    <div
+      className={`relative mt-4 inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${color}`}
+    >
+      <span className="h-2 w-2 rounded-full bg-current" aria-hidden="true" />
+      {label}
     </div>
   );
 }
