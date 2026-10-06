@@ -32,6 +32,7 @@ try {
     --exclude="node_modules" `
     --exclude="dist" `
     --exclude="supabase/.temp" `
+    --exclude="reports" `
     --exclude=".env" `
     --exclude=".env.*" `
     --exclude=".deploy" `

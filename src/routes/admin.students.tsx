@@ -141,6 +141,7 @@ function AdminStudents() {
   });
   const [groupSearch, setGroupSearch] = useState("");
   const [studentGroupsStudent, setStudentGroupsStudent] = useState<Row | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<Row | null>(null);
   const [studentGroupSelection, setStudentGroupSelection] = useState<string[]>([]);
   const load = useCallback(async () => {
     if (!session?.access_token) return;
@@ -675,6 +676,87 @@ function AdminStudents() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={Boolean(selectedStudent)}
+        onOpenChange={(open) => !open && setSelectedStudent(null)}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{selectedStudent?.full_name ?? "Ученик"}</DialogTitle>
+            <DialogDescription>Подробная информация об обучении и прогрессе.</DialogDescription>
+          </DialogHeader>
+          {selectedStudent && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <StudentDetail label="Логин" value={selectedStudent.login} />
+              <StudentDetail
+                label="Регистрация"
+                value={formatCourseDateTime(selectedStudent.created_at)}
+              />
+              <StudentDetail
+                label="Начало обучения"
+                value={
+                  selectedStudent.course_start_at
+                    ? formatCourseDateTime(selectedStudent.course_start_at)
+                    : "Не назначено"
+                }
+              />
+              <StudentDetail
+                label="Текущий день / доступ"
+                value={
+                  selectedStudent.currentDay
+                    ? `День ${selectedStudent.currentDay} · доступны уроки 1–${selectedStudent.currentAvailableLesson}`
+                    : "Обучение ещё не началось"
+                }
+              />
+              <StudentDetail
+                label="Группа"
+                value={
+                  selectedStudent.groups.length
+                    ? selectedStudent.groups.map((group) => group.name).join(", ")
+                    : "Без группы"
+                }
+              />
+              <StudentDetail
+                label="Статус"
+                value={
+                  selectedStudent.blocked
+                    ? "Заблокирован"
+                    : selectedStudent.courseStatus === "completed"
+                      ? "Завершил курс"
+                      : selectedStudent.courseStatus === "in_progress"
+                        ? "Обучается"
+                        : selectedStudent.courseStatus === "upcoming"
+                          ? "Ожидает старта"
+                          : "Без даты старта"
+                }
+              />
+              <StudentDetail
+                label="Прогресс уроков"
+                value={`${selectedStudent.completed} из ${totalLessons} пройдено`}
+              />
+              <StudentDetail
+                label="Домашние задания"
+                value={`${selectedStudent.homeworkCounts.submitted} отправлено · ${selectedStudent.homeworkCounts.notSubmitted} не отправлено · ${selectedStudent.homeworkCounts.assigned} всего`}
+              />
+              <StudentDetail
+                label="Сертификат"
+                value={
+                  !selectedStudent.certificate
+                    ? "Не выдан"
+                    : selectedStudent.certificate.revoked_at
+                      ? "Аннулирован"
+                      : "Действителен"
+                }
+              />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedStudent(null)}>
+              Закрыть
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={Boolean(editingGroup)} onOpenChange={(open) => !open && setEditingGroup(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -791,15 +873,10 @@ function AdminStudents() {
             <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-4 py-3">Ученик</th>
-                <th className="px-4 py-3">Логин</th>
-                <th className="px-4 py-3">Регистрация</th>
-                <th className="px-4 py-3">Начало обучения</th>
-                <th className="px-4 py-3">День / доступ</th>
                 <th className="px-4 py-3">Группа</th>
                 <th className="px-4 py-3">Статус</th>
                 <th className="px-4 py-3">Прогресс</th>
                 <th className="px-4 py-3">ДЗ</th>
-                <th className="px-4 py-3">Сертификат</th>
                 <th className="px-4 py-3">Действия</th>
               </tr>
             </thead>
@@ -815,26 +892,22 @@ function AdminStudents() {
                 .map((row) => (
                   <tr key={row.id} className="border-t border-border">
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-2 font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStudent(row)}
+                        className="inline-flex max-w-64 items-center gap-2 text-left font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        aria-label={`Подробная информация: ${row.full_name ?? row.login}`}
+                      >
                         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-soft text-primary">
                           {(row.full_name ?? "?")[0]}
                         </span>
-                        {row.full_name ?? "Без имени"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs">{row.login}</td>
-                    <td className="px-4 py-3 text-xs whitespace-nowrap">
-                      {new Date(row.created_at).toLocaleDateString("ru-RU")}
-                    </td>
-                    <td className="px-4 py-3 text-xs whitespace-nowrap">
-                      {row.course_start_at
-                        ? formatCourseDateTime(row.course_start_at).split(",")[0]
-                        : "Не назначено"}
-                    </td>
-                    <td className="px-4 py-3 text-xs whitespace-nowrap">
-                      {row.currentDay
-                        ? `День ${row.currentDay} · уроки 1–${row.currentAvailableLesson}`
-                        : "Ещё не началось"}
+                        <span className="min-w-0">
+                          <span className="block truncate">{row.full_name ?? "Без имени"}</span>
+                          <span className="block truncate font-mono text-xs text-muted-foreground">
+                            {row.login}
+                          </span>
+                        </span>
+                      </button>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
@@ -843,7 +916,10 @@ function AdminStudents() {
                             <button
                               key={group.id}
                               type="button"
-                              onClick={() => openStudentGroups(row)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openStudentGroups(row);
+                              }}
                               title="Изменить группы ученика"
                               className="rounded-full bg-primary-soft px-2 py-0.5 text-xs text-primary"
                             >
@@ -853,7 +929,10 @@ function AdminStudents() {
                         ) : (
                           <button
                             type="button"
-                            onClick={() => openStudentGroups(row)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openStudentGroups(row);
+                            }}
                             className="text-xs text-muted-foreground underline-offset-2 hover:underline"
                           >
                             Без группы
@@ -878,14 +957,13 @@ function AdminStudents() {
                       {row.completed}/{totalLessons}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1">
+                      <span
+                        className="inline-flex items-center gap-1 whitespace-nowrap"
+                        title={`${row.homeworkCounts.submitted} отправлено, ${row.homeworkCounts.notSubmitted} не отправлено`}
+                      >
                         <ClipboardCheck className="h-4 w-4" />
-                        {row.homeworkCounts.submitted} / {row.homeworkCounts.assigned} отправлено ·{" "}
-                        {row.homeworkCounts.notSubmitted} не отправлено
+                        {row.homeworkCounts.submitted}/{row.homeworkCounts.assigned} сдано
                       </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <CertificateStatus certificate={row.certificate} />
                     </td>
                     <td className="px-4 py-3">
                       <StudentActions
@@ -918,7 +996,7 @@ function AdminStudents() {
                 ))}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
                     Учеников пока нет
                   </td>
                 </tr>
@@ -930,20 +1008,12 @@ function AdminStudents() {
     </div>
   );
 }
-function CertificateStatus({ certificate }: { certificate: Certificate | null }) {
-  if (!certificate) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-        <Award className="h-3.5 w-3.5" /> Нет
-      </span>
-    );
-  }
+function StudentDetail({ label, value }: { label: string; value: string }) {
   return (
-    <span
-      className={certificate.revoked_at ? "text-xs text-destructive" : "text-xs text-emerald-700"}
-    >
-      {certificate.revoked_at ? "Аннулирован" : "Действителен"}
-    </span>
+    <div className="min-w-0 rounded-xl border border-border bg-muted/30 p-3">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="mt-1 break-words text-sm font-medium">{value}</div>
+    </div>
   );
 }
 function StudentActions({

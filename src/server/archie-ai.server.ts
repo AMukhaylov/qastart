@@ -195,8 +195,13 @@ export async function fetchProviderModels(
   apiKey: string,
   timeoutMs: number,
 ) {
+  // OpenRouter's model catalog is public. Sending a user key here can cause
+  // 403 responses for keys whose permissions only allow chat completions.
+  // Keep authentication for providers that require it to list models.
+  const headers: Record<string, string> =
+    provider === "openrouter" ? {} : { Authorization: `Bearer ${apiKey}` };
   const response = await fetch(modelEndpoint(providerBaseUrl(provider, baseUrl)), {
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers,
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new Error(`AI provider models endpoint returned ${response.status}`);
