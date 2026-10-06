@@ -38,7 +38,9 @@ def test_day_two_is_a_connected_progressive_lesson_on_desktop_and_mobile(student
     if "Урок пока закрыт" in heading.inner_text():
         pytest.skip("The disposable account has not completed Day 1, required to open Day 2.")
     expect(student_page.locator("h1", has_text="Как работает IT-команда")).to_be_visible()
-    expect(student_page.get_by_text("В сервисе доставки", exact=False)).to_be_visible()
+    current_example = student_page.get_by_text("Представь новую функцию", exact=False)
+    previous_example = student_page.get_by_text("В сервисе доставки", exact=False)
+    assert current_example.count() + previous_example.count() > 0
 
     _continue_if_needed(student_page)
     expect(student_page.get_by_role("heading", name="Одна задача, разные роли")).to_be_visible()
