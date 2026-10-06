@@ -11,6 +11,7 @@ export type SavedSqlSandboxAttempt = {
   task_id: string;
   query_text: string;
   passed: boolean;
+  passed_at?: string | null;
   result_columns: string[];
   result_rows: Array<Array<string | number | null>>;
   feedback: string;

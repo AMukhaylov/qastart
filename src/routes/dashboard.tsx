@@ -29,6 +29,8 @@ import { applyFinalQuizCompletion } from "@/lib/course-completion";
 import { getAcceptedSqlHomeworkLessonIds } from "@/lib/homework-status";
 import { listPublishedMeetings } from "@/server/meetings.functions";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { formatCourseDate, lessonOpensAt } from "@/lib/course-schedule";
+import type { HomeworkSnapshot } from "@/lib/course-homework";
 
 export const Route = createFileRoute("/dashboard")({
   component: Dashboard,
@@ -73,8 +75,22 @@ function Dashboard() {
   const [homeworkStatusByLessonId, setHomeworkStatusByLessonId] = useState<
     Record<string, HomeworkStatus>
   >({});
-  const [homeworkLessonIds, setHomeworkLessonIds] = useState<Set<string>>(new Set());
   const [hwApproved, setHwApproved] = useState(0);
+  const [courseStartAt, setCourseStartAt] = useState<string | null>(null);
+  const [availableDay, setAvailableDay] = useState(0);
+  const [homeworkSnapshots, setHomeworkSnapshots] = useState<HomeworkSnapshot[]>([]);
+  const [homeworkCounts, setHomeworkCounts] = useState({
+    assigned: 0,
+    submitted: 0,
+    notSubmitted: 0,
+    sameCalendarDay: 0,
+    under24Hours: 0,
+    hours24To48: 0,
+    hours48To72: 0,
+    over72Hours: 0,
+    averageDelayHours: null as number | null,
+    medianDelayHours: null as number | null,
+  });
   const [certificate, setCertificate] = useState<Certificate | null>(null);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -117,12 +133,6 @@ function Dashboard() {
           finalLessonId,
           dashboardData.finalQuizPassed,
         );
-        const loadedHomeworkLessonIds = new Set<string>(
-          loadedLessons.filter((item) => Boolean(item.homework_md?.trim())).map((item) => item.id),
-        );
-        for (const block of dashboardData.homeworkBlocks ?? []) {
-          if (block?.lesson_id) loadedHomeworkLessonIds.add(String(block.lesson_id));
-        }
         let loadedCertificate = (dashboardData.certificate ?? null) as Certificate | null;
 
         if (
@@ -138,8 +148,11 @@ function Dashboard() {
 
         if (cancelled) return;
         setLessons(loadedLessons);
+        setCourseStartAt(dashboardData.courseStartAt);
+        setAvailableDay(isAdmin ? 14 : dashboardData.currentDay);
+        setHomeworkSnapshots(dashboardData.homeworkSnapshots);
+        setHomeworkCounts(dashboardData.homeworkCounts);
         setCompletedIds(loadedCompleted);
-        setHomeworkLessonIds(loadedHomeworkLessonIds);
         const latestHomeworkStatus: Record<string, HomeworkStatus> = {};
         for (const submission of dashboardData.homework ?? []) {
           if (latestHomeworkStatus[submission.lesson_id as string]) continue;
@@ -204,8 +217,13 @@ function Dashboard() {
   const progressPct = totalDays ? Math.round((completedCount / totalDays) * 100) : 0;
   const isCourseCompleted = completedCount >= totalDays;
   const certificateRevoked = Boolean(certificate?.revoked_at);
-  const currentDay = Math.min(completedCount + 1, totalDays);
-  const nextLesson = lessons.find((l) => !completedIds.has(l.id)) ?? lessons[0];
+  const currentDay = availableDay;
+  const nextLesson =
+    lessons.find((l) => l.day_number <= availableDay && !completedIds.has(l.id)) ??
+    (isCourseCompleted ? lessons[0] : null);
+  const nextOpeningDay = availableDay < totalDays ? availableDay + 1 : null;
+  const nextOpeningAt =
+    courseStartAt && nextOpeningDay ? lessonOpensAt(courseStartAt, nextOpeningDay) : null;
 
   return (
     <div className="min-h-screen bg-[var(--gradient-soft)]">
@@ -255,7 +273,11 @@ function Dashboard() {
             <div className="max-w-2xl">
               <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider">
                 <Flame className="h-3.5 w-3.5" />{" "}
-                {isCourseCompleted ? "Курс завершён" : `День ${currentDay} из ${totalDays}`}
+                {isCourseCompleted
+                  ? "Курс завершён"
+                  : currentDay
+                    ? `День ${currentDay} из ${totalDays}`
+                    : "Ожидание начала"}
               </div>
               <h1 className="mt-4 text-3xl md:text-4xl font-extrabold tracking-tight">
                 {isCourseCompleted ? `Поздравляем, ${name}` : `Привет, ${name} 👋`}
@@ -263,7 +285,11 @@ function Dashboard() {
               <p className="mt-2 opacity-90">
                 {isCourseCompleted
                   ? "Ты успешно завершил(а) курс. Материалы останутся в кабинете навсегда: можно возвращаться к урокам и повторять темы в своём темпе."
-                  : "Каждый день помогает лучше понимать QA и увереннее разбираться в материалах курса."}
+                  : currentDay === 0
+                    ? courseStartAt
+                      ? `Ваше обучение ещё не началось. Первый урок откроется ${formatCourseDate(courseStartAt)}.`
+                      : "Ваше обучение ещё не началось. Дату начала назначит администратор."
+                    : "Каждый день помогает лучше понимать QA и увереннее разбираться в материалах курса."}
               </p>
 
               <div className="mt-6">
@@ -386,15 +412,17 @@ function Dashboard() {
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Course focus */}
-          {(isCourseCompleted || nextLesson) && (
+          {(isCourseCompleted || nextLesson || nextOpeningAt) && (
             <div className="lg:col-span-2 rounded-2xl border border-border bg-card p-7 shadow-[var(--shadow-soft)]">
               <div className="flex items-center justify-between">
                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   {isCourseCompleted
                     ? "Материалы курса"
-                    : completedCount === 0
-                      ? "Первый урок"
-                      : "Следующий урок"}
+                    : !nextLesson
+                      ? "Следующий урок"
+                      : completedCount === 0
+                        ? "Первый урок"
+                        : "Следующий урок"}
                 </div>
                 {!isCourseCompleted && nextLesson && (
                   <div className="text-xs text-primary font-semibold">
@@ -403,26 +431,31 @@ function Dashboard() {
                 )}
               </div>
               <h2 className="mt-3 text-2xl font-extrabold tracking-tight">
-                {isCourseCompleted ? "Выбери урок для повторения" : nextLesson?.title}
+                {isCourseCompleted
+                  ? "Выбери урок для повторения"
+                  : (nextLesson?.title ?? "Новый урок скоро откроется")}
               </h2>
               <p className="mt-2 text-muted-foreground">
                 {isCourseCompleted
                   ? "Ниже собраны все темы курса. Открой любой урок, чтобы повторить материал в своём темпе."
-                  : nextLesson?.description}
+                  : (nextLesson?.description ??
+                    (nextOpeningAt ? `Урок откроется ${formatCourseDate(nextOpeningAt)}.` : ""))}
               </p>
               <div className="mt-6 flex items-center gap-3">
-                <Button asChild variant="hero" size="lg">
-                  {isCourseCompleted ? (
-                    <a href="#all-lessons">
-                      <BookOpen className="h-5 w-5" /> Перейти к урокам
-                    </a>
-                  ) : (
-                    <Link to="/lessons/$day" params={{ day: String(nextLesson!.day_number) }}>
-                      <PlayCircle className="h-5 w-5" />{" "}
-                      {completedCount === 0 ? "Начать урок" : "Продолжить"}
-                    </Link>
-                  )}
-                </Button>
+                {(isCourseCompleted || nextLesson) && (
+                  <Button asChild variant="hero" size="lg">
+                    {isCourseCompleted ? (
+                      <a href="#all-lessons">
+                        <BookOpen className="h-5 w-5" /> Перейти к урокам
+                      </a>
+                    ) : (
+                      <Link to="/lessons/$day" params={{ day: String(nextLesson!.day_number) }}>
+                        <PlayCircle className="h-5 w-5" />{" "}
+                        {completedCount === 0 ? "Начать урок" : "Продолжить"}
+                      </Link>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -436,12 +469,29 @@ function Dashboard() {
             <StatCard
               icon={CheckCircle2}
               iconClassName="text-emerald-600"
-              label="ДЗ принято"
-              value={`${hwApproved} / ${homeworkLessonIds.size}`}
+              label="ДЗ отправлено"
+              value={`${homeworkCounts.submitted} / ${homeworkCounts.assigned}`}
             />
+            <p className="px-2 text-xs text-muted-foreground">
+              Не отправлено: {homeworkCounts.notSubmitted}
+            </p>
             <StatCard icon={Trophy} label="Прогресс" value={`${progressPct}%`} />
           </div>
         </div>
+
+        <section className="rounded-2xl border border-border bg-card p-6 text-sm leading-relaxed text-muted-foreground shadow-[var(--shadow-soft)]">
+          <h2 className="mb-2 text-lg font-bold text-foreground">Условия курса</h2>
+          <p>
+            Курс рассчитан на 14 дней. После начала обучения вам будет открываться один новый урок в
+            день.
+          </p>
+          <p className="mt-2">
+            Домашнее задание можно отправить после прохождения соответствующего урока.
+          </p>
+          <p className="mt-2">
+            Срок сдачи не ограничен, а отправка ДЗ не влияет на открытие следующих уроков.
+          </p>
+        </section>
 
         {/* All lessons */}
         <section
@@ -451,10 +501,13 @@ function Dashboard() {
           <h3 className="text-xl font-extrabold mb-6">Все уроки курса</h3>
           <TooltipProvider delayDuration={150}>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {lessons.map((l, i) => {
+              {lessons.map((l) => {
                 const isDone = completedIds.has(l.id);
                 const homeworkStatus = homeworkStatusByLessonId[l.id];
-                const isLocked = !isDone && i > 0 && !completedIds.has(lessons[i - 1].id);
+                const isLocked = l.day_number > availableDay;
+                const homeworkSnapshot = homeworkSnapshots.find(
+                  (snapshot) => snapshot.lessonId === l.id,
+                );
                 const statusIcon =
                   homeworkStatus === "approved" ? (
                     <Tooltip>
@@ -535,13 +588,8 @@ function Dashboard() {
                       <TooltipContent>Урок доступен</TooltipContent>
                     </Tooltip>
                   );
-                return (
-                  <Link
-                    key={l.id}
-                    to="/lessons/$day"
-                    params={{ day: String(l.day_number) }}
-                    className={`group rounded-xl border border-border p-4 transition-all hover:shadow-[var(--shadow-card)] hover:-translate-y-0.5 ${isDone ? "bg-primary-soft/50" : "bg-background"}`}
-                  >
+                const cardContent = (
+                  <>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                         День {l.day_number}
@@ -549,6 +597,44 @@ function Dashboard() {
                       {statusIcon}
                     </div>
                     <div className="font-display font-bold text-sm leading-snug">{l.title}</div>
+                    {isLocked && courseStartAt && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Урок откроется{" "}
+                        {formatCourseDate(lessonOpensAt(courseStartAt, l.day_number))}
+                      </p>
+                    )}
+                    {homeworkSnapshot?.assigned && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        ДЗ:{" "}
+                        {!homeworkSnapshot.firstSubmittedAt
+                          ? "не отправлено"
+                          : homeworkStatusByLessonId[l.id] === "approved"
+                            ? "проверено"
+                            : homeworkStatusByLessonId[l.id] === "rejected"
+                              ? "на доработке"
+                              : homeworkStatusByLessonId[l.id] === "pending"
+                                ? "отправлено, на проверке"
+                                : "отправлено"}
+                      </p>
+                    )}
+                  </>
+                );
+                return isLocked ? (
+                  <div
+                    key={l.id}
+                    className="rounded-xl border border-border bg-muted/50 p-4"
+                    aria-disabled="true"
+                  >
+                    {cardContent}
+                  </div>
+                ) : (
+                  <Link
+                    key={l.id}
+                    to="/lessons/$day"
+                    params={{ day: String(l.day_number) }}
+                    className={`group rounded-xl border border-border p-4 transition-all hover:shadow-[var(--shadow-card)] hover:-translate-y-0.5 ${isDone ? "bg-primary-soft/50" : "bg-background"}`}
+                  >
+                    {cardContent}
                   </Link>
                 );
               })}

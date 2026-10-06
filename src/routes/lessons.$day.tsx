@@ -22,8 +22,10 @@ import { LessonGuide } from "@/components/lesson-guide";
 import { NotificationBell } from "@/components/notification-bell";
 import { LessonRichContent } from "@/components/lesson-rich-content";
 import { SqlSandboxHomework, type SavedSqlSandboxAttempt } from "@/components/sql-sandbox-homework";
+import { ArchieChat } from "@/components/archie-chat";
 import type { SqlSandboxConfig } from "@/lib/interactive-lesson";
 import { getSqlSandboxProgress, type SqlSandboxResult } from "@/lib/sql-sandbox";
+import { formatCourseDate } from "@/lib/course-schedule";
 import type { LessonGuideVariant } from "@/lib/lesson-guide";
 import { isBlockRequired, LessonBlock, stringValue } from "@/lib/interactive-lesson";
 import { useAuth } from "@/hooks/use-auth";
@@ -40,11 +42,7 @@ import {
 import { listHomeworkMessages, submitHomeworkForCurrentUser } from "@/server/homework.functions";
 import { getStudentLessonData } from "@/server/lesson-content.functions";
 import { saveLessonQuestionAnswer } from "@/server/lesson-question-answers.functions";
-import {
-  completeLessonForCurrentUser,
-  getLessonDailyAccessForCurrentUser,
-  MAX_NEW_LESSONS_PER_DAY,
-} from "@/server/lesson-access.functions";
+import { completeLessonForCurrentUser } from "@/server/lesson-access.functions";
 
 export const Route = createFileRoute("/lessons/$day")({
   validateSearch: z.object({ focus: z.literal("homework").optional() }),
@@ -137,7 +135,9 @@ function LessonPage() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [locked, setLocked] = useState(false);
-  const [dailyLimitReached, setDailyLimitReached] = useState(false);
+  const [lessonOpensAt, setLessonOpensAt] = useState<string | null>(null);
+  const [courseStartAt, setCourseStartAt] = useState<string | null>(null);
+  const [availableDay, setAvailableDay] = useState(0);
   const [saving, setSaving] = useState(false);
   const [finalQuizActive, setFinalQuizActive] = useState(false);
   const [finalQuizExitRequest, setFinalQuizExitRequest] = useState(0);
@@ -208,7 +208,9 @@ function LessonPage() {
     setMessages([]);
     setAttachments([]);
     setLocked(false);
-    setDailyLimitReached(false);
+    setLessonOpensAt(null);
+    setCourseStartAt(null);
+    setAvailableDay(0);
     setBlocks([]);
     setViewedBlockIds([]);
     setSqlSandboxAttempts([]);
@@ -224,37 +226,17 @@ function LessonPage() {
     if (!l) {
       setLesson(null);
       setCompleted(false);
+      setLocked(Boolean(lessonData.lock));
+      setLessonOpensAt(lessonData.lock?.opensAt ?? null);
+      setCourseStartAt(lessonData.lock?.courseStartAt ?? null);
+      setAvailableDay(lessonData.currentDay);
       setHwText("");
       setLoading(false);
       return;
     }
-    if (dayNum > 1 && !isAdmin && !lessonData.previousCompleted) {
-      setLesson(null);
-      setCompleted(false);
-      setLocked(true);
-      setLoading(false);
-      return;
-    }
-    if (!isAdmin && session?.access_token) {
-      try {
-        const access = await getLessonDailyAccessForCurrentUser({
-          data: { accessToken: session.access_token, lessonId: l.id },
-        });
-        if (!access.allowed) {
-          setLesson(null);
-          setCompleted(false);
-          setLocked(true);
-          setDailyLimitReached(true);
-          setLoading(false);
-          return;
-        }
-      } catch {
-        toast.error("Не удалось проверить дневной лимит. Попробуйте обновить страницу.");
-        setLoading(false);
-        return;
-      }
-    }
     setLesson(l as Lesson);
+    setCourseStartAt(lessonData.courseStartAt);
+    setAvailableDay(isAdmin ? 14 : lessonData.currentDay);
     const hasPassedFinalQuiz = Boolean(lessonData.finalQuizPassed);
     setFinalQuizPassed(hasPassedFinalQuiz);
     setCompleted(dayNum === 14 ? hasPassedFinalQuiz : !!lessonData.progress?.completed);
@@ -466,15 +448,14 @@ function LessonPage() {
     setCompletingLesson(false);
     if (!result.completed) {
       if (result.requirementsIncomplete) {
-        toast.error("Сначала выполни обязательные шаги текущего и предыдущего урока.");
+        toast.error("Сначала выполни обязательные шаги текущего урока.");
       } else {
-        setDailyLimitReached(true);
-        toast.error(`Сегодня можно завершить не больше ${MAX_NEW_LESSONS_PER_DAY} новых уроков.`);
+        toast.error("Урок пока не открылся по твоему расписанию.");
       }
       return;
     }
     setCompleted(true);
-    toast.success("Урок завершён. Следующий день открыт.");
+    toast.success("Урок завершён. Следующий урок откроется по расписанию.");
   }
 
   useEffect(() => {
@@ -683,24 +664,29 @@ function LessonPage() {
       result_rows: result.rows,
       feedback: result.message,
     };
-    const { error } = await supabase.from("sql_sandbox_attempts").upsert(
-      {
-        user_id: user.id,
-        lesson_id: lesson.id,
-        block_id: block.id,
-        task_id: taskId,
-        query_text: query,
-        passed: result.passed,
-        result_columns: result.columns,
-        result_rows: result.rows,
-        feedback: result.message,
-      },
-      { onConflict: "user_id,block_id,task_id" },
-    );
+    const { data: savedAttempt, error } = await supabase
+      .from("sql_sandbox_attempts")
+      .upsert(
+        {
+          user_id: user.id,
+          lesson_id: lesson.id,
+          block_id: block.id,
+          task_id: taskId,
+          query_text: query,
+          passed: result.passed,
+          result_columns: result.columns,
+          result_rows: result.rows,
+          feedback: result.message,
+        },
+        { onConflict: "user_id,block_id,task_id" },
+      )
+      .select("passed_at")
+      .single();
     if (error)
       throw new Error(
         "Не удалось сохранить ответ и прогресс. Проверь подключение и повтори попытку.",
       );
+    row.passed_at = savedAttempt.passed_at;
     setSqlSandboxAttempts((current) => [
       ...current.filter(
         (attempt) => !(attempt.task_id === taskId && attempt.block_id === block.id),
@@ -747,9 +733,13 @@ function LessonPage() {
           <div className="max-w-md rounded-2xl border border-border bg-card p-8 shadow-[var(--shadow-soft)]">
             <h1 className="text-xl font-extrabold">Урок пока закрыт</h1>
             <p className="mt-2 text-muted-foreground">
-              {dailyLimitReached
-                ? `Сегодня уже пройдено ${MAX_NEW_LESSONS_PER_DAY} новых урока. Следующий урок станет доступен завтра.`
-                : "Сначала заверши предыдущий урок, чтобы открыть следующий материал."}
+              {!courseStartAt
+                ? "Дата начала обучения пока не назначена. Уточни её у администратора."
+                : lessonOpensAt && new Date(lessonOpensAt).getTime() > Date.now()
+                  ? dayNum === 1
+                    ? `Ваше обучение ещё не началось. Первый урок откроется ${formatCourseDate(lessonOpensAt)}.`
+                    : `Урок откроется ${formatCourseDate(lessonOpensAt)}.`
+                  : "Урок пока недоступен. Попробуйте обновить страницу."}
             </p>
             <Button asChild variant="soft" className="mt-6">
               <Link to="/dashboard">Вернуться к урокам</Link>
@@ -795,9 +785,7 @@ function LessonPage() {
     (Boolean(homeworkBlock) && (homeworkUnlocked || Boolean(submission))) || hasLegacyHomework;
   const hasHomework = Boolean(homeworkBlock) || hasLegacyHomework;
   const isSqlSandboxHomework = homeworkBlock?.content.mode === "sql_sandbox";
-  const showBottomCabinet = hasHomework
-    ? Boolean(submission) || (isSqlSandboxHomework && completed)
-    : completed;
+  const showBottomCabinet = completed;
   const homeworkInstruction = homeworkBlock
     ? stringValue(homeworkBlock.content, "instruction")
     : lesson.homework_md;
@@ -811,7 +799,7 @@ function LessonPage() {
     "completionText",
     isSqlSandboxHomework
       ? "Все SQL-задания выполнены. Домашнее задание проверено автоматически, отправлять его наставнику не нужно."
-      : "Домашнее задание отправлено на проверку. Следующий урок уже доступен, а результат проверки появится здесь, как только наставник его проверит.",
+      : "Домашнее задание отправлено на проверку. Следующий урок откроется по расписанию, независимо от проверки ДЗ.",
   );
   const completionVariant = stringValue(
     homeworkBlock?.content ?? {},
@@ -823,15 +811,15 @@ function LessonPage() {
   const completionCardVisible =
     completed && lesson.day_number !== 14 && completionVisible && submission?.status !== "rejected";
   const displayedCompletionTitle = homeworkPending
-    ? `День ${lesson.day_number} почти пройден`
+    ? `День ${lesson.day_number} пройден`
     : completionTitle;
   const displayedCompletionText = homeworkPending
-    ? "Ты выполнил урок и отправил домашнее задание. Осталось дождаться проверки наставника. После принятия ДЗ день будет полностью завершён."
+    ? "Урок завершён, домашнее задание ждёт проверки. Следующий урок откроется по расписанию."
     : submission && submission.status !== "approved"
       ? completionText
       : lesson.day_number === 1
         ? "Первый день готов. Ты разобрался, зачем нужно тестирование, чем ожидаемый результат отличается от фактического и какую роль QA играет в команде. В следующем уроке посмотрим, кто ещё работает над продуктом и как специалисты взаимодействуют друг с другом."
-        : `Ты завершил урок «${lesson.title}». Все обязательные шаги сохранены, а следующий день уже открыт.`;
+        : `Ты завершил урок «${lesson.title}». Все обязательные шаги сохранены, а следующий урок откроется по расписанию.`;
   const displayedCompletionVariant = homeworkPending ? "pending" : completionVariant;
 
   return (
@@ -853,6 +841,9 @@ function LessonPage() {
           </Badge>
           <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">{lesson.title}</h1>
           <p className="mt-3 text-lg text-muted-foreground">{lesson.description}</p>
+          {!isAdmin && session?.access_token && (
+            <ArchieChat key={lesson.id} accessToken={session.access_token} lessonId={lesson.id} />
+          )}
           <div className="mt-5 max-w-xl">
             <div className="mb-2 flex justify-between text-sm">
               <span className="font-semibold">Прогресс урока</span>
@@ -878,6 +869,15 @@ function LessonPage() {
                 title="Дополнительное видео"
               />
             </div>
+          </div>
+        )}
+
+        {hasHomework && (
+          <div className="rounded-xl border border-primary/20 bg-primary-soft/40 px-5 py-4 text-sm">
+            <p>
+              Домашнее задание можно отправить после прохождения урока. Его сдача не влияет на
+              открытие следующих уроков.
+            </p>
           </div>
         )}
 
@@ -934,6 +934,7 @@ function LessonPage() {
                   }
                   onSubmit={submitHomework}
                   saving={saving}
+                  lessonCompleted={completed}
                 />
               )
             ) : null
@@ -978,6 +979,7 @@ function LessonPage() {
             }
             onSubmit={submitHomework}
             saving={saving}
+            lessonCompleted={completed}
           />
         ) : null}
 
@@ -1020,7 +1022,7 @@ function LessonPage() {
             ) : null}
           </div>
 
-          {nextDay ? (
+          {nextDay && nextDay <= availableDay ? (
             completed ? (
               <LessonNavigationButton tone="next" asChild className="self-start sm:self-auto">
                 <Link to="/lessons/$day" params={{ day: String(nextDay) }}>
@@ -1028,6 +1030,13 @@ function LessonPage() {
                 </Link>
               </LessonNavigationButton>
             ) : null
+          ) : nextDay && completed && courseStartAt ? (
+            <span className="text-sm text-muted-foreground">
+              День {nextDay} откроется{" "}
+              {formatCourseDate(
+                new Date(Date.parse(courseStartAt) + (nextDay - 1) * 86_400_000).toISOString(),
+              )}
+            </span>
           ) : completed && finalQuizPassed ? (
             <LessonNavigationButton
               tone="next"
@@ -1055,6 +1064,7 @@ function HomeworkSubmissionCard({
   onRemoveAttachment,
   onSubmit,
   saving,
+  lessonCompleted,
 }: {
   title: string;
   instruction: string;
@@ -1067,6 +1077,7 @@ function HomeworkSubmissionCard({
   onRemoveAttachment: (index: number) => void;
   onSubmit: () => void;
   saving: boolean;
+  lessonCompleted: boolean;
 }) {
   return (
     <section
@@ -1082,6 +1093,13 @@ function HomeworkSubmissionCard({
       <div className="text-muted-foreground">
         <LessonRichContent content={instruction} />
       </div>
+      <p className="mt-4 text-sm text-muted-foreground">
+        {!lessonCompleted
+          ? "Сначала пройдите урок — после этого можно отправить домашнее задание."
+          : submission
+            ? "Последняя отправка сохранена."
+            : "Домашнее задание ещё не отправлено."}
+      </p>
 
       {submission ? (
         <div className="mt-6 space-y-3">
@@ -1120,7 +1138,11 @@ function HomeworkSubmissionCard({
                 onFiles={onFiles}
                 onRemove={onRemoveAttachment}
               />
-              <Button variant="hero" onClick={onSubmit} disabled={!hwText.trim() || saving}>
+              <Button
+                variant="hero"
+                onClick={onSubmit}
+                disabled={!lessonCompleted || !hwText.trim() || saving}
+              >
                 {saving ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -1145,7 +1167,11 @@ function HomeworkSubmissionCard({
             onFiles={onFiles}
             onRemove={onRemoveAttachment}
           />
-          <Button variant="hero" onClick={onSubmit} disabled={!hwText.trim() || saving}>
+          <Button
+            variant="hero"
+            onClick={onSubmit}
+            disabled={!lessonCompleted || !hwText.trim() || saving}
+          >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Отправить на проверку
           </Button>

@@ -1,13 +1,21 @@
 import { getAcceptedSqlHomeworkLessonIds } from "./homework-status.ts";
+import { buildHomeworkSnapshots, countHomeworkTimings } from "./course-homework.ts";
+import { courseDay } from "./course-schedule.ts";
 
 export type AnalyticsStudent = {
   id: string;
   full_name: string | null;
   login: string;
   created_at: string | null;
+  course_start_at?: string | null;
 };
 
-type AnalyticsLesson = { id: string; day_number: number; title: string };
+type AnalyticsLesson = {
+  id: string;
+  day_number: number;
+  title: string;
+  homework_md?: string | null;
+};
 type AnalyticsProgress = {
   user_id: string;
   lesson_id: string;
@@ -17,11 +25,18 @@ type AnalyticsProgress = {
 };
 type AnalyticsBlockProgress = { user_id: string; lesson_id: string; completed_at: string };
 type AnalyticsSubmission = {
+  id: string;
   user_id: string;
   lesson_id: string;
   status: string;
   created_at: string;
   reviewed_at: string | null;
+};
+type AnalyticsHomeworkMessage = {
+  submission_id: string;
+  user_id: string;
+  author_role: string;
+  created_at: string;
 };
 type AnalyticsHomeworkBlock = {
   id: string;
@@ -34,6 +49,8 @@ type AnalyticsSqlAttempt = {
   lesson_id: string;
   task_id: string;
   passed: boolean;
+  passed_at?: string | null;
+  created_at: string;
 };
 type QuizQuestion = {
   id: string;
@@ -54,8 +71,10 @@ type AnalyticsQuizAttempt = {
   finished_at: string | null;
 };
 export type AnalyticsLessonQuestionAnswer = {
+  user_id: string;
   lesson_id: string;
   block_id: string;
+  answered_at: string;
   question_text: string;
   options: string[];
   selected_indexes: number[];
@@ -69,6 +88,7 @@ export type CourseAnalyticsInput = {
   progress: AnalyticsProgress[];
   blockProgress: AnalyticsBlockProgress[];
   submissions: AnalyticsSubmission[];
+  homeworkMessages: AnalyticsHomeworkMessage[];
   homeworkBlocks: AnalyticsHomeworkBlock[];
   sqlAttempts: AnalyticsSqlAttempt[];
   quizAttempts: AnalyticsQuizAttempt[];
@@ -154,6 +174,16 @@ export function buildCourseAnalytics(input: CourseAnalyticsInput) {
     if (!existing || submission.created_at > existing.created_at)
       latestSubmissions.set(key, submission);
   }
+  for (const attempt of input.sqlAttempts) {
+    if (studentsById.has(attempt.user_id)) {
+      addActivity(attempt.user_id, attempt.lesson_id, attempt.created_at);
+    }
+  }
+  for (const answer of input.lessonQuestionAnswers) {
+    if (studentsById.has(answer.user_id)) {
+      addActivity(answer.user_id, answer.lesson_id, answer.answered_at);
+    }
+  }
   for (const attempt of input.quizAttempts) {
     if (!studentsById.has(attempt.user_id)) continue;
     addActivity(attempt.user_id, finalLessonId, attempt.started_at);
@@ -180,24 +210,17 @@ export function buildCourseAnalytics(input: CourseAnalyticsInput) {
 
   let approvedHomeworks = 0;
   let pendingHomeworks = 0;
+  let awaitingMentorHomeworks = 0;
   let rejectedHomeworks = 0;
   let sqlHomeworksCompleted = 0;
-  const submissionLagHours: number[] = [];
   const mentorReviewHours: number[] = [];
   for (const [key, submission] of latestSubmissions) {
     if (submission.status === "approved") approvedHomeworks += 1;
     else if (submission.status === "pending") pendingHomeworks += 1;
     else if (submission.status === "rejected") rejectedHomeworks += 1;
+    else if (submission.status === "awaiting_mentor") awaitingMentorHomeworks += 1;
 
-    const firstLessonActivity = activityByStudentLesson.get(key)?.sort((a, b) => a - b)[0];
     const submittedAt = dateMs(submission.created_at);
-    if (
-      firstLessonActivity !== undefined &&
-      submittedAt !== null &&
-      submittedAt >= firstLessonActivity
-    ) {
-      submissionLagHours.push((submittedAt - firstLessonActivity) / 3_600_000);
-    }
     const reviewedAt = dateMs(submission.reviewed_at);
     if (reviewedAt !== null && submittedAt !== null && reviewedAt >= submittedAt) {
       mentorReviewHours.push((reviewedAt - submittedAt) / 3_600_000);
@@ -277,9 +300,7 @@ export function buildCourseAnalytics(input: CourseAnalyticsInput) {
     const activities = activityByStudent.get(student.id) ?? [];
     const firstActivity = activities.length ? Math.min(...activities) : null;
     const lastActivity = activities.length ? Math.max(...activities) : null;
-    const referenceEnd = passedAttempt?.finished_at
-      ? dateMs(passedAttempt.finished_at)
-      : lastActivity;
+    const referenceEnd = passedAttempt?.finished_at ? dateMs(passedAttempt.finished_at) : null;
     const homeworkStatuses = [...latestSubmissions.entries()]
       .filter(([key]) => key.startsWith(`${student.id}:`))
       .map(([, submission]) => submission);
@@ -291,11 +312,39 @@ export function buildCourseAnalytics(input: CourseAnalyticsInput) {
     );
     const idleDays =
       lastActivity === null ? null : Math.max(0, Math.floor((nowMs - lastActivity) / 86_400_000));
+    const homeworkSnapshots = buildHomeworkSnapshots({
+      lessons: input.lessons,
+      courseStartAt: student.course_start_at ?? null,
+      progress,
+      submissions: input.submissions.filter((item) => item.user_id === student.id),
+      messages: input.homeworkMessages.filter((item) => item.user_id === student.id),
+      homeworkBlocks: input.homeworkBlocks,
+      sqlAttempts: (sqlAttemptsByStudent.get(student.id) ?? []).map((item) => ({
+        ...item,
+        passed_at: item.passed_at ?? null,
+      })),
+      now: new Date(nowMs),
+    });
+    const homeworkMetrics = countHomeworkTimings(homeworkSnapshots);
+    const currentDay = courseDay(student.course_start_at ?? null, new Date(nowMs));
     return {
       id: student.id,
       name: student.full_name?.trim() || student.login || "Ученик без имени",
       login: student.login,
       registeredAt: student.created_at,
+      courseStartAt: student.course_start_at ?? null,
+      currentDay,
+      availableLessons: input.lessons
+        .filter((lesson) => lesson.day_number >= 1 && lesson.day_number <= currentDay)
+        .map((lesson) => lesson.day_number),
+      availableLessonCount: input.lessons.filter(
+        (lesson) => lesson.day_number >= 1 && lesson.day_number <= currentDay,
+      ).length,
+      completedLessonTimes: progress
+        .filter((item) => item.completed)
+        .map((item) => ({ lessonId: item.lesson_id, completedAt: item.completed_at })),
+      homeworkSnapshots,
+      homeworkMetrics,
       completedLessons: completedLessonIds.size,
       totalLessons: input.lessons.length,
       passedCourse: Boolean(passedAttempt),
@@ -304,6 +353,9 @@ export function buildCourseAnalytics(input: CourseAnalyticsInput) {
       approvedHomework: completedHomeworkCount,
       pendingHomework: homeworkStatuses.filter((submission) => submission.status === "pending")
         .length,
+      awaitingMentorHomework: homeworkStatuses.filter(
+        (submission) => submission.status === "awaiting_mentor",
+      ).length,
       rejectedHomework: homeworkStatuses.filter((submission) => submission.status === "rejected")
         .length,
       firstActivityAt: firstActivity === null ? null : new Date(firstActivity).toISOString(),
@@ -317,6 +369,33 @@ export function buildCourseAnalytics(input: CourseAnalyticsInput) {
   });
 
   const startedStudents = students.filter((student) => student.firstActivityAt !== null).length;
+  const homeworkDelaySamples = students.flatMap((student) =>
+    student.homeworkSnapshots.flatMap((snapshot) =>
+      snapshot.assigned && snapshot.delayHours !== null ? [snapshot.delayHours] : [],
+    ),
+  );
+  const homeworkTotals = students.reduce(
+    (sum, student) => ({
+      assigned: sum.assigned + student.homeworkMetrics.assigned,
+      submitted: sum.submitted + student.homeworkMetrics.submitted,
+      notSubmitted: sum.notSubmitted + student.homeworkMetrics.notSubmitted,
+      sameCalendarDay: sum.sameCalendarDay + student.homeworkMetrics.sameCalendarDay,
+      under24Hours: sum.under24Hours + student.homeworkMetrics.under24Hours,
+      hours24To48: sum.hours24To48 + student.homeworkMetrics.hours24To48,
+      hours48To72: sum.hours48To72 + student.homeworkMetrics.hours48To72,
+      over72Hours: sum.over72Hours + student.homeworkMetrics.over72Hours,
+    }),
+    {
+      assigned: 0,
+      submitted: 0,
+      notSubmitted: 0,
+      sameCalendarDay: 0,
+      under24Hours: 0,
+      hours24To48: 0,
+      hours48To72: 0,
+      over72Hours: 0,
+    },
+  );
   const midCourseStudents = students.filter(
     (student) => student.completedLessons >= Math.ceil(input.lessons.length / 2),
   ).length;
@@ -345,6 +424,53 @@ export function buildCourseAnalytics(input: CourseAnalyticsInput) {
   const activeStudents7d = students.filter(
     (student) => student.idleDays !== null && student.idleDays < 7,
   ).length;
+
+  const lessonFunnel = input.lessons
+    .filter((lesson) => lesson.day_number < 14)
+    .sort((left, right) => left.day_number - right.day_number)
+    .map((lesson) => {
+      const available = students.filter((student) =>
+        student.availableLessons.includes(lesson.day_number),
+      ).length;
+      const completed = students.filter((student) =>
+        (progressByStudent.get(student.id) ?? []).some(
+          (item) => item.lesson_id === lesson.id && item.completed,
+        ),
+      ).length;
+      // A completed progress record is definitive evidence of a start, even if
+      // legacy rows predate the activity events used by the funnel.
+      const started = students.filter(
+        (student) =>
+          activityByStudentLesson.has(`${student.id}:${lesson.id}`) ||
+          (progressByStudent.get(student.id) ?? []).some(
+            (item) => item.lesson_id === lesson.id && item.completed,
+          ),
+      ).length;
+      return {
+        lessonId: lesson.id,
+        dayNumber: lesson.day_number,
+        title: lesson.title,
+        available,
+        started,
+        completed,
+        completionPercent: started ? Math.round((completed / started) * 100) : 0,
+      };
+    });
+
+  const homeworkLessonIds = new Set(input.homeworkBlocks.map((block) => block.lesson_id));
+  const homeworkFunnel = input.lessons
+    .filter((lesson) => homeworkLessonIds.has(lesson.id) || Boolean(lesson.homework_md?.trim()))
+    .map((lesson) => {
+      const snapshots = students.flatMap((student) =>
+        student.homeworkSnapshots.filter((snapshot) => snapshot.lessonId === lesson.id),
+      );
+      return {
+        lessonId: lesson.id,
+        dayNumber: lesson.day_number,
+        title: lesson.title,
+        ...countHomeworkTimings(snapshots),
+      };
+    });
 
   const topicStats = new Map<string, { topic: string; seen: number; correct: number }>();
   for (const question of questionStats.values()) {
@@ -403,12 +529,26 @@ export function buildCourseAnalytics(input: CourseAnalyticsInput) {
       finalQuizAttempts: finishedQuizAttempts.length,
       manualHomeworkApproved: approvedHomeworks,
       manualHomeworkPending: pendingHomeworks,
+      manualHomeworkAwaitingMentor: awaitingMentorHomeworks,
       manualHomeworkRejected: rejectedHomeworks,
       sqlHomeworkCompleted: sqlHomeworksCompleted,
-      medianHoursToSubmitHomework: median(submissionLagHours),
+      homeworkAssigned: homeworkTotals.assigned,
+      homeworkSubmitted: homeworkTotals.submitted,
+      homeworkNotSubmitted: homeworkTotals.notSubmitted,
+      homeworkSameCalendarDay: homeworkTotals.sameCalendarDay,
+      homeworkUnder24Hours: homeworkTotals.under24Hours,
+      homework24To48Hours: homeworkTotals.hours24To48,
+      homework48To72Hours: homeworkTotals.hours48To72,
+      homeworkOver72Hours: homeworkTotals.over72Hours,
+      averageHomeworkDelayHours: homeworkDelaySamples.length
+        ? homeworkDelaySamples.reduce((sum, hours) => sum + hours, 0) / homeworkDelaySamples.length
+        : null,
+      medianHomeworkDelayHours: median(homeworkDelaySamples),
       medianMentorReviewHours: median(mentorReviewHours),
       medianFinalQuizMinutes: median(quizDurations),
     },
+    lessonFunnel,
+    homeworkFunnel,
     students: students.sort((left, right) => {
       if (left.passedCourse !== right.passedCourse)
         return Number(left.passedCourse) - Number(right.passedCourse);
@@ -454,8 +594,7 @@ export function buildCourseAnalytics(input: CourseAnalyticsInput) {
         (left, right) =>
           left.accuracyPercent - right.accuracyPercent || right.answered - left.answered,
       ),
-    homeworkTimingTracked: false,
-    homeworkTimingNote:
-      "Дедлайны не настроены. Статус «вовремя/с опозданием» нельзя корректно определить по сохранённым данным.",
+    homeworkDelayNote:
+      "Интервалы считаются от завершения урока до первой отправки ДЗ. Это аналитика поведения, не дедлайн; категория «в тот же календарный день» входит в «до 24 часов».",
   };
 }

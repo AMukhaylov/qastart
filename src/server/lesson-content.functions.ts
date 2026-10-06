@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getUserIdForAccessToken } from "./admin-auth.server";
+import { getLessonScheduleAccess } from "./course-schedule.server";
 
 const input = z.object({
   accessToken: z.string().min(20),
@@ -11,25 +12,45 @@ const input = z.object({
 export const getStudentLessonData = createServerFn({ method: "POST" })
   .inputValidator((data) => input.parse(data))
   .handler(async ({ data }) => {
-    const userId = await getUserIdForAccessToken(data.accessToken);
-    const dayNumbers = data.dayNumber > 1 ? [data.dayNumber - 1, data.dayNumber] : [data.dayNumber];
-    const { data: lessons, error: lessonsError } = await supabaseAdmin
-      .from("lessons")
-      .select("id,day_number,title,description,video_url,content_md,homework_md")
-      .in("day_number", dayNumbers);
+    const dayNumbers = [data.dayNumber];
+    // Start the public lesson lookup alongside token validation so the first
+    // database round trip does not have to wait for Supabase Auth.
+    const [userId, { data: lessons, error: lessonsError }] = await Promise.all([
+      getUserIdForAccessToken(data.accessToken),
+      supabaseAdmin
+        .from("lessons")
+        .select("id,day_number,title,description,video_url,content_md,homework_md")
+        .in("day_number", dayNumbers),
+    ]);
     if (lessonsError) throw lessonsError;
     const lesson = (lessons ?? []).find((item) => item.day_number === data.dayNumber) ?? null;
-    const previousLesson = (lessons ?? []).find((item) => item.day_number === data.dayNumber - 1);
     if (!lesson) {
       return {
         lesson: null,
-        previousCompleted: false,
+        lock: null,
         progress: null,
         submission: null,
         blocks: [],
         blockProgress: [],
         sqlSandboxAttempts: [],
         finalQuizPassed: false,
+        courseStartAt: null,
+        currentDay: 0,
+      };
+    }
+    const access = await getLessonScheduleAccess(userId, lesson.day_number);
+    if (!access.allowed) {
+      return {
+        lesson: null,
+        lock: { courseStartAt: access.courseStartAt, opensAt: access.opensAt },
+        progress: null,
+        submission: null,
+        blocks: [],
+        blockProgress: [],
+        sqlSandboxAttempts: [],
+        finalQuizPassed: false,
+        courseStartAt: access.courseStartAt,
+        currentDay: access.currentDay,
       };
     }
 
@@ -39,12 +60,11 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       { data: blocks, error: blocksError },
       { data: blockProgress, error: blockProgressError },
       { data: sqlSandboxAttempts, error: sqlSandboxAttemptsError },
-      { data: previousProgress, error: previousProgressError },
       { data: passedFinalQuiz, error: passedFinalQuizError },
     ] = await Promise.all([
       supabaseAdmin
         .from("lesson_progress")
-        .select("completed")
+        .select("completed,completed_at")
         .eq("user_id", userId)
         .eq("lesson_id", lesson.id)
         .maybeSingle(),
@@ -56,7 +76,11 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabaseAdmin.from("lesson_blocks").select("*").eq("lesson_id", lesson.id).order("position"),
+      supabaseAdmin
+        .from("lesson_blocks")
+        .select("id,lesson_id,block_type,position,content")
+        .eq("lesson_id", lesson.id)
+        .order("position"),
       supabaseAdmin
         .from("lesson_block_progress")
         .select("block_id")
@@ -64,18 +88,9 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
         .eq("lesson_id", lesson.id),
       supabaseAdmin
         .from("sql_sandbox_attempts")
-        .select("block_id,task_id,query_text,passed,result_columns,result_rows,feedback")
+        .select("block_id,task_id,query_text,passed,passed_at,result_columns,result_rows,feedback")
         .eq("user_id", userId)
         .eq("lesson_id", lesson.id),
-      previousLesson
-        ? supabaseAdmin
-            .from("lesson_progress")
-            .select("completed")
-            .eq("user_id", userId)
-            .eq("lesson_id", previousLesson.id)
-            .eq("completed", true)
-            .maybeSingle()
-        : Promise.resolve({ data: null, error: null }),
       data.dayNumber === 14
         ? supabaseAdmin
             .from("quiz_attempts")
@@ -91,7 +106,6 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       submissionError,
       blocksError,
       blockProgressError,
-      previousProgressError,
       passedFinalQuizError,
     ]) {
       if (error) throw error;
@@ -104,12 +118,14 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
     }
     return {
       lesson,
-      previousCompleted: data.dayNumber === 1 || Boolean(previousProgress?.completed),
+      lock: null,
       progress,
       submission,
       blocks: blocks ?? [],
       blockProgress: blockProgress ?? [],
       sqlSandboxAttempts: sqlSandboxAttemptsError ? [] : (sqlSandboxAttempts ?? []),
       finalQuizPassed: (passedFinalQuiz?.length ?? 0) > 0,
+      courseStartAt: access.courseStartAt,
+      currentDay: access.currentDay,
     };
   });

@@ -30,10 +30,12 @@ def test_exposed_security_definer_import_checks_admin_role():
     assert "private.has_role((select auth.uid()), 'admin'::public.app_role)" in function
 
 
-def test_server_completion_checks_order_and_required_blocks():
+def test_server_completion_respects_course_schedule_and_required_blocks():
     source = (ROOT / "src/server/lesson-access.functions.ts").read_text(encoding="utf-8")
 
-    assert '.eq("day_number", lesson.day_number - 1)' in source
+    assert 'getLessonScheduleAccess(userId, lesson.day_number)' in source
+    assert 'if (!access.allowed)' in source
     assert 'from("lesson_block_progress")' in source
     assert "requiredBlockIds.every((id) => completedBlockIds.has(id))" in source
-    assert 'from("lesson_progress").upsert(' in source
+    assert 'from("lesson_progress")' in source
+    assert '.upsert(' in source

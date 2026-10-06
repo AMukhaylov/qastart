@@ -184,7 +184,7 @@ export function lessonTableRows(content: Record<string, unknown>): LessonTableRo
 export function isBlockRequired(block: Pick<LessonBlock, "block_type" | "content">) {
   if (block.content.visible === false) return false;
   if (block.content.required === false) return false;
-  if (block.block_type === "homework") return block.content.homeworkRequiredForCompletion === true;
+  if (block.block_type === "homework") return false;
   return true;
 }
 

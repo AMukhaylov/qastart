@@ -27,6 +27,7 @@ import { Route as AdminMeetingsRouteImport } from './routes/admin.meetings'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminLessonsRouteImport } from './routes/admin.lessons'
 import { Route as AdminHomeworkRouteImport } from './routes/admin.homework'
+import { Route as AdminArchieRouteImport } from './routes/admin.archie'
 import { Route as AdminAnalyticsRouteImport } from './routes/admin.analytics'
 
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -119,6 +120,11 @@ const AdminHomeworkRoute = AdminHomeworkRouteImport.update({
   path: '/homework',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminArchieRoute = AdminArchieRouteImport.update({
+  id: '/archie',
+  path: '/archie',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
@@ -136,6 +142,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/archie': typeof AdminArchieRoute
   '/admin/homework': typeof AdminHomeworkRoute
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -156,6 +163,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/archie': typeof AdminArchieRoute
   '/admin/homework': typeof AdminHomeworkRoute
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -178,6 +186,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/archie': typeof AdminArchieRoute
   '/admin/homework': typeof AdminHomeworkRoute
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -201,6 +210,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/reset-password'
     | '/admin/analytics'
+    | '/admin/archie'
     | '/admin/homework'
     | '/admin/lessons'
     | '/admin/login'
@@ -221,6 +231,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/reset-password'
     | '/admin/analytics'
+    | '/admin/archie'
     | '/admin/homework'
     | '/admin/lessons'
     | '/admin/login'
@@ -242,6 +253,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/reset-password'
     | '/admin/analytics'
+    | '/admin/archie'
     | '/admin/homework'
     | '/admin/lessons'
     | '/admin/login'
@@ -396,6 +408,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminHomeworkRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/archie': {
+      id: '/admin/archie'
+      path: '/archie'
+      fullPath: '/admin/archie'
+      preLoaderRoute: typeof AdminArchieRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/analytics': {
       id: '/admin/analytics'
       path: '/analytics'
@@ -408,6 +427,7 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminAnalyticsRoute: typeof AdminAnalyticsRoute
+  AdminArchieRoute: typeof AdminArchieRoute
   AdminHomeworkRoute: typeof AdminHomeworkRoute
   AdminLessonsRoute: typeof AdminLessonsRoute
   AdminLoginRoute: typeof AdminLoginRoute
@@ -418,6 +438,7 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminAnalyticsRoute: AdminAnalyticsRoute,
+  AdminArchieRoute: AdminArchieRoute,
   AdminHomeworkRoute: AdminHomeworkRoute,
   AdminLessonsRoute: AdminLessonsRoute,
   AdminLoginRoute: AdminLoginRoute,

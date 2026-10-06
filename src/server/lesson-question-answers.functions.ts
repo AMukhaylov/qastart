@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { buildLessonQuestionAnswer, sameIndexes } from "@/lib/lesson-question-answer";
 import { getRolesForAccessToken, getUserIdForAccessToken } from "./admin-auth.server";
+import { assertLessonScheduleAccess } from "./course-schedule.server";
 
 const input = z.object({
   accessToken: z.string().min(20),
@@ -49,57 +50,9 @@ export const saveLessonQuestionAnswer = createServerFn({ method: "POST" })
     if (answerError) throw answerError;
     if (completedBlockError) throw completedBlockError;
     if (!lesson) throw new Error("Урок не найден");
+    await assertLessonScheduleAccess(userId, lesson.day_number);
     if (!isAdmin && completedBlock && !existingAnswer) {
       throw new Error("Ответ на этот вопрос уже отмечен выполненным");
-    }
-
-    if (!isAdmin) {
-      if (lesson.day_number > 1) {
-        const { data: previousLesson, error: previousLessonError } = await supabaseAdmin
-          .from("lessons")
-          .select("id")
-          .eq("day_number", lesson.day_number - 1)
-          .maybeSingle();
-        if (previousLessonError) throw previousLessonError;
-        if (!previousLesson) throw new Error("Урок пока недоступен");
-        const { data: previousProgress, error: previousProgressError } = await supabaseAdmin
-          .from("lesson_progress")
-          .select("completed")
-          .eq("user_id", userId)
-          .eq("lesson_id", previousLesson.id)
-          .maybeSingle();
-        if (previousProgressError) throw previousProgressError;
-        if (!previousProgress?.completed) throw new Error("Сначала заверши предыдущий урок");
-      }
-      if (!existingAnswer) {
-        const { data: currentProgress, error: currentProgressError } = await supabaseAdmin
-          .from("lesson_progress")
-          .select("completed")
-          .eq("user_id", userId)
-          .eq("lesson_id", lesson.id)
-          .maybeSingle();
-        if (currentProgressError) throw currentProgressError;
-        if (!currentProgress?.completed) {
-          const now = new Date();
-          const courseDay = new Intl.DateTimeFormat("en-CA", {
-            timeZone: "Asia/Yekaterinburg",
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-          }).format(now);
-          const dayStart = new Date(`${courseDay}T00:00:00+05:00`).toISOString();
-          const dayEnd = new Date(Date.parse(dayStart) + 86_400_000).toISOString();
-          const { count, error: countError } = await supabaseAdmin
-            .from("lesson_progress")
-            .select("id", { count: "exact", head: true })
-            .eq("user_id", userId)
-            .eq("completed", true)
-            .gte("completed_at", dayStart)
-            .lt("completed_at", dayEnd);
-          if (countError) throw countError;
-          if ((count ?? 0) >= 3) throw new Error("Достигнут дневной лимит новых уроков");
-        }
-      }
     }
 
     const answer = buildLessonQuestionAnswer(block.content, data.selectedIndexes);

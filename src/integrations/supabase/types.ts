@@ -8,6 +8,117 @@ export type Database = {
   };
   public: {
     Tables: {
+      archie_settings: {
+        Row: {
+          api_key_mask: string;
+          base_url: string;
+          connection_checked_at: string | null;
+          connection_error: string;
+          connection_status: string;
+          enabled: boolean;
+          encrypted_api_key: string | null;
+          id: boolean;
+          max_history_messages: number;
+          max_message_length: number;
+          model: string;
+          name: string;
+          provider: string;
+          quick_actions_enabled: boolean;
+          rate_limit_per_minute: number;
+          subtitle: string;
+          system_prompt: string;
+          timeout_ms: number;
+          updated_at: string;
+          updated_by: string | null;
+          welcome_message: string;
+        };
+        Insert: {
+          api_key_mask?: string;
+          base_url?: string;
+          connection_checked_at?: string | null;
+          connection_error?: string;
+          connection_status?: string;
+          enabled?: boolean;
+          encrypted_api_key?: string | null;
+          id?: boolean;
+          max_history_messages?: number;
+          max_message_length?: number;
+          model?: string;
+          name?: string;
+          provider?: string;
+          quick_actions_enabled?: boolean;
+          rate_limit_per_minute?: number;
+          subtitle?: string;
+          system_prompt?: string;
+          timeout_ms?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+          welcome_message?: string;
+        };
+        Update: {
+          api_key_mask?: string;
+          base_url?: string;
+          connection_checked_at?: string | null;
+          connection_error?: string;
+          connection_status?: string;
+          enabled?: boolean;
+          encrypted_api_key?: string | null;
+          id?: boolean;
+          max_history_messages?: number;
+          max_message_length?: number;
+          model?: string;
+          name?: string;
+          provider?: string;
+          quick_actions_enabled?: boolean;
+          rate_limit_per_minute?: number;
+          subtitle?: string;
+          system_prompt?: string;
+          timeout_ms?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+          welcome_message?: string;
+        };
+        Relationships: [];
+      };
+      archie_request_stats: {
+        Row: {
+          created_at: string;
+          id: number;
+          input_tokens: number | null;
+          lesson_id: string | null;
+          model: string;
+          output_tokens: number | null;
+          provider: string;
+          status: string;
+          total_tokens: number | null;
+          user_id: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          id?: number;
+          input_tokens?: number | null;
+          lesson_id?: string | null;
+          model: string;
+          output_tokens?: number | null;
+          provider: string;
+          status: string;
+          total_tokens?: number | null;
+          user_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          id?: number;
+          input_tokens?: number | null;
+          lesson_id?: string | null;
+          model?: string;
+          output_tokens?: number | null;
+          provider?: string;
+          status?: string;
+          total_tokens?: number | null;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
       certificates: {
         Row: {
           certificate_number: string;
@@ -496,6 +607,7 @@ export type Database = {
           id: string;
           lesson_id: string;
           passed: boolean;
+          passed_at: string | null;
           query_text: string;
           result_columns: Json;
           result_rows: Json;
@@ -510,6 +622,7 @@ export type Database = {
           id?: string;
           lesson_id: string;
           passed?: boolean;
+          passed_at?: string | null;
           query_text?: string;
           result_columns?: Json;
           result_rows?: Json;
@@ -524,6 +637,7 @@ export type Database = {
           id?: string;
           lesson_id?: string;
           passed?: boolean;
+          passed_at?: string | null;
           query_text?: string;
           result_columns?: Json;
           result_rows?: Json;
@@ -684,6 +798,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null;
+          course_start_at: string | null;
           created_at: string;
           full_name: string | null;
           id: string;
@@ -692,6 +807,7 @@ export type Database = {
         };
         Insert: {
           avatar_url?: string | null;
+          course_start_at?: string | null;
           created_at?: string;
           full_name?: string | null;
           id: string;
@@ -700,6 +816,7 @@ export type Database = {
         };
         Update: {
           avatar_url?: string | null;
+          course_start_at?: string | null;
           created_at?: string;
           full_name?: string | null;
           id?: string;

@@ -242,7 +242,10 @@ function AdminLessons() {
 
   async function loadLessons() {
     setLoading(true);
-    const { data } = await supabase.from("lessons").select("*").order("day_number");
+    const { data } = await supabase
+      .from("lessons")
+      .select("id,day_number,title,description,video_url,content_md,homework_md")
+      .order("day_number");
     const loaded = (data ?? []) as Lesson[];
     setLessons(loaded);
     setActiveId(loaded[0]?.id ?? null);
@@ -259,7 +262,7 @@ function AdminLessons() {
     try {
       const { data, error } = await supabase
         .from("lesson_blocks")
-        .select("*")
+        .select("id,lesson_id,block_type,position,content")
         .eq("lesson_id", lessonId)
         .order("position")
         .abortSignal(controller.signal);
@@ -459,7 +462,22 @@ function AdminLessons() {
         })),
       });
       if (error || !data) throw new Error(error?.message ?? "Не удалось сохранить урок");
-      await loadLessons();
+      const importedLesson: Lesson = {
+        id: data,
+        day_number: targetDay,
+        title: targetTitle,
+        description: imported.lesson.description,
+        video_url: imported.lesson.video_url,
+        content_md: imported.lesson.content_md,
+        homework_md: imported.lesson.homework_md,
+      };
+      setLessons((all) => {
+        const index = all.findIndex((lesson) => lesson.id === data);
+        const next = [...all];
+        if (index < 0) next.push(importedLesson);
+        else next[index] = importedLesson;
+        return next.sort((left, right) => left.day_number - right.day_number);
+      });
       setActiveId(data);
       setImportPreview(null);
       toast.success(importMode === "replace" ? "Урок заменён" : "Урок импортирован");
@@ -1778,7 +1796,7 @@ function BlockEditor({
                   ...c,
                   mode: "sql_sandbox",
                   manualReview: false,
-                  homeworkRequiredForCompletion: true,
+                  homeworkRequiredForCompletion: false,
                   completionCondition: "all_sql_tasks_passed",
                   sandbox: c.sandbox ?? createEmptySqlSandbox(),
                 });
@@ -2006,22 +2024,6 @@ function BlockEditor({
                 <option value="all_sql_tasks_passed">Все SQL-задания выполнены</option>
               </select>
             </Field>
-            {block.block_type === "homework" && (
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-background p-3">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={c.homeworkRequiredForCompletion === true}
-                  onChange={(event) => set("homeworkRequiredForCompletion", event.target.checked)}
-                />
-                <span>
-                  <span className="block font-semibold">ДЗ обязательно для завершения</span>
-                  <span className="text-xs text-muted-foreground">
-                    Без отправки урок не получит статус «Пройден».
-                  </span>
-                </span>
-              </label>
-            )}
           </div>
         </details>
       )}

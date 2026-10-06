@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { assertLessonScheduleAccess } from "./course-schedule.server";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -177,6 +178,57 @@ export const submitHomeworkForCurrentUser = createServerFn({ method: "POST" })
   .inputValidator((data) => submitHomeworkInput.parse(data))
   .handler(async ({ data }) => {
     const userId = await getUserIdForAccessToken(data.accessToken);
+    const [lessonResult, progressResult, blockResult, latestResult] = await Promise.all([
+      supabaseAdmin
+        .from("lessons")
+        .select("id,day_number,homework_md")
+        .eq("id", data.lessonId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("lesson_progress")
+        .select("completed,completed_at")
+        .eq("user_id", userId)
+        .eq("lesson_id", data.lessonId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("lesson_blocks")
+        .select("id")
+        .eq("lesson_id", data.lessonId)
+        .eq("block_type", "homework")
+        .limit(1),
+      supabaseAdmin
+        .from("homework_submissions")
+        .select("id,status")
+        .eq("user_id", userId)
+        .eq("lesson_id", data.lessonId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    for (const error of [
+      lessonResult.error,
+      progressResult.error,
+      blockResult.error,
+      latestResult.error,
+    ]) {
+      if (error) throw error;
+    }
+    const lesson = lessonResult.data;
+    if (!lesson) throw new Error("Урок не найден");
+    await assertLessonScheduleAccess(userId, lesson.day_number);
+    if (!progressResult.data?.completed || !progressResult.data.completed_at) {
+      throw new Error("Сначала завершите урок, затем отправьте домашнее задание");
+    }
+    if (!lesson.homework_md.trim() && !blockResult.data?.length) {
+      throw new Error("В этом уроке нет домашнего задания");
+    }
+    if (
+      latestResult.data &&
+      (latestResult.data.status !== "rejected" || latestResult.data.id !== data.submissionId)
+    ) {
+      throw new Error("Домашнее задание уже отправлено");
+    }
+    if (!latestResult.data && data.submissionId) throw new Error("Отправка ДЗ не найдена");
 
     const submissionPayload = {
       content: data.content.trim(),
@@ -193,6 +245,7 @@ export const submitHomeworkForCurrentUser = createServerFn({ method: "POST" })
           .eq("id", data.submissionId)
           .eq("user_id", userId)
           .eq("lesson_id", data.lessonId)
+          .eq("status", "rejected")
           .select("id,user_id,content,status,feedback,created_at,reviewed_at,reviewed_by")
           .single()
       : supabaseAdmin
@@ -376,25 +429,8 @@ export const reviewHomeworkSubmission = createServerFn({ method: "POST" })
 
     let certificate = null;
     if (data.status === "approved") {
-      const { error } = await supabaseAdmin.from("lesson_progress").upsert(
-        {
-          user_id: submission.user_id,
-          lesson_id: submission.lesson_id,
-          completed: true,
-          completed_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,lesson_id" },
-      );
-      if (error) throw error;
       const { maybeIssueCertificate } = await import("./certificates.server");
       certificate = await maybeIssueCertificate(submission.user_id);
-    } else {
-      const { error } = await supabaseAdmin
-        .from("lesson_progress")
-        .delete()
-        .eq("user_id", submission.user_id)
-        .eq("lesson_id", submission.lesson_id);
-      if (error) throw error;
     }
 
     return { ok: true, certificate };
@@ -454,13 +490,6 @@ export const answerHomeworkQuestion = createServerFn({ method: "POST" })
       { submissionId: submission.id, userId: submission.user_id, lessonId: submission.lesson_id },
       latestMessage.id,
     );
-
-    const { error: progressError } = await supabaseAdmin
-      .from("lesson_progress")
-      .delete()
-      .eq("user_id", submission.user_id)
-      .eq("lesson_id", submission.lesson_id);
-    if (progressError) throw progressError;
 
     return { ok: true };
   });

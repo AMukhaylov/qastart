@@ -24,11 +24,13 @@ test("course analytics aggregates completion, inactivity, homework and quiz ques
       },
     ],
     lessons: [
-      { id: "lesson-1", day_number: 1, title: "Урок 1" },
+      { id: "lesson-1", day_number: 1, title: "Урок 1", homework_md: "ДЗ 1" },
+      { id: "lesson-2", day_number: 2, title: "Урок 2" },
       { id: "lesson-14", day_number: 14, title: "Итоговый тест" },
     ],
     progress: [
       {
+        id: "submission-1",
         user_id: "student-1",
         lesson_id: "lesson-1",
         completed: true,
@@ -55,13 +57,37 @@ test("course analytics aggregates completion, inactivity, homework and quiz ques
         created_at: "2026-09-01T09:00:00.000Z",
         reviewed_at: "2026-09-01T11:00:00.000Z",
       },
+      {
+        id: "submission-2",
+        user_id: "student-2",
+        lesson_id: "lesson-2",
+        status: "awaiting_mentor",
+        created_at: "2026-09-01T08:30:00.000Z",
+        reviewed_at: null,
+      },
+    ],
+    homeworkMessages: [
+      {
+        submission_id: "submission-1",
+        user_id: "student-1",
+        author_role: "student",
+        created_at: "2026-09-01T09:00:00.000Z",
+      },
+      {
+        submission_id: "submission-2",
+        user_id: "student-2",
+        author_role: "student",
+        created_at: "2026-09-01T08:30:00.000Z",
+      },
     ],
     homeworkBlocks: [],
     sqlAttempts: [],
     lessonQuestionAnswers: [
       {
+        user_id: "student-1",
         lesson_id: "lesson-1",
         block_id: "block-question-1",
+        answered_at: "2026-09-01T08:45:00.000Z",
         question_text: "Какой результат ожидается?",
         options: ["Успех", "Ошибка 500"],
         selected_indexes: [1],
@@ -69,8 +95,10 @@ test("course analytics aggregates completion, inactivity, homework and quiz ques
         is_correct: false,
       },
       {
+        user_id: "student-2",
         lesson_id: "lesson-1",
         block_id: "block-question-1",
+        answered_at: "2026-09-01T08:50:00.000Z",
         question_text: "Какой результат ожидается?",
         options: ["Успех", "Ошибка 500"],
         selected_indexes: [0],
@@ -133,15 +161,33 @@ test("course analytics aggregates completion, inactivity, homework and quiz ques
   });
 
   assert.equal(analytics.totals.students, 2);
-  assert.equal(analytics.totals.started, 1);
+  assert.equal(analytics.totals.started, 2);
   assert.equal(analytics.totals.completed, 1);
   assert.equal(analytics.totals.manualHomeworkApproved, 1);
+  assert.equal(analytics.totals.manualHomeworkAwaitingMentor, 1);
   assert.equal(analytics.totals.medianFinalQuizMinutes, 20);
   assert.equal(
     analytics.students.find((student) => student.id === "student-1")?.passedCourse,
     true,
   );
-  assert.equal(analytics.students.find((student) => student.id === "student-2")?.idleDays, null);
+  assert.equal(analytics.students.find((student) => student.id === "student-2")?.idleDays, 34);
+  assert.equal(
+    analytics.students.find((student) => student.id === "student-2")?.awaitingMentorHomework,
+    1,
+  );
+  assert.equal(analytics.students.find((student) => student.id === "student-2")?.elapsedDays, null);
+  assert.deepEqual(
+    analytics.lessonFunnel.map(({ dayNumber, started, completed, completionPercent }) => ({
+      dayNumber,
+      started,
+      completed,
+      completionPercent,
+    })),
+    [
+      { dayNumber: 1, started: 2, completed: 1, completionPercent: 50 },
+      { dayNumber: 2, started: 2, completed: 0, completionPercent: 0 },
+    ],
+  );
   assert.equal(analytics.questionStats[0]?.seen, 2);
   assert.equal(analytics.questionStats[0]?.accuracyPercent, 50);
   assert.equal(analytics.questionStats[0]?.topWrongOption, "Ошибка сервера");
@@ -152,7 +198,10 @@ test("course analytics aggregates completion, inactivity, homework and quiz ques
     { text: "Успех", count: 1 },
     { text: "Ошибка 500", count: 1 },
   ]);
-  assert.equal(analytics.homeworkTimingTracked, false);
+  assert.equal(analytics.totals.homeworkAssigned, 1);
+  assert.equal(analytics.totals.homeworkSubmitted, 1);
+  assert.equal(analytics.totals.homeworkNotSubmitted, 0);
+  assert.equal(analytics.totals.homeworkSameCalendarDay, 1);
 });
 
 test("student completion is tied to a passed final quiz, not lesson 14 progress alone", () => {
@@ -171,6 +220,7 @@ test("student completion is tied to a passed final quiz, not lesson 14 progress 
     ],
     blockProgress: [],
     submissions: [],
+    homeworkMessages: [],
     homeworkBlocks: [],
     sqlAttempts: [],
     lessonQuestionAnswers: [],
@@ -178,4 +228,44 @@ test("student completion is tied to a passed final quiz, not lesson 14 progress 
   });
   assert.equal(analytics.students[0]?.passedCourse, false);
   assert.equal(analytics.totals.completed, 0);
+});
+
+test("lesson reach analytics uses each student's course start date", () => {
+  const analytics = buildCourseAnalytics({
+    now: new Date("2026-10-07T20:00:00.000Z"),
+    students: [
+      {
+        id: "student-a",
+        full_name: "A",
+        login: "a",
+        created_at: null,
+        course_start_at: "2026-10-05T21:00:00.000Z",
+      },
+      {
+        id: "student-b",
+        full_name: "B",
+        login: "b",
+        created_at: null,
+        course_start_at: "2026-10-06T21:00:00.000Z",
+      },
+    ],
+    lessons: [
+      { id: "lesson-1", day_number: 1, title: "Урок 1" },
+      { id: "lesson-2", day_number: 2, title: "Урок 2" },
+    ],
+    progress: [],
+    blockProgress: [],
+    submissions: [],
+    homeworkMessages: [],
+    homeworkBlocks: [],
+    sqlAttempts: [],
+    quizAttempts: [],
+    lessonQuestionAnswers: [],
+  });
+
+  assert.equal(analytics.totals.started, 0);
+  assert.deepEqual(
+    analytics.lessonFunnel.map((item) => item.available),
+    [2, 1],
+  );
 });

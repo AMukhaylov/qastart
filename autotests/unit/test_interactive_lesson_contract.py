@@ -190,7 +190,8 @@ def test_sql_sandbox_attempts_are_owner_scoped_and_user_sql_is_only_saved_as_dat
     assert "grant select, insert, update on public.sql_sandbox_attempts to authenticated" in migration.lower()
     assert "seedSandboxDatabase(database, config.tables)" in worker
     assert "runSandboxTask(database, sql, task, config)" in worker
-    assert '.from("sql_sandbox_attempts").upsert' in lesson
+    assert '.from("sql_sandbox_attempts")' in lesson
+    assert '.upsert(' in lesson
     assert "database.exec(sql)" not in worker
     assert "Проверочный SQL (только для наставника/админа" in admin_ui
     assert "Ученику этот запрос не показывается" in admin_ui
@@ -313,7 +314,7 @@ def test_dashboard_refreshes_progress_when_returning_from_a_lesson():
     assert "useLocation" in source
     assert 'if (location.pathname !== "/dashboard") loadedUserIdRef.current = null;' in source
     assert 'if (location.pathname !== "/dashboard") return;' in source
-    assert 'value={`${hwApproved} / ${homeworkLessonIds.size}`}' in source
+    assert 'value={`${homeworkCounts.submitted} / ${homeworkCounts.assigned}`}' in source
     assert "getStudentDashboardData" in source
     dashboard_server = (ROOT / "src/server/dashboard.functions.ts").read_text(encoding="utf-8")
     assert '.from("lesson_blocks")' in dashboard_server
@@ -384,8 +385,8 @@ def test_pending_homework_uses_non_final_completion_card():
     guide_model = (ROOT / "src/lib/lesson-guide.ts").read_text(encoding="utf-8")
 
     assert 'submission?.status === "pending"' in page
-    assert "почти пройден" in page
-    assert "После принятия ДЗ день будет полностью завершён" in page
+    assert '`День ${lesson.day_number} пройден`' in page
+    assert "домашнее задание ждёт проверки. Следующий урок откроется по расписанию." in page
     assert 'submission?.status !== "rejected"' in page
     assert 'pending: Clock3' in guide
     assert 'pending: "center"' in guide_model

@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
+import { courseDate, formatCourseDateTime } from "@/lib/course-schedule";
 import {
   createAdminStudent,
   deleteAdminStudent,
@@ -73,6 +74,11 @@ type Row = {
   full_name: string | null;
   login: string;
   created_at: string;
+  course_start_at: string | null;
+  currentDay: number;
+  currentAvailableLesson: number;
+  courseStatus: string;
+  homeworkCounts: { assigned: number; submitted: number; notSubmitted: number };
   blocked: boolean;
   completed: number;
   approved: number;
@@ -94,10 +100,17 @@ type FormState = {
   lastName: string;
   login: string;
   password: string;
+  courseStartDate: string;
 };
 type Credentials = { fullName: string; login: string; password: string };
 type Group = Awaited<ReturnType<typeof listAdminStudentGroups>>[number];
-const blankForm: FormState = { firstName: "", lastName: "", login: "", password: "" };
+const blankForm: FormState = {
+  firstName: "",
+  lastName: "",
+  login: "",
+  password: "",
+  courseStartDate: "",
+};
 
 function splitName(value: string | null) {
   const parts = (value ?? "").trim().split(/\s+/).filter(Boolean);
@@ -157,6 +170,11 @@ function AdminStudents() {
             full_name: student.full_name,
             login: student.login,
             created_at: student.created_at,
+            course_start_at: student.course_start_at,
+            currentDay: student.currentDay,
+            currentAvailableLesson: student.currentAvailableLesson,
+            courseStatus: student.courseStatus,
+            homeworkCounts: student.homeworkCounts,
             blocked: Boolean(student.banned_until),
             completed: student.completed,
             approved: student.approved,
@@ -210,6 +228,7 @@ function AdminStudents() {
             lastName: form.lastName,
             login: form.login,
             password: form.password,
+            courseStartDate: form.courseStartDate || null,
           },
         });
         toast.success("Данные ученика обновлены");
@@ -221,6 +240,7 @@ function AdminStudents() {
             lastName: form.lastName,
             login: form.login,
             password: form.password,
+            courseStartDate: form.courseStartDate || null,
           },
         });
         setIssued({ fullName: data.fullName, login: data.login, password: data.password });
@@ -262,6 +282,11 @@ function AdminStudents() {
       full_name: `${form.firstName} ${form.lastName}`.trim(),
       login: form.login,
       created_at: "",
+      course_start_at: null,
+      currentDay: 0,
+      currentAvailableLesson: 0,
+      courseStatus: "not_scheduled",
+      homeworkCounts: { assigned: 0, submitted: 0, notSubmitted: 0 },
       blocked: false,
       completed: 0,
       approved: 0,
@@ -490,6 +515,9 @@ function AdminStudents() {
           onClose={() => setForm(null)}
           onSave={() => void save()}
           onResetPassword={form.userId ? () => void resetPasswordForForm() : undefined}
+          courseStarted={Boolean(
+            form.userId && rows.find((row) => row.id === form.userId)?.currentDay,
+          )}
         />
       )}
       {issued && (
@@ -764,6 +792,9 @@ function AdminStudents() {
               <tr>
                 <th className="px-4 py-3">Ученик</th>
                 <th className="px-4 py-3">Логин</th>
+                <th className="px-4 py-3">Регистрация</th>
+                <th className="px-4 py-3">Начало обучения</th>
+                <th className="px-4 py-3">День / доступ</th>
                 <th className="px-4 py-3">Группа</th>
                 <th className="px-4 py-3">Статус</th>
                 <th className="px-4 py-3">Прогресс</th>
@@ -792,6 +823,19 @@ function AdminStudents() {
                       </span>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs">{row.login}</td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap">
+                      {new Date(row.created_at).toLocaleDateString("ru-RU")}
+                    </td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap">
+                      {row.course_start_at
+                        ? formatCourseDateTime(row.course_start_at).split(",")[0]
+                        : "Не назначено"}
+                    </td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap">
+                      {row.currentDay
+                        ? `День ${row.currentDay} · уроки 1–${row.currentAvailableLesson}`
+                        : "Ещё не началось"}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {row.groups.length ? (
@@ -819,7 +863,15 @@ function AdminStudents() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={row.blocked ? "text-destructive" : "text-primary"}>
-                        {row.blocked ? "Заблокирован" : "Активен"}
+                        {row.blocked
+                          ? "Заблокирован"
+                          : row.courseStatus === "completed"
+                            ? "Завершил"
+                            : row.courseStatus === "in_progress"
+                              ? "Обучается"
+                              : row.courseStatus === "upcoming"
+                                ? "Ожидает старта"
+                                : "Без даты старта"}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -828,7 +880,8 @@ function AdminStudents() {
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1">
                         <ClipboardCheck className="h-4 w-4" />
-                        {row.approved} / {row.pending}
+                        {row.homeworkCounts.submitted} / {row.homeworkCounts.assigned} отправлено ·{" "}
+                        {row.homeworkCounts.notSubmitted} не отправлено
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -840,7 +893,15 @@ function AdminStudents() {
                         saving={saving || savingCertificateId === row.certificate?.id}
                         onEdit={() => {
                           const name = splitName(row.full_name);
-                          setForm({ userId: row.id, ...name, login: row.login, password: "" });
+                          setForm({
+                            userId: row.id,
+                            ...name,
+                            login: row.login,
+                            password: "",
+                            courseStartDate: row.course_start_at
+                              ? courseDate(row.course_start_at)
+                              : "",
+                          });
                         }}
                         onToggleBlocked={() => void toggleBlocked(row)}
                         onGrantQuizAttempt={() => void grantQuizAttempt(row)}
@@ -857,7 +918,7 @@ function AdminStudents() {
                 ))}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-4 py-12 text-center text-muted-foreground">
                     Учеников пока нет
                   </td>
                 </tr>
@@ -991,6 +1052,7 @@ function StudentForm({
   onClose,
   onSave,
   onResetPassword,
+  courseStarted,
 }: {
   form: FormState;
   saving: boolean;
@@ -999,6 +1061,7 @@ function StudentForm({
   onClose: () => void;
   onSave: () => void;
   onResetPassword?: () => void;
+  courseStarted: boolean;
 }) {
   const [showPassword, setShowPassword] = useState(false);
   const field = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -1017,6 +1080,20 @@ function StudentForm({
         <Button variant="ghost" size="sm" onClick={onClose}>
           Закрыть
         </Button>
+      </div>
+      <div className="mt-4 max-w-xs">
+        <FormInput
+          label="Дата начала обучения"
+          type="date"
+          value={form.courseStartDate}
+          onChange={field("courseStartDate")}
+          disabled={courseStarted}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          {courseStarted
+            ? "После начала курса дату нельзя изменить обычным редактированием."
+            : "Ученик может войти в кабинет до этой даты; первый урок откроется в 00:00 по времени курса."}
+        </p>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <FormInput label="Имя" value={form.firstName} onChange={field("firstName")} />
@@ -1059,6 +1136,7 @@ function FormInput({
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   type?: string;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="space-y-1.5 text-sm font-medium">

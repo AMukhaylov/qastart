@@ -7,6 +7,8 @@ import {
   getUserIdForAccessToken,
   listAllAuthUsers,
 } from "./admin-auth.server";
+import { courseDate, courseDay, courseStartFromDate } from "@/lib/course-schedule";
+import { buildHomeworkSnapshots, countHomeworkTimings } from "@/lib/course-homework";
 
 const adminAccessInput = z.object({ accessToken: z.string().min(20) });
 const studentIdInput = adminAccessInput.extend({ userId: z.string().uuid() });
@@ -24,12 +26,14 @@ const createStudentInput = adminAccessInput.extend({
   lastName: nameSchema,
   login: loginSchema,
   password: passwordSchema,
+  courseStartDate: z.string().nullable().optional(),
 });
 const updateStudentInput = studentIdInput.extend({
   firstName: nameSchema,
   lastName: nameSchema,
   login: loginSchema,
   password: passwordSchema.optional().or(z.literal("")),
+  courseStartDate: z.string().nullable().optional(),
 });
 const blockStudentInput = studentIdInput.extend({ blocked: z.boolean() });
 
@@ -143,18 +147,32 @@ export const listAdminStudentsOverview = createServerFn({ method: "POST" })
       { data: homework, error: homeworkError },
       { data: groups, error: groupsError },
       { data: memberships, error: membershipsError },
+      { data: homeworkBlocks, error: homeworkBlocksError },
+      { data: sqlAttempts, error: sqlAttemptsError },
+      { data: quizAttempts, error: quizAttemptsError },
     ] = await Promise.all([
-      supabaseAdmin.from("profiles").select("id,login,full_name,created_at"),
+      supabaseAdmin.from("profiles").select("id,login,full_name,created_at,course_start_at"),
       listAllAuthUsers(),
       supabaseAdmin.from("user_roles").select("user_id,role"),
-      supabaseAdmin.from("lessons").select("id"),
-      supabaseAdmin.from("lesson_progress").select("user_id,completed").eq("completed", true),
-      supabaseAdmin.from("homework_submissions").select("user_id,status"),
+      supabaseAdmin.from("lessons").select("id,day_number,homework_md"),
+      supabaseAdmin
+        .from("lesson_progress")
+        .select("user_id,lesson_id,completed,completed_at")
+        .eq("completed", true),
+      supabaseAdmin.from("homework_submissions").select("id,user_id,lesson_id,status,created_at"),
       supabaseAdmin
         .from("student_groups" as any)
         .select("id,name,description,created_at,updated_at")
         .order("name"),
       supabaseAdmin.from("group_students" as any).select("group_id,student_id"),
+      supabaseAdmin
+        .from("lesson_blocks")
+        .select("id,lesson_id,content")
+        .eq("block_type", "homework"),
+      supabaseAdmin
+        .from("sql_sandbox_attempts")
+        .select("user_id,block_id,task_id,passed,passed_at"),
+      supabaseAdmin.from("quiz_attempts").select("user_id,passed").eq("passed", true),
     ]);
     for (const error of [
       profilesError,
@@ -164,6 +182,9 @@ export const listAdminStudentsOverview = createServerFn({ method: "POST" })
       homeworkError,
       groupsError,
       membershipsError,
+      homeworkBlocksError,
+      sqlAttemptsError,
+      quizAttemptsError,
     ]) {
       if (error) throw error;
     }
@@ -193,11 +214,34 @@ export const listAdminStudentsOverview = createServerFn({ method: "POST" })
       .filter((user) => !admins.has(user.id))
       .map((user) => {
         const profile = profileById.get(user.id);
+        const snapshots = buildHomeworkSnapshots({
+          lessons: lessons ?? [],
+          courseStartAt: profile?.course_start_at ?? null,
+          progress: (progress ?? []).filter((item) => item.user_id === user.id),
+          submissions: (homework ?? []).filter((item) => item.user_id === user.id),
+          homeworkBlocks: homeworkBlocks ?? [],
+          sqlAttempts: (sqlAttempts ?? []).filter((item) => item.user_id === user.id),
+        });
+        const homeworkCounts = countHomeworkTimings(snapshots);
+        const currentDay = courseDay(profile?.course_start_at ?? null);
         return {
           id: user.id,
           login: profile?.login ?? "",
           full_name: profile?.full_name ?? null,
           created_at: profile?.created_at ?? user.created_at,
+          course_start_at: profile?.course_start_at ?? null,
+          currentDay,
+          currentAvailableLesson: currentDay ? Math.min(currentDay, 14) : 0,
+          courseStatus: !profile?.course_start_at
+            ? "not_scheduled"
+            : currentDay === 0
+              ? "upcoming"
+              : (quizAttempts ?? []).some(
+                    (attempt) => attempt.user_id === user.id && attempt.passed,
+                  )
+                ? "completed"
+                : "in_progress",
+          homeworkCounts,
           banned_until: user.banned_until ?? null,
           completed: completed.get(user.id) ?? 0,
           approved: approved.get(user.id) ?? 0,
@@ -221,6 +265,7 @@ export const createAdminStudent = createServerFn({ method: "POST" })
     const login = data.login.toLowerCase();
     await assertAvailableLogin(login);
     const fullName = `${data.firstName.trim()} ${data.lastName.trim()}`;
+    const courseStartAt = data.courseStartDate ? courseStartFromDate(data.courseStartDate) : null;
     const technicalEmail = `${login}.${randomHex(8)}@students.startqa.local`;
     const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
       email: technicalEmail,
@@ -231,7 +276,11 @@ export const createAdminStudent = createServerFn({ method: "POST" })
     if (error || !created.user) throw error ?? new Error("Не удалось создать ученика");
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
-      .update({ full_name: fullName, login })
+      .update({
+        full_name: fullName,
+        login,
+        course_start_at: courseStartAt,
+      })
       .eq("id", created.user.id);
     if (profileError) {
       await supabaseAdmin.auth.admin.deleteUser(created.user.id, false);
@@ -247,6 +296,25 @@ export const updateAdminStudent = createServerFn({ method: "POST" })
     const login = data.login.toLowerCase();
     await assertAvailableLogin(login, data.userId);
     const fullName = `${data.firstName.trim()} ${data.lastName.trim()}`;
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from("profiles")
+      .select("course_start_at")
+      .eq("id", data.userId)
+      .single();
+    if (existingError) throw existingError;
+    const selectedDate = data.courseStartDate || null;
+    const courseStartChanged =
+      data.courseStartDate !== undefined &&
+      selectedDate !== (existing.course_start_at ? courseDate(existing.course_start_at) : null);
+    if (
+      courseStartChanged &&
+      existing.course_start_at &&
+      Date.parse(existing.course_start_at) <= Date.now()
+    ) {
+      throw new Error(
+        "Обучение уже началось. Изменить дату старта обычным редактированием нельзя.",
+      );
+    }
     if (data.password) {
       const { error } = await supabaseAdmin.auth.admin.updateUserById(data.userId, {
         password: data.password,
@@ -255,7 +323,13 @@ export const updateAdminStudent = createServerFn({ method: "POST" })
     }
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
-      .update({ full_name: fullName, login })
+      .update({
+        full_name: fullName,
+        login,
+        ...(courseStartChanged
+          ? { course_start_at: selectedDate ? courseStartFromDate(selectedDate) : null }
+          : {}),
+      })
       .eq("id", data.userId);
     if (profileError) throw profileError;
     return { ok: true };

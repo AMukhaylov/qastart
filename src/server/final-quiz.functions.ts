@@ -1,5 +1,6 @@
 import { randomInt } from "node:crypto";
 import { createServerFn } from "@tanstack/react-start";
+import { assertLessonScheduleAccess } from "./course-schedule.server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getRolesForAccessToken, getUserIdForAccessToken } from "./admin-auth.server";
@@ -258,30 +259,11 @@ async function closeExpiredAttempts(userId: string) {
 }
 
 async function assertFinalQuizUnlocked(userId: string) {
-  const { data: previousLessons, error: lessonsError } = await supabaseAdmin
-    .from("lessons")
-    .select("id")
-    .lt("day_number", 14);
-  if (lessonsError) throw lessonsError;
-
-  const lessonIds = (previousLessons ?? []).map((lesson) => lesson.id);
-  if (!lessonIds.length) throw new Error("Не удалось определить программу курса");
-
-  const { data: progress, error: progressError } = await supabaseAdmin
-    .from("lesson_progress")
-    .select("lesson_id")
-    .eq("user_id", userId)
-    .eq("completed", true)
-    .in("lesson_id", lessonIds);
-  if (progressError) throw progressError;
-
-  const completedLessonIds = new Set((progress ?? []).map((item) => item.lesson_id));
-  if (completedLessonIds.size !== lessonIds.length) {
-    throw new Error("Итоговый тест доступен после прохождения первых 13 уроков");
-  }
+  await assertLessonScheduleAccess(userId, 14);
 }
 
 async function getAttemptForUser(userId: string, attemptId: string) {
+  await assertFinalQuizUnlocked(userId);
   const { data, error } = await supabaseAdmin
     .from("quiz_attempts")
     .select("*")

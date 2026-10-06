@@ -43,11 +43,11 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       fetchAllPages((from, to) =>
         supabaseAdmin
           .from("profiles")
-          .select("id,full_name,login,created_at")
+          .select("id,full_name,login,created_at,course_start_at")
           .order("id")
           .range(from, to),
       ),
-      supabaseAdmin.from("lessons").select("id,day_number,title").order("day_number"),
+      supabaseAdmin.from("lessons").select("id,day_number,title,homework_md").order("day_number"),
     ]);
     if (lessonError) throw lessonError;
 
@@ -60,6 +60,7 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
         full_name: profile?.full_name ?? null,
         login: profile?.login ?? "",
         created_at: profile?.created_at ?? null,
+        course_start_at: profile?.course_start_at ?? null,
       };
     });
     if (studentIds.length === 0) {
@@ -69,6 +70,7 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
         progress: [],
         blockProgress: [],
         submissions: [],
+        homeworkMessages: [],
         homeworkBlocks: [],
         sqlAttempts: [],
         quizAttempts: [],
@@ -121,7 +123,7 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       fetchAllPages((from, to) =>
         supabaseAdmin
           .from("sql_sandbox_attempts")
-          .select("user_id,block_id,lesson_id,task_id,passed")
+          .select("user_id,block_id,lesson_id,task_id,passed,passed_at,created_at")
           .in("user_id", studentIds)
           .order("user_id")
           .order("block_id")
@@ -144,7 +146,7 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
         supabaseAdmin
           .from("lesson_question_answers")
           .select(
-            "user_id,lesson_id,block_id,question_text,options,selected_indexes,correct_indexes,is_correct",
+            "user_id,lesson_id,block_id,answered_at,question_text,options,selected_indexes,correct_indexes,is_correct",
           )
           .in("user_id", studentIds)
           .order("lesson_id")
@@ -154,6 +156,32 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       ),
     ]);
     if (homeworkBlockError) throw homeworkBlockError;
+
+    const submissionById = new Map(submissions.map((submission) => [submission.id, submission]));
+    const submissionIds = [...submissionById.keys()];
+    const homeworkMessages = [];
+    for (let offset = 0; offset < submissionIds.length; offset += 200) {
+      const ids = submissionIds.slice(offset, offset + 200);
+      const rows = await fetchAllPages((from, to) =>
+        supabaseAdmin
+          .from("homework_messages")
+          .select("submission_id,author_role,created_at")
+          .in("submission_id", ids)
+          .order("submission_id")
+          .order("created_at")
+          .range(from, to),
+      );
+      for (const row of rows) {
+        const submission = submissionById.get(row.submission_id);
+        if (!submission) continue;
+        homeworkMessages.push({
+          submission_id: row.submission_id,
+          user_id: submission.user_id,
+          author_role: row.author_role,
+          created_at: row.created_at,
+        });
+      }
+    }
 
     return buildCourseAnalytics({
       students,
@@ -165,6 +193,7 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
         completed_at,
       })),
       submissions,
+      homeworkMessages,
       homeworkBlocks: (homeworkBlocks ?? []).map((block) => ({
         id: block.id,
         lesson_id: block.lesson_id,
