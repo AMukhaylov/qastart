@@ -128,7 +128,15 @@ export function AdminArchiePanel() {
         if (baseUrl.protocol !== "https:" || baseUrl.hostname !== "openrouter.ai") {
           throw new Error("Для OpenRouter укажи официальный HTTPS Base URL.");
         }
-        const response = await fetch(`${form.baseUrl.replace(/\/$/, "")}/models`, {
+        const modelsUrl = new URL(`${form.baseUrl.replace(/\/$/, "")}/models`);
+        // Archie only uses text chat models. Asking OpenRouter to filter out
+        // image/audio/embedding models makes the catalog response smaller and
+        // faster to download and render in the admin panel.
+        modelsUrl.searchParams.set("output_modalities", "text");
+        const response = await fetch(modelsUrl, {
+          mode: "cors",
+          credentials: "omit",
+          cache: "no-store",
           headers: { Accept: "application/json" },
           signal: AbortSignal.timeout(data?.settings.timeoutMs ?? 25000),
         });
@@ -151,7 +159,14 @@ export function AdminArchiePanel() {
         toast.message("Провайдер не вернул список моделей — введи ID вручную.");
       else toast.success(`Загружено моделей: ${result.length}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Не удалось загрузить модели");
+      if (error instanceof TypeError) {
+        toast.error("Не удалось подключиться к OpenRouter из браузера", {
+          description:
+            "Проверь блокировщик рекламы или доступ к openrouter.ai. Пока можно ввести ID модели вручную.",
+        });
+      } else {
+        toast.error(error instanceof Error ? error.message : "Не удалось загрузить модели");
+      }
     } finally {
       setLoadingModels(false);
     }
