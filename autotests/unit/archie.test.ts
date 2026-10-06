@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSafeLessonContext, parseArchieAnswer } from "../../src/lib/archie.ts";
+import {
+  buildSafeLessonContext,
+  parseArchieAnswer,
+  parseArchieModelOptions,
+} from "../../src/lib/archie.ts";
 import {
   decryptProviderKey,
   encryptProviderKey,
@@ -97,6 +101,26 @@ test("Archie structured answers are parsed and invalid shapes fall back safely",
     type: "lesson",
     answer: '{"type":"secret","answer":"x"}',
   });
+});
+
+test("OpenRouter model catalog is parsed and free models appear first", () => {
+  const options = parseArchieModelOptions("openrouter", {
+    data: [
+      { id: "paid/model", name: "Paid Model", pricing: { prompt: "0.1", completion: "0.2" } },
+      { id: "free/model", name: "Free Model", pricing: { prompt: "0", completion: "0" } },
+      { name: "Missing ID" },
+    ],
+  });
+
+  assert.deepEqual(options, [
+    { id: "free/model", name: "Free Model", free: true, pricing: "Бесплатно" },
+    {
+      id: "paid/model",
+      name: "Paid Model",
+      free: false,
+      pricing: "Вход $0.1/токен · выход $0.2/токен",
+    },
+  ]);
 });
 
 test("provider API keys are AES-GCM encrypted, masked, and decrypt only with the server secret", () => {

@@ -1,6 +1,7 @@
 import {
   ARCHIE_PROVIDER_DEFAULTS,
   DEFAULT_ARCHIE_SETTINGS,
+  parseArchieModelOptions,
   type ArchieModelOption,
   type ArchieProviderId,
 } from "@/lib/archie";
@@ -137,47 +138,6 @@ function chatEndpoint(baseUrl: string) {
   return `${baseUrl.replace(/\/$/, "")}/chat/completions`;
 }
 
-function parseModelOptions(provider: ArchieProviderId, data: unknown): ArchieModelOption[] {
-  if (
-    typeof data !== "object" ||
-    data === null ||
-    !Array.isArray((data as { data?: unknown }).data)
-  )
-    return [];
-  return ((data as { data: unknown[] }).data as Array<Record<string, unknown>>)
-    .filter((model) => typeof model.id === "string")
-    .map((model) => {
-      const pricing =
-        typeof model.pricing === "object" && model.pricing !== null
-          ? (model.pricing as Record<string, unknown>)
-          : null;
-      const prompt = pricing?.prompt;
-      const completion = pricing?.completion;
-      const free =
-        typeof prompt === "string" &&
-        Number(prompt) === 0 &&
-        typeof completion === "string" &&
-        Number(completion) === 0;
-      return {
-        id: model.id as string,
-        name: typeof model.name === "string" ? model.name : (model.id as string),
-        ...(provider === "openrouter" ? { free, pricing: formatPricing(prompt, completion) } : {}),
-      };
-    })
-    .sort(
-      (a, b) => Number(Boolean(b.free)) - Number(Boolean(a.free)) || a.name.localeCompare(b.name),
-    );
-}
-
-function formatPricing(prompt: unknown, completion: unknown) {
-  if (typeof prompt !== "string" || typeof completion !== "string") return null;
-  if (Number(prompt) === 0 && Number(completion) === 0) return "Бесплатно";
-  const input = Number(prompt);
-  const output = Number(completion);
-  if (!Number.isFinite(input) || !Number.isFinite(output)) return null;
-  return `Вход $${input}/токен · выход $${output}/токен`;
-}
-
 async function readResponse(response: Response) {
   const text = await response.text();
   let body: unknown = null;
@@ -206,7 +166,7 @@ export async function fetchProviderModels(
   });
   if (!response.ok) throw new Error(`AI provider models endpoint returned ${response.status}`);
   const { body } = await readResponse(response);
-  return parseModelOptions(provider, body);
+  return parseArchieModelOptions(provider, body);
 }
 
 export type AICompletion = {

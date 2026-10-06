@@ -24,6 +24,7 @@ import {
 } from "@/server/archie.functions";
 import {
   ARCHIE_PROVIDER_DEFAULTS,
+  parseArchieModelOptions,
   type ArchieModelOption,
   type ArchieProviderId,
 } from "@/lib/archie";
@@ -118,14 +119,33 @@ export function AdminArchiePanel() {
     if (!session?.access_token || !form) return;
     setLoadingModels(true);
     try {
-      const result = await listArchieProviderModels({
-        data: {
-          accessToken: session.access_token,
-          provider: form.provider,
-          baseUrl: form.baseUrl,
-          apiKey: apiKey || undefined,
-        },
-      });
+      let result: ArchieModelOption[];
+      if (form.provider === "openrouter") {
+        // OpenRouter blocks catalog requests from some server IP ranges. Its
+        // model list is public and CORS-enabled, so fetch it from the browser
+        // without sending any credentials or other secret data.
+        const baseUrl = new URL(form.baseUrl);
+        if (baseUrl.protocol !== "https:" || baseUrl.hostname !== "openrouter.ai") {
+          throw new Error("Для OpenRouter укажи официальный HTTPS Base URL.");
+        }
+        const response = await fetch(`${form.baseUrl.replace(/\/$/, "")}/models`, {
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(data?.settings.timeoutMs ?? 25000),
+        });
+        if (!response.ok) {
+          throw new Error(`OpenRouter не вернул список моделей (HTTP ${response.status}).`);
+        }
+        result = parseArchieModelOptions("openrouter", await response.json());
+      } else {
+        result = await listArchieProviderModels({
+          data: {
+            accessToken: session.access_token,
+            provider: form.provider,
+            baseUrl: form.baseUrl,
+            apiKey: apiKey || undefined,
+          },
+        });
+      }
       setModels(result);
       if (result.length === 0)
         toast.message("Провайдер не вернул список моделей — введи ID вручную.");
@@ -407,7 +427,9 @@ export function AdminArchiePanel() {
             type="button"
             variant="outline"
             onClick={() => void fetchModels()}
-            disabled={loadingModels || (!apiKey && !form.apiKeyConfigured)}
+            disabled={
+              loadingModels || (form.provider !== "openrouter" && !apiKey && !form.apiKeyConfigured)
+            }
           >
             {loadingModels ? (
               <Loader2 className="h-4 w-4 animate-spin" />

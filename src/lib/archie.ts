@@ -216,3 +216,49 @@ export const ARCHIE_PROVIDER_DEFAULTS: Record<
   deepseek: { label: "DeepSeek", baseUrl: "https://api.deepseek.com" },
   custom: { label: "Custom OpenAI-compatible", baseUrl: "" },
 };
+
+export function parseArchieModelOptions(
+  provider: ArchieProviderId,
+  response: unknown,
+): ArchieModelOption[] {
+  if (
+    typeof response !== "object" ||
+    response === null ||
+    !Array.isArray((response as { data?: unknown }).data)
+  ) {
+    return [];
+  }
+
+  return ((response as { data: unknown[] }).data as Array<Record<string, unknown>>)
+    .filter((model) => typeof model.id === "string")
+    .map((model) => {
+      const pricing =
+        typeof model.pricing === "object" && model.pricing !== null
+          ? (model.pricing as Record<string, unknown>)
+          : null;
+      const prompt = pricing?.prompt;
+      const completion = pricing?.completion;
+      const free =
+        typeof prompt === "string" &&
+        Number(prompt) === 0 &&
+        typeof completion === "string" &&
+        Number(completion) === 0;
+      const promptPrice = typeof prompt === "string" ? Number(prompt) : Number.NaN;
+      const completionPrice = typeof completion === "string" ? Number(completion) : Number.NaN;
+      const formattedPricing =
+        !Number.isFinite(promptPrice) || !Number.isFinite(completionPrice)
+          ? null
+          : free
+            ? "Бесплатно"
+            : `Вход $${promptPrice}/токен · выход $${completionPrice}/токен`;
+
+      return {
+        id: model.id as string,
+        name: typeof model.name === "string" ? model.name : (model.id as string),
+        ...(provider === "openrouter" ? { free, pricing: formattedPricing } : {}),
+      };
+    })
+    .sort(
+      (a, b) => Number(Boolean(b.free)) - Number(Boolean(a.free)) || a.name.localeCompare(b.name),
+    );
+}
