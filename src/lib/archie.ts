@@ -1,11 +1,219 @@
 export type ArchieAnswerType = "lesson" | "additional" | "off_topic" | "hint";
 export type ArchieChatMessage = { role: "user" | "assistant"; content: string };
 
+export const DEFAULT_ARCHIE_GREETING_MESSAGES = [
+  "Привет! Я Арчи, AI-помощник курса. Если что-то непонятно — помогу разобраться.",
+  "Привет, я Арчи — AI-помощник курса. Давай разберём материал вместе.",
+  "Привет! Я Арчи, твой AI-помощник курса. У тебя всё получится — я рядом.",
+  "Привет, я Арчи. Если появятся вопросы по уроку, помогу разобраться.",
+] as const;
+
+export function normalizeArchieGreetingMessages(value: unknown): string[] {
+  if (!Array.isArray(value)) return [...DEFAULT_ARCHIE_GREETING_MESSAGES];
+  const messages = value
+    .filter((message): message is string => typeof message === "string")
+    .map((message) => message.trim().slice(0, 240))
+    .filter(Boolean)
+    .slice(0, 8);
+  return messages.length ? messages : [...DEFAULT_ARCHIE_GREETING_MESSAGES];
+}
+
+export const ARCHIE_MOTIVATION_MESSAGE_CATEGORIES = [
+  "homeworkDoing",
+  "homeworkPending",
+  "homeworkApproved",
+  "homeworkReturned",
+  "checkedExercise",
+  "midLesson",
+  "lessonComplete",
+  "halfCourse",
+  "courseComplete",
+  "exerciseComplete",
+  "encouragement",
+] as const;
+
+export type ArchieMotivationMessageCategory = (typeof ARCHIE_MOTIVATION_MESSAGE_CATEGORIES)[number];
+export type ArchieMotivationMessages = Record<ArchieMotivationMessageCategory, string[]>;
+export type ArchieMotivationEvent = {
+  key: string;
+  category: ArchieMotivationMessageCategory;
+  message: string;
+  priority: number;
+  dismissWidget: boolean;
+};
+
+export const ARCHIE_MOTIVATION_MESSAGE_LABELS: Record<ArchieMotivationMessageCategory, string> = {
+  homeworkDoing: "Ученик выполняет ДЗ",
+  homeworkPending: "ДЗ отправлено на проверку",
+  homeworkApproved: "ДЗ принято преподавателем",
+  homeworkReturned: "ДЗ возвращено на доработку",
+  checkedExercise: "Проверяемое упражнение",
+  midLesson: "Ученик прошёл половину урока",
+  lessonComplete: "Урок завершён",
+  halfCourse: "Пройдена половина курса",
+  courseComplete: "Курс завершён",
+  exerciseComplete: "Упражнение выполнено правильно",
+  encouragement: "Дополнительная поддержка",
+};
+
+export const DEFAULT_ARCHIE_MOTIVATION_MESSAGES: ArchieMotivationMessages = {
+  homeworkDoing: ["Сейчас ты выполняешь домашнее задание! 💪 Я верю, что у тебя всё получится!"],
+  homeworkPending: ["Домашнее задание отправлено! Дождись проверки работы от наставника."],
+  homeworkApproved: [
+    "Молодец! 🎉 Твоё домашнее задание принято! Отличная работа, продолжай в том же духе!",
+  ],
+  homeworkReturned: [
+    "Не переживай! 💪 Доработка — часть обучения. Посмотри замечания преподавателя и попробуй ещё раз!",
+  ],
+  checkedExercise: [
+    "Попробуй решить самостоятельно! 🚀 Ошибки тоже помогают учиться. Я рядом и болею за тебя!",
+  ],
+  midLesson: ["Первый шаг сделан! 🚀 Впереди много интересного. Если что-то непонятно, я рядом!"],
+  lessonComplete: ["Отличная работа! 🎉 Ещё один урок позади. Продолжай в том же духе!"],
+  halfCourse: ["Уже половина пути позади! 🔥 Посмотри, сколько всего ты узнал. Продолжай!"],
+  courseComplete: ["Ты сделал это! 🏆 Поздравляю с завершением курса! Это большое достижение!"],
+  exerciseComplete: [
+    "Отлично получилось! 💪 Ты справился самостоятельно. Продолжай в том же духе!",
+  ],
+  encouragement: [
+    "Не торопись! Главное не скорость, а понимание материала. 💡",
+    "Каждый новый урок делает тебя на шаг ближе к цели! 🚀",
+    "Ошибаться нормально. Именно так мы учимся! 💪",
+    "Ты отлично продвигаешься! Продолжай! 🔥",
+    "Сложная тема? Не сдавайся, постепенно всё получится! 🙌",
+  ],
+};
+
+export function normalizeArchieMotivationMessages(value: unknown): ArchieMotivationMessages {
+  const source = isRecord(value) ? value : {};
+  return Object.fromEntries(
+    ARCHIE_MOTIVATION_MESSAGE_CATEGORIES.map((category) => {
+      const messages = Array.isArray(source[category])
+        ? (source[category] as unknown[])
+            .filter((message): message is string => typeof message === "string")
+            .map((message) => message.trim().slice(0, 400))
+            .filter(Boolean)
+            .slice(0, 8)
+        : [];
+      return [
+        category,
+        messages.length ? messages : [...DEFAULT_ARCHIE_MOTIVATION_MESSAGES[category]],
+      ];
+    }),
+  ) as ArchieMotivationMessages;
+}
+
+export function pickArchieMotivationMessage(
+  messages: ArchieMotivationMessages,
+  category: ArchieMotivationMessageCategory,
+  key: string,
+) {
+  const choices = messages[category];
+  if (choices.length === 0) return "";
+  let hash = 0;
+  for (const character of key) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return choices[hash % choices.length];
+}
+
+/** Rotate lesson-completion copy by lesson number so adjacent lessons don't repeat the same phrase. */
+export function pickArchieLessonCompletionMessage(
+  messages: ArchieMotivationMessages,
+  dayNumber: number,
+) {
+  const choices = messages.lessonComplete;
+  if (choices.length === 0) return "";
+  const lessonIndex = Math.max(0, Math.floor(dayNumber) - 1);
+  return choices[lessonIndex % choices.length];
+}
+
+export type ArchieLessonMode =
+  | "chat"
+  | "homework"
+  | "homework-pending"
+  | "homework-approved"
+  | "homework-returned"
+  | "checked-exercise"
+  | "lesson-complete"
+  | "course-complete";
+
+export function getArchieLessonMode(input: {
+  courseCompleted: boolean;
+  lessonCompleted: boolean;
+  hasHumanHomework: boolean;
+  homeworkStatus: "pending" | "approved" | "rejected" | "awaiting_mentor" | null;
+  blocks: Array<{
+    id: string;
+    block_type: string;
+    position: number;
+    content: Record<string, unknown>;
+  }>;
+  completedBlockIds: Set<string>;
+  passedSqlTaskIds: Set<string>;
+}): ArchieLessonMode {
+  if (input.courseCompleted) return "course-complete";
+  if (input.homeworkStatus === "approved") return "homework-approved";
+  if (input.homeworkStatus === "pending" || input.homeworkStatus === "awaiting_mentor") {
+    return "homework-pending";
+  }
+  if (input.homeworkStatus === "rejected") return "homework-returned";
+
+  const blocks = [...input.blocks].sort((left, right) => left.position - right.position);
+  const requiredBlocks = blocks.filter(
+    (block) =>
+      block.content.visible !== false &&
+      block.content.required !== false &&
+      block.block_type !== "homework",
+  );
+  const isPriorRequiredContentComplete = (position: number) =>
+    requiredBlocks
+      .filter((block) => block.position < position)
+      .every((block) => input.completedBlockIds.has(block.id));
+
+  for (const block of blocks) {
+    if (block.content.visible === false || !isPriorRequiredContentComplete(block.position))
+      continue;
+    if (
+      block.block_type === "homework" &&
+      input.hasHumanHomework &&
+      block.content.mode !== "sql_sandbox"
+    ) {
+      return "homework";
+    }
+    if (
+      block.block_type === "homework" &&
+      block.content.mode === "sql_sandbox" &&
+      isRecord(block.content.sandbox) &&
+      Array.isArray(block.content.sandbox.tasks)
+    ) {
+      const taskIds = block.content.sandbox.tasks.flatMap((task) => {
+        const taskId = isRecord(task) ? task.id : null;
+        return typeof taskId === "string" ? [taskId] : [];
+      });
+      if (
+        taskIds.length &&
+        !taskIds.every((taskId) => input.passedSqlTaskIds.has(`${block.id}:${taskId}`))
+      ) {
+        return "checked-exercise";
+      }
+    }
+    if (block.block_type === "final_quiz" && !input.completedBlockIds.has(block.id)) {
+      return "checked-exercise";
+    }
+  }
+
+  if (input.lessonCompleted) {
+    return input.hasHumanHomework ? "homework" : "lesson-complete";
+  }
+  return "chat";
+}
+
 export const DEFAULT_ARCHIE_SETTINGS = {
   enabled: false,
   name: "Арчи",
   subtitle: "Помощник курса",
   welcomeMessage: "Привет! Я Арчи. Помогу разобраться в материале этого урока.",
+  greetingMessages: [...DEFAULT_ARCHIE_GREETING_MESSAGES] as string[],
+  motivationMessages: { ...DEFAULT_ARCHIE_MOTIVATION_MESSAGES },
   systemPrompt:
     "Объясняй материал простым языком. Сначала помогай понять принцип и давай подсказку, а не готовое решение активного задания.",
   maxMessageLength: 1500,

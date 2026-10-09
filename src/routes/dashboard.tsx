@@ -479,20 +479,6 @@ function Dashboard() {
           </div>
         </div>
 
-        <section className="rounded-2xl border border-border bg-card p-6 text-sm leading-relaxed text-muted-foreground shadow-[var(--shadow-soft)]">
-          <h2 className="mb-2 text-lg font-bold text-foreground">Условия курса</h2>
-          <p>
-            Курс рассчитан на 14 дней. После начала обучения вам будет открываться один новый урок в
-            день.
-          </p>
-          <p className="mt-2">
-            Домашнее задание можно отправить после прохождения соответствующего урока.
-          </p>
-          <p className="mt-2">
-            Срок сдачи не ограничен, а отправка ДЗ не влияет на открытие следующих уроков.
-          </p>
-        </section>
-
         {/* All lessons */}
         <section
           id="all-lessons"

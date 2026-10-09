@@ -22,6 +22,7 @@ import { LessonRichContent } from "@/components/lesson-rich-content";
 import { SqlSandboxHomework } from "@/components/sql-sandbox-homework";
 import type { LessonGuideVariant } from "@/lib/lesson-guide";
 import {
+  blockCompletionCondition,
   blocksNext,
   isBlockRequired,
   lessonTableColumns,
@@ -40,7 +41,10 @@ type InteractiveLessonProps = {
   blocks: LessonBlock[];
   completedBlockIds: Set<string>;
   onBlocksCompleted: (blockIds: string[]) => Promise<boolean> | void;
-  onQuestionAnswered?: (blockId: string, selectedIndexes: number[]) => Promise<boolean> | void;
+  onQuestionAnswered?: (
+    blockId: string,
+    selectedIndexes: number[],
+  ) => Promise<boolean | { saved: boolean; isCorrect: boolean }> | boolean | void;
   legacyContent?: string;
   lessonDay: number;
   lessonTitle: string;
@@ -277,7 +281,9 @@ function LessonBlockView({
   block: LessonBlock;
   completed: boolean;
   onComplete: () => Promise<boolean> | void;
-  onQuestionAnswered?: (selectedIndexes: number[]) => Promise<boolean> | void;
+  onQuestionAnswered?: (
+    selectedIndexes: number[],
+  ) => Promise<boolean | { saved: boolean; isCorrect: boolean }> | boolean | void;
   previewMode?: boolean;
 }) {
   const c = block.content;
@@ -732,7 +738,9 @@ function QuestionBlock({
   content: Record<string, unknown>;
   completed: boolean;
   onComplete: () => Promise<boolean> | void;
-  onQuestionAnswered?: (selectedIndexes: number[]) => Promise<boolean> | void;
+  onQuestionAnswered?: (
+    selectedIndexes: number[],
+  ) => Promise<boolean | { saved: boolean; isCorrect: boolean }> | boolean | void;
 }) {
   const options = stringList(content, "options");
   const correctIndex = typeof content.correctIndex === "number" ? content.correctIndex : 0;
@@ -747,6 +755,7 @@ function QuestionBlock({
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
+  const [incorrectAttempt, setIncorrectAttempt] = useState(false);
   const correct =
     submitted &&
     selected.length === correctAnswers.length &&
@@ -756,10 +765,26 @@ function QuestionBlock({
     setSaving(true);
     setSaveFailed(false);
     try {
-      if ((await onQuestionAnswered?.(selectedIndexes)) === false) {
+      const answerResult = await onQuestionAnswered?.(selectedIndexes);
+      if (answerResult === false || (typeof answerResult === "object" && !answerResult.saved)) {
         setSaveFailed(true);
         return;
       }
+      const isCorrect =
+        typeof answerResult === "object"
+          ? answerResult.isCorrect
+          : selectedIndexes.length === correctAnswers.length &&
+            selectedIndexes.every((index) => correctAnswers.includes(index));
+      if (
+        !isCorrect &&
+        blockCompletionCondition({ block_type: "question", content }) === "question_correct"
+      ) {
+        setIncorrectAttempt(true);
+        setSubmitted(false);
+        setSelected([]);
+        return;
+      }
+      setIncorrectAttempt(false);
       if ((await onComplete()) === false) setSaveFailed(true);
     } catch {
       setSaveFailed(true);
@@ -794,6 +819,11 @@ function QuestionBlock({
         <p className="mt-3 rounded-lg bg-primary-soft px-4 py-3 text-sm font-semibold text-primary">
           Можно выбрать несколько ответов. Отметь все верные варианты, затем нажми «Проверить
           ответ».
+        </p>
+      )}
+      {incorrectAttempt && !answered && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950">
+          Пока неверно — попробуй ещё раз. Этот шаг засчитается после правильного ответа.
         </p>
       )}
       <div className="mt-5 space-y-2">

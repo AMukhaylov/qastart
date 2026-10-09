@@ -2,9 +2,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GROUPS_MIGRATION = ROOT / "supabase/migrations/20260925143000_student_groups_and_meeting_audiences.sql"
-MEETINGS_MIGRATION = ROOT / "supabase/migrations/20260603140000_course_meetings.sql"
-NOTIFICATIONS_MIGRATION = ROOT / "supabase/migrations/20260924142259_notifications_and_web_push.sql"
+GROUPS_MIGRATION = ROOT / "supabase/migrations/20260925102247_student_groups_and_meeting_audiences.sql"
+MEETINGS_MIGRATION = ROOT / "supabase/migrations/20260602210618_course_meetings.sql"
+NOTIFICATIONS_MIGRATION = ROOT / "supabase/migrations/20260924143025_notifications_and_web_push.sql"
 
 
 def test_group_membership_policies_are_admin_scoped_and_students_see_only_their_rows():

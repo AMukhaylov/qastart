@@ -3,9 +3,16 @@ import { z } from "zod";
 import {
   ARCHIE_BASE_SYSTEM_PROMPT,
   DEFAULT_ARCHIE_SETTINGS,
+  ARCHIE_MOTIVATION_MESSAGE_CATEGORIES,
+  getArchieLessonMode,
+  pickArchieLessonCompletionMessage,
+  pickArchieMotivationMessage,
+  normalizeArchieGreetingMessages,
+  normalizeArchieMotivationMessages,
   buildSafeLessonContext,
   parseArchieAnswer,
   type ArchieChatMessage,
+  type ArchieMotivationEvent,
   type ArchieProviderId,
 } from "@/lib/archie";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -28,6 +35,11 @@ import {
 } from "./archie-ai.server";
 
 const accessTokenSchema = z.string().min(20).max(4096);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const providerSchema = z.enum(["openrouter", "openai", "deepseek", "custom"]);
 const historySchema = z
   .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(6000) }))
@@ -40,21 +52,6 @@ const chatInput = z.object({
 });
 
 const adminInput = z.object({ accessToken: accessTokenSchema });
-const localRateLimitWindows = new Map<string, { startedAt: number; count: number }>();
-
-function reserveLocalRateLimit(userId: string, limit: number, now = Date.now()) {
-  if (localRateLimitWindows.size > 2000) {
-    for (const [key, bucket] of localRateLimitWindows) {
-      if (now - bucket.startedAt >= 60_000) localRateLimitWindows.delete(key);
-    }
-  }
-  const current = localRateLimitWindows.get(userId);
-  const bucket =
-    !current || now - current.startedAt >= 60_000 ? { startedAt: now, count: 0 } : current;
-  bucket.count += 1;
-  localRateLimitWindows.set(userId, bucket);
-  return bucket.count <= limit;
-}
 
 const updateInput = z.object({
   accessToken: accessTokenSchema,
@@ -62,6 +59,11 @@ const updateInput = z.object({
   name: z.string().trim().min(1).max(80),
   subtitle: z.string().trim().min(1).max(120),
   welcomeMessage: z.string().trim().min(1).max(1000),
+  greetingMessages: z.array(z.string().trim().min(1).max(240)).max(8),
+  motivationMessages: z.record(
+    z.enum(ARCHIE_MOTIVATION_MESSAGE_CATEGORIES),
+    z.array(z.string().trim().min(1).max(400)).max(8),
+  ),
   systemPrompt: z.string().max(6000),
   maxMessageLength: z.number().int().min(100).max(6000),
   maxHistoryMessages: z.number().int().min(0).max(20),
@@ -73,6 +75,25 @@ const updateInput = z.object({
   model: z.string().trim().max(300),
   apiKey: z.string().max(1000).optional(),
   removeApiKey: z.boolean().default(false),
+});
+
+const updateMainSettingsInput = z.object({
+  accessToken: accessTokenSchema,
+  enabled: z.boolean(),
+  name: z.string().trim().min(1).max(80),
+  subtitle: z.string().trim().min(1).max(120),
+  welcomeMessage: z.string().trim().min(1).max(1000),
+  greetingMessages: z.array(z.string().trim().min(1).max(240)).max(8),
+  motivationMessages: z.record(
+    z.enum(ARCHIE_MOTIVATION_MESSAGE_CATEGORIES),
+    z.array(z.string().trim().min(1).max(400)).max(8),
+  ),
+  systemPrompt: z.string().max(6000),
+  maxMessageLength: z.number().int().min(100).max(6000),
+  maxHistoryMessages: z.number().int().min(0).max(20),
+  rateLimitPerMinute: z.number().int().min(1).max(60),
+  timeoutMs: z.number().int().min(5000).max(60000),
+  quickActionsEnabled: z.boolean(),
 });
 
 const providerTestInput = z.object({
@@ -96,6 +117,251 @@ async function requireAdmin(accessToken: string) {
   return getUserIdForAccessToken(accessToken);
 }
 
+async function loadArchieStudentContext(userId: string, lessonId: string) {
+  const { data: lesson, error: lessonError } = await supabaseAdmin
+    .from("lessons")
+    .select("id,day_number,title,description,content_md,homework_md")
+    .eq("id", lessonId)
+    .maybeSingle();
+  if (lessonError) throw lessonError;
+  if (!lesson) throw new Error("Урок не найден");
+  const [
+    access,
+    { data: lessons, error: lessonsError },
+    { data: progress, error: progressError },
+    { data: passedQuizzes, error: quizzesError },
+    { data: blocks, error: blocksError },
+    { data: blockProgress, error: blockProgressError },
+    { data: submissions, error: submissionsError },
+    { data: sqlAttempts, error: sqlAttemptsError },
+  ] = await Promise.all([
+    getLessonScheduleAccess(userId, lesson.day_number),
+    supabaseAdmin.from("lessons").select("id,day_number"),
+    supabaseAdmin
+      .from("lesson_progress")
+      .select("lesson_id")
+      .eq("user_id", userId)
+      .eq("completed", true),
+    supabaseAdmin
+      .from("quiz_attempts")
+      .select("lesson_id")
+      .eq("user_id", userId)
+      .eq("passed", true),
+    supabaseAdmin
+      .from("lesson_blocks")
+      .select("id,block_type,content,position")
+      .eq("lesson_id", lesson.id)
+      .order("position"),
+    supabaseAdmin
+      .from("lesson_block_progress")
+      .select("block_id")
+      .eq("user_id", userId)
+      .eq("lesson_id", lesson.id),
+    supabaseAdmin
+      .from("homework_submissions")
+      .select("id,status,reviewed_at,created_at")
+      .eq("user_id", userId)
+      .eq("lesson_id", lesson.id)
+      .order("created_at", { ascending: false })
+      .limit(1),
+    supabaseAdmin
+      .from("sql_sandbox_attempts")
+      .select("block_id,task_id,passed")
+      .eq("user_id", userId)
+      .eq("lesson_id", lesson.id),
+  ]);
+  for (const error of [
+    lessonsError,
+    progressError,
+    quizzesError,
+    blocksError,
+    blockProgressError,
+    submissionsError,
+    sqlAttemptsError,
+  ]) {
+    if (error) throw error;
+  }
+  if (!access.allowed) throw new Error("Урок пока недоступен по расписанию обучения");
+
+  const courseLessons = lessons ?? [];
+  const finalLesson = courseLessons.find((item) => item.day_number === 14);
+  const completedLessonIds = new Set((progress ?? []).map((item) => item.lesson_id));
+  const passedQuizLessonIds = new Set((passedQuizzes ?? []).map((item) => item.lesson_id));
+  const finalQuizPassed = Boolean(finalLesson && passedQuizLessonIds.has(finalLesson.id));
+  const courseCompleted = Boolean(
+    finalLesson &&
+    finalQuizPassed &&
+    courseLessons.length > 0 &&
+    courseLessons.every((item) => item.id === finalLesson.id || completedLessonIds.has(item.id)),
+  );
+  const lessonCompleted =
+    lesson.day_number === 14
+      ? passedQuizLessonIds.has(lesson.id)
+      : completedLessonIds.has(lesson.id);
+  const lessonBlocks = (blocks ?? []).map((block) => ({
+    ...block,
+    content: isRecord(block.content) ? block.content : {},
+  }));
+  const latestSubmission = submissions?.[0] ?? null;
+  const hasHumanHomework = Boolean(
+    (lessonBlocks.length === 0 && lesson.homework_md?.trim()) ||
+    lessonBlocks.some(
+      (block) =>
+        block.block_type === "homework" &&
+        !(
+          block.content &&
+          typeof block.content === "object" &&
+          "mode" in block.content &&
+          block.content.mode === "sql_sandbox"
+        ),
+    ),
+  );
+  const completedBlockIds = new Set((blockProgress ?? []).map((item) => item.block_id));
+  const passedSqlTaskIds = new Set(
+    (sqlAttempts ?? [])
+      .filter((attempt) => attempt.passed)
+      .map((attempt) => `${attempt.block_id}:${attempt.task_id}`),
+  );
+  const mode = getArchieLessonMode({
+    courseCompleted,
+    lessonCompleted,
+    hasHumanHomework,
+    homeworkStatus: latestSubmission?.status ?? null,
+    blocks: lessonBlocks.map((block) => ({
+      id: block.id,
+      block_type: block.block_type,
+      position: block.position,
+      content:
+        block.content && typeof block.content === "object"
+          ? (block.content as Record<string, unknown>)
+          : {},
+    })),
+    completedBlockIds,
+    passedSqlTaskIds,
+  });
+
+  return {
+    lesson,
+    courseLessons,
+    finalLesson,
+    courseCompleted,
+    completedLessonIds,
+    lessonCompleted,
+    mode,
+    lessonBlocks,
+    completedBlockIds,
+    latestSubmission,
+    passedSqlTaskIds,
+  };
+}
+
+function buildArchieMotivationEvents(
+  context: Awaited<ReturnType<typeof loadArchieStudentContext>>,
+  messages: ReturnType<typeof normalizeArchieMotivationMessages>,
+) {
+  const events: ArchieMotivationEvent[] = [];
+  const add = (
+    key: string,
+    category: (typeof ARCHIE_MOTIVATION_MESSAGE_CATEGORIES)[number],
+    priority: number,
+    dismissWidget = false,
+  ) =>
+    events.push({
+      key,
+      category,
+      priority,
+      dismissWidget,
+      message:
+        pickArchieMotivationMessage(messages, category, key) ||
+        messages[category][0] ||
+        "Я рядом и верю, что у тебя всё получится!",
+    });
+  const lessonId = context.lesson.id;
+  if (context.courseCompleted && context.finalLesson) {
+    add(`course-completed:${context.finalLesson.id}`, "courseComplete", 100, true);
+    return events;
+  }
+  if (context.latestSubmission?.status === "approved") {
+    const approvalVersion =
+      context.latestSubmission.reviewed_at ?? context.latestSubmission.created_at;
+    add(
+      `homework-approved:${context.latestSubmission.id}:${approvalVersion}`,
+      "homeworkApproved",
+      90,
+      true,
+    );
+    return events;
+  }
+  if (context.mode === "homework-pending" || context.mode === "homework-returned") {
+    return events;
+  }
+  if (context.lessonCompleted) {
+    events.push({
+      key: `lesson-completed:${lessonId}`,
+      category: "lessonComplete",
+      priority: 80,
+      dismissWidget: context.mode === "lesson-complete",
+      message: pickArchieLessonCompletionMessage(messages, context.lesson.day_number),
+    });
+    return events;
+  }
+  if (context.mode === "homework") {
+    return events;
+  }
+
+  const completedLessonCount = context.courseLessons.filter((item) =>
+    item.day_number === 14 ? context.courseCompleted : context.completedLessonIds.has(item.id),
+  ).length;
+  if (
+    !context.courseCompleted &&
+    context.courseLessons.length > 0 &&
+    completedLessonCount >= Math.ceil(context.courseLessons.length / 2)
+  ) {
+    add(`course-half:${context.courseLessons.length}`, "halfCourse", 70);
+  }
+
+  const requiredBlocks = context.lessonBlocks.filter(
+    (block) =>
+      block.content?.visible !== false &&
+      block.content?.required !== false &&
+      block.block_type !== "homework",
+  );
+  const completedRequiredCount = requiredBlocks.filter((block) =>
+    context.completedBlockIds.has(block.id),
+  ).length;
+  if (requiredBlocks.length > 0 && completedRequiredCount >= Math.ceil(requiredBlocks.length / 2)) {
+    add(`lesson-midpoint:${lessonId}`, "midLesson", 40);
+  }
+
+  let completedVerifiedExercise = context.lessonBlocks.some(
+    (block) => block.block_type === "question" && context.completedBlockIds.has(block.id),
+  );
+  for (const block of context.lessonBlocks) {
+    if (
+      block.block_type === "homework" &&
+      block.content.mode === "sql_sandbox" &&
+      isRecord(block.content.sandbox) &&
+      Array.isArray(block.content.sandbox.tasks)
+    ) {
+      const taskIds = block.content.sandbox.tasks.flatMap((task: unknown) =>
+        task && typeof task === "object" && "id" in task && typeof task.id === "string"
+          ? [task.id]
+          : [],
+      );
+      if (
+        taskIds.length > 0 &&
+        taskIds.every((taskId) => context.passedSqlTaskIds.has(`${block.id}:${taskId}`))
+      ) {
+        completedVerifiedExercise = true;
+      }
+    }
+  }
+  if (completedVerifiedExercise) {
+    add(`exercise-completed:${lessonId}`, "exerciseComplete", 50);
+  }
+  return events.sort((left, right) => right.priority - left.priority);
+}
+
 function hasEncryptionKey() {
   return Boolean(
     process.env.ARCHIE_ENCRYPTION_KEY && process.env.ARCHIE_ENCRYPTION_KEY.length >= 32,
@@ -108,21 +374,21 @@ export const getArchieForStudent = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const userId = await getUserIdForAccessToken(data.accessToken);
-    const { data: lesson, error } = await supabaseAdmin
-      .from("lessons")
-      .select("id,day_number")
-      .eq("id", data.lessonId)
-      .maybeSingle();
-    if (error) throw error;
-    if (!lesson) throw new Error("Урок не найден");
-    const access = await getLessonScheduleAccess(userId, lesson.day_number);
-    if (!access.allowed) throw new Error("Урок пока недоступен по расписанию обучения");
-    const settings = await loadArchieSettings();
+    const [context, settings] = await Promise.all([
+      loadArchieStudentContext(userId, data.lessonId),
+      loadArchieSettings(),
+    ]);
+    const motivationMessages = normalizeArchieMotivationMessages(settings.motivation_messages);
     return {
       enabled: settings.enabled && Boolean(settings.encrypted_api_key) && Boolean(settings.model),
       name: settings.name || DEFAULT_ARCHIE_SETTINGS.name,
       subtitle: settings.subtitle || DEFAULT_ARCHIE_SETTINGS.subtitle,
       welcomeMessage: settings.welcome_message || DEFAULT_ARCHIE_SETTINGS.welcomeMessage,
+      greetingMessages: normalizeArchieGreetingMessages(settings.greeting_messages),
+      motivationMessages,
+      motivationEvents: buildArchieMotivationEvents(context, motivationMessages),
+      mode: context.mode,
+      homeworkStatus: context.latestSubmission?.status ?? null,
       maxMessageLength: settings.max_message_length,
       quickActionsEnabled: settings.quick_actions_enabled,
     };
@@ -132,20 +398,22 @@ export const askArchie = createServerFn({ method: "POST" })
   .inputValidator((data) => chatInput.parse(data))
   .handler(async ({ data }) => {
     const userId = await getUserIdForAccessToken(data.accessToken);
-    const [settings, { data: lessonAccessRef, error: lessonError }] = await Promise.all([
+    const [settings, studentContext] = await Promise.all([
       loadArchieSettings(),
-      supabaseAdmin.from("lessons").select("id,day_number").eq("id", data.lessonId).maybeSingle(),
+      loadArchieStudentContext(userId, data.lessonId),
     ]);
-    if (lessonError) throw lessonError;
-    if (!lessonAccessRef) throw new Error("Урок не найден");
-    const access = await getLessonScheduleAccess(userId, lessonAccessRef.day_number);
-    if (!access.allowed) throw new Error("Урок пока недоступен по расписанию обучения");
-    const { data: lesson, error: lessonContentError } = await supabaseAdmin
-      .from("lessons")
-      .select("id,day_number,title,description,content_md")
-      .eq("id", lessonAccessRef.id)
-      .single();
-    if (lessonContentError) throw lessonContentError;
+    if (studentContext.mode !== "chat") {
+      const lockedMessage =
+        studentContext.mode === "checked-exercise"
+          ? "Сейчас Арчи не подсказывает во время проверяемого задания. Попробуй решить самостоятельно!"
+          : studentContext.mode === "homework" || studentContext.mode === "homework-returned"
+            ? "Во время домашнего задания чат Арчи отключён. Посмотри условия и комментарии наставника — у тебя получится!"
+            : studentContext.mode === "homework-pending"
+              ? "Домашнее задание уже отправлено. Дождись проверки наставника — чат Арчи пока отключён."
+              : "Этот учебный этап уже завершён, поэтому чат Арчи здесь отключён.";
+      throw new Error(lockedMessage);
+    }
+    const lesson = studentContext.lesson;
     if (!settings.enabled) throw new Error("Арчи сейчас отключён");
     if (data.message.length > settings.max_message_length) {
       throw new Error(`Сообщение должно быть короче ${settings.max_message_length} символов`);
@@ -153,31 +421,32 @@ export const askArchie = createServerFn({ method: "POST" })
     if (!settings.encrypted_api_key || !settings.model) throw new Error("Арчи пока не настроен");
 
     const provider = settings.provider as ArchieProviderId;
-    const base = new Date(Date.now() - 60_000).toISOString();
-    if (!reserveLocalRateLimit(userId, settings.rate_limit_per_minute)) {
-      return { type: "hint" as const, answer: "Подожди немного и попробуй задать вопрос ещё раз." };
+    const { data: reservationId, error: reservationError } = await supabaseAdmin.rpc(
+      "reserve_archie_request",
+      {
+        p_user_id: userId,
+        p_lesson_id: studentContext.lesson.id,
+        p_provider: provider,
+        p_model: settings.model,
+        p_limit: settings.rate_limit_per_minute,
+      },
+    );
+    if (reservationError) {
+      console.error("Archie request could not be reserved", reservationError.message);
+      return {
+        type: "hint" as const,
+        answer: "Арчи временно недоступен. Попробуй ещё раз чуть позже.",
+      };
     }
-    const { count, error: rateError } = await supabaseAdmin
-      .from("archie_request_stats")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .gte("created_at", base);
-    if (rateError) throw rateError;
-    if ((count ?? 0) >= settings.rate_limit_per_minute) {
+    if (reservationId === null) {
       return { type: "hint" as const, answer: "Подожди немного и попробуй задать вопрос ещё раз." };
     }
 
-    const { data: blocks, error: blocksError } = await supabaseAdmin
-      .from("lesson_blocks")
-      .select("block_type,content,position")
-      .eq("lesson_id", data.lessonId)
-      .order("position");
-    if (blocksError) throw blocksError;
     const context = buildSafeLessonContext({
       title: lesson.title,
       description: lesson.description,
       content_md: lesson.content_md,
-      blocks: (blocks ?? []).map((block) => ({
+      blocks: studentContext.lessonBlocks.map((block) => ({
         block_type: block.block_type,
         content: block.content,
       })),
@@ -220,6 +489,7 @@ export const askArchie = createServerFn({ method: "POST" })
       });
       const answer = parseArchieAnswer(completion.content);
       await recordArchieRequest({
+        reservationId,
         userId,
         lessonId: lesson.id,
         provider,
@@ -237,6 +507,7 @@ export const askArchie = createServerFn({ method: "POST" })
         reason: error instanceof Error ? error.message.slice(0, 160) : "unknown",
       });
       await recordArchieRequest({
+        reservationId,
         userId,
         lessonId: lesson.id,
         provider,
@@ -285,11 +556,13 @@ export const updateArchieAdminSettings = createServerFn({ method: "POST" })
       encryptedApiKey = encryptAPIKey(data.apiKey);
       apiKeyMask = createApiKeyMask(data.apiKey);
     }
-    const patch: ArchieSettingsPatch = {
+    const patch: Partial<ArchieSettingsPatch> = {
       enabled: data.enabled,
       name: data.name,
       subtitle: data.subtitle,
       welcome_message: data.welcomeMessage,
+      greeting_messages: normalizeArchieGreetingMessages(data.greetingMessages),
+      motivation_messages: normalizeArchieMotivationMessages(data.motivationMessages),
       system_prompt: data.systemPrompt,
       max_message_length: data.maxMessageLength,
       max_history_messages: data.maxHistoryMessages,
@@ -301,6 +574,27 @@ export const updateArchieAdminSettings = createServerFn({ method: "POST" })
       model: data.model,
     };
     return saveArchieSettings(patch, encryptedApiKey, apiKeyMask, adminUserId);
+  });
+
+export const updateArchieMainSettings = createServerFn({ method: "POST" })
+  .inputValidator((data) => updateMainSettingsInput.parse(data))
+  .handler(async ({ data }) => {
+    const adminUserId = await requireAdmin(data.accessToken);
+    const patch: Partial<ArchieSettingsPatch> = {
+      enabled: data.enabled,
+      name: data.name,
+      subtitle: data.subtitle,
+      welcome_message: data.welcomeMessage,
+      greeting_messages: normalizeArchieGreetingMessages(data.greetingMessages),
+      motivation_messages: normalizeArchieMotivationMessages(data.motivationMessages),
+      system_prompt: data.systemPrompt,
+      max_message_length: data.maxMessageLength,
+      max_history_messages: data.maxHistoryMessages,
+      rate_limit_per_minute: data.rateLimitPerMinute,
+      timeout_ms: data.timeoutMs,
+      quick_actions_enabled: data.quickActionsEnabled,
+    };
+    return saveArchieSettings(patch, undefined, undefined, adminUserId);
   });
 
 async function getProviderKey(inputKey: string | undefined) {

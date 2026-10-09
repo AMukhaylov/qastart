@@ -21,9 +21,9 @@ def _start_final_quiz_with_available_attempt(student_page, settings) -> None:
 @pytest.mark.authenticated
 @pytest.mark.student
 @pytest.mark.mutation
-def test_disposable_student_can_start_final_quiz(student_page, settings):
+def test_disposable_student_can_start_final_quiz(student_page, settings, request):
     """Run only with a disposable account: starting a quiz consumes an attempt."""
-    require_mutation(settings)
+    require_mutation(settings, request)
     student_page.goto("/lessons/14", wait_until="domcontentloaded")
     heading = student_page.locator("h1")
     heading.wait_for()
@@ -41,9 +41,9 @@ def test_disposable_student_can_start_final_quiz(student_page, settings):
 @pytest.mark.authenticated
 @pytest.mark.student
 @pytest.mark.mutation
-def test_leaving_active_quiz_finishes_attempt_and_returns_to_dashboard(student_page, settings):
+def test_leaving_active_quiz_finishes_attempt_and_returns_to_dashboard(student_page, settings, request):
     """Run only with a disposable account: leaving the test must consume its active attempt."""
-    require_mutation(settings)
+    require_mutation(settings, request)
     _start_final_quiz_with_available_attempt(student_page, settings)
     expect(student_page.get_by_text("Вопрос 1 из 30", exact=False)).to_be_visible()
 

@@ -55,7 +55,7 @@ for (const [name, run] of checks) {
 if (failed) process.exit(1);
 
 async function expectHtml(path) {
-  const response = await fetchWithTimeout(`${baseUrl}${path}`);
+  const response = await fetchHtmlWithStartupRetry(`${baseUrl}${path}`);
   const text = await response.text();
 
   if (!response.ok) {
@@ -71,6 +71,23 @@ async function expectHtml(path) {
   }
 
   return `HTTP ${response.status}`;
+}
+
+async function fetchHtmlWithStartupRetry(url) {
+  const transientStatuses = new Set([502, 503, 504]);
+  let response;
+
+  // PM2 can briefly restart the SSR process while nginx is already accepting
+  // traffic. Retry only transient gateway errors; persistent failures still
+  // fail the smoke and trigger the deploy rollback.
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    response = await fetchWithTimeout(url);
+    if (!transientStatuses.has(response.status) || attempt === 5) return response;
+    await response.arrayBuffer();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  return response;
 }
 
 async function expectStatus(path, expectedStatus) {

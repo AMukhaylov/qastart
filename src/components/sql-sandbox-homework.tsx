@@ -30,11 +30,7 @@ export function SqlSandboxHomework({
   successMessage?: string;
   config: SqlSandboxConfig;
   attempts?: SavedSqlSandboxAttempt[];
-  onAttemptSaved?: (
-    taskId: string,
-    query: string,
-    result: SqlSandboxResult,
-  ) => Promise<void> | void;
+  onAttemptSaved?: (taskId: string, query: string) => Promise<SqlSandboxResult> | SqlSandboxResult;
 }) {
   const [queries, setQueries] = useState<Record<string, string>>(() =>
     Object.fromEntries(
@@ -71,9 +67,11 @@ export function SqlSandboxHomework({
     setRunningTask(task.id);
     setSaveError(null);
     try {
-      const result = await runSandboxTaskInWorker(config, queries[task.id] ?? "", task);
+      const query = queries[task.id] ?? "";
+      const result = onAttemptSaved
+        ? await onAttemptSaved(task.id, query)
+        : await runSandboxTaskInWorker(config, query, task);
       setResults((current) => ({ ...current, [task.id]: result }));
-      await onAttemptSaved?.(task.id, queries[task.id] ?? "", result);
     } catch (error) {
       setSaveError(
         error instanceof Error

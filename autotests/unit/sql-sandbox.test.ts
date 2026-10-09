@@ -52,6 +52,7 @@ test("SQL sandbox defaults to SELECT only and blocks schema, transaction, and ex
     "SELECT 1; DELETE FROM users",
     "WITH x AS (SELECT 1) SELECT * FROM x",
     "SELECT load_extension('x')",
+    "WITH RECURSIVE loop(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM loop) SELECT x FROM loop",
     "SELECT randomblob(1000000000)",
   ]) {
     assert.equal(validateSandboxSelect(sql).valid, false, sql);

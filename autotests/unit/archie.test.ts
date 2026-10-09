@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  DEFAULT_ARCHIE_GREETING_MESSAGES,
+  DEFAULT_ARCHIE_MOTIVATION_MESSAGES,
+  getArchieLessonMode,
   buildSafeLessonContext,
+  normalizeArchieGreetingMessages,
+  normalizeArchieMotivationMessages,
+  pickArchieLessonCompletionMessage,
+  pickArchieMotivationMessage,
   parseArchieAnswer,
   parseArchieModelOptions,
 } from "../../src/lib/archie.ts";
@@ -10,6 +17,178 @@ import {
   encryptProviderKey,
   maskProviderKey,
 } from "../../src/server/archie-crypto.server.ts";
+
+test("Archie greeting bubbles normalize editable text and keep safe defaults", () => {
+  assert.deepEqual(normalizeArchieGreetingMessages(undefined), [
+    ...DEFAULT_ARCHIE_GREETING_MESSAGES,
+  ]);
+  assert.deepEqual(normalizeArchieGreetingMessages(["  Привет!  ", "", "  Давай разберёмся. "]), [
+    "Привет!",
+    "Давай разберёмся.",
+  ]);
+  assert.equal(normalizeArchieGreetingMessages(["А".repeat(300)])[0].length, 240);
+  assert.equal(
+    normalizeArchieGreetingMessages(Array.from({ length: 12 }, (_, i) => `Фраза ${i}`)).length,
+    8,
+  );
+  assert.deepEqual(normalizeArchieGreetingMessages(["", "   "]), [
+    ...DEFAULT_ARCHIE_GREETING_MESSAGES,
+  ]);
+});
+
+test("Archie motivation text is editable, bounded, deterministic, and falls back per category", () => {
+  assert.deepEqual(normalizeArchieMotivationMessages(null), DEFAULT_ARCHIE_MOTIVATION_MESSAGES);
+  const normalized = normalizeArchieMotivationMessages({ homeworkDoing: ["  Поддержка!  ", ""] });
+  assert.deepEqual(normalized.homeworkDoing, ["Поддержка!"]);
+  assert.deepEqual(normalized.courseComplete, DEFAULT_ARCHIE_MOTIVATION_MESSAGES.courseComplete);
+  assert.equal(
+    pickArchieMotivationMessage(normalized, "homeworkDoing", "same-event"),
+    "Поддержка!",
+  );
+  assert.equal(
+    normalizeArchieMotivationMessages({ homeworkDoing: ["x".repeat(500)] }).homeworkDoing[0].length,
+    400,
+  );
+  assert.equal(
+    normalizeArchieMotivationMessages({
+      homeworkDoing: Array.from({ length: 10 }, (_, i) => `M${i}`),
+    }).homeworkDoing.length,
+    8,
+  );
+});
+
+test("lesson-completion messages rotate between adjacent lessons", () => {
+  const messages = normalizeArchieMotivationMessages({
+    lessonComplete: ["Первая фраза", "Вторая фраза", "Третья фраза"],
+  });
+  assert.equal(pickArchieLessonCompletionMessage(messages, 1), "Первая фраза");
+  assert.equal(pickArchieLessonCompletionMessage(messages, 2), "Вторая фраза");
+  assert.equal(pickArchieLessonCompletionMessage(messages, 3), "Третья фраза");
+  assert.equal(pickArchieLessonCompletionMessage(messages, 4), "Первая фраза");
+});
+
+const archieModeInput = {
+  courseCompleted: false,
+  lessonCompleted: false,
+  hasHumanHomework: false,
+  homeworkStatus: null as "pending" | "approved" | "rejected" | "awaiting_mentor" | null,
+  blocks: [] as Array<{
+    id: string;
+    block_type: string;
+    position: number;
+    content: Record<string, unknown>;
+  }>,
+  completedBlockIds: new Set<string>(),
+  passedSqlTaskIds: new Set<string>(),
+};
+
+test("Archie mode follows persisted homework and course states", () => {
+  assert.equal(
+    getArchieLessonMode({ ...archieModeInput, lessonCompleted: true, hasHumanHomework: true }),
+    "homework",
+  );
+  assert.equal(
+    getArchieLessonMode({ ...archieModeInput, homeworkStatus: "pending" }),
+    "homework-pending",
+  );
+  assert.equal(
+    getArchieLessonMode({ ...archieModeInput, homeworkStatus: "awaiting_mentor" }),
+    "homework-pending",
+  );
+  assert.equal(
+    getArchieLessonMode({ ...archieModeInput, homeworkStatus: "rejected" }),
+    "homework-returned",
+  );
+  assert.equal(
+    getArchieLessonMode({ ...archieModeInput, homeworkStatus: "approved" }),
+    "homework-approved",
+  );
+  assert.equal(
+    getArchieLessonMode({ ...archieModeInput, courseCompleted: true }),
+    "course-complete",
+  );
+  assert.equal(
+    getArchieLessonMode({ ...archieModeInput, lessonCompleted: true }),
+    "lesson-complete",
+  );
+});
+
+test("Archie stays available during intermediate self-check questions", () => {
+  const blocks = [
+    { id: "read", block_type: "text", position: 1, content: {} },
+    {
+      id: "question",
+      block_type: "question",
+      position: 2,
+      content: { completionCondition: "question_correct" },
+    },
+    {
+      id: "later",
+      block_type: "question",
+      position: 3,
+      content: { completionCondition: "question_correct" },
+    },
+  ];
+  assert.equal(
+    getArchieLessonMode({ ...archieModeInput, blocks, completedBlockIds: new Set(["read"]) }),
+    "chat",
+  );
+  assert.equal(
+    getArchieLessonMode({
+      ...archieModeInput,
+      blocks,
+      completedBlockIds: new Set(["read", "question"]),
+    }),
+    "chat",
+  );
+  assert.equal(
+    getArchieLessonMode({
+      ...archieModeInput,
+      blocks,
+      completedBlockIds: new Set(["read", "question", "later"]),
+    }),
+    "chat",
+  );
+  assert.equal(
+    getArchieLessonMode({
+      ...archieModeInput,
+      blocks: [blocks[0], { ...blocks[1], content: { completionCondition: "viewed" } }],
+    }),
+    "chat",
+  );
+});
+
+test("Archie remains blocked during the final quiz", () => {
+  assert.equal(
+    getArchieLessonMode({
+      ...archieModeInput,
+      blocks: [{ id: "final", block_type: "final_quiz", position: 1, content: {} }],
+    }),
+    "checked-exercise",
+  );
+});
+
+test("Archie blocks a human homework only after that homework becomes available", () => {
+  const blocks = [
+    { id: "reading", block_type: "text", position: 1, content: {} },
+    {
+      id: "homework",
+      block_type: "homework",
+      position: 2,
+      content: { instruction: "Write a test" },
+    },
+  ];
+  assert.equal(getArchieLessonMode({ ...archieModeInput, hasHumanHomework: true, blocks }), "chat");
+  assert.equal(
+    getArchieLessonMode({
+      ...archieModeInput,
+      hasHumanHomework: true,
+      blocks,
+      completedBlockIds: new Set(["reading"]),
+    }),
+    "homework",
+  );
+});
 
 test("Archie context keeps public lesson content and strips answers/settings/hidden blocks", () => {
   const context = buildSafeLessonContext({

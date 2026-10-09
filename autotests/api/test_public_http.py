@@ -39,6 +39,20 @@ def test_production_security_headers(http, settings):
     assert headers.get("cross-origin-resource-policy") == "same-origin"
 
 
+def test_production_compresses_html_for_faster_page_loads(http, settings):
+    if not settings.is_production:
+        pytest.skip("Compression is provided by the production reverse proxy.")
+
+    response = http.get(
+        settings.url("/auth"),
+        headers={"Accept-Encoding": "gzip"},
+        timeout=20,
+    )
+
+    assert response.status_code == 200
+    assert "gzip" in response.headers.get("content-encoding", "").lower()
+
+
 def test_avatar_endpoint_requires_authentication(http, settings):
     response = http.get(settings.url("/api/avatar?userId=00000000-0000-0000-0000-000000000000"), timeout=20)
 

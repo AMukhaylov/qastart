@@ -13,8 +13,143 @@ def test_admin_students_list_is_available(admin_page):
 
     expect(admin_page.get_by_role("heading", name="Ученики")).to_be_visible()
     expect(admin_page.get_by_role("button", name="Создать ученика", exact=True)).to_be_visible()
-    for header in ["Ученик", "Логин", "Статус", "Прогресс", "ДЗ", "Сертификат", "Действия"]:
+    # Keep this smoke test aligned with the intentionally compact student table;
+    # login, certificate, and detailed course data live in the student modal.
+    for header in ["Ученик", "Группа", "Статус", "Прогресс", "ДЗ", "Действия"]:
         expect(admin_page.get_by_role("columnheader", name=header, exact=True)).to_be_visible()
+
+
+@pytest.mark.authenticated
+@pytest.mark.admin
+def test_admin_analytics_tables_can_be_hidden_independently(admin_page):
+    admin_page.goto("/admin/analytics", wait_until="domcontentloaded")
+
+    homework_section = admin_page.get_by_role("heading", name="ДЗ по урокам").locator(
+        "xpath=ancestor::section[1]"
+    )
+    lesson_progress_section = admin_page.get_by_role(
+        "heading", name="Прохождение по урокам"
+    ).locator("xpath=ancestor::section[1]")
+    homework_table = homework_section.locator("table")
+    lesson_progress_table = lesson_progress_section.locator("table")
+    expect(homework_table).to_be_visible()
+    expect(lesson_progress_table).to_be_visible()
+
+    homework_section.get_by_role(
+        "button", name="Скрыть таблицу: ДЗ по урокам", exact=True
+    ).click()
+    expect(homework_table).to_be_hidden()
+    expect(lesson_progress_table).to_be_visible()
+
+    admin_page.reload(wait_until="domcontentloaded")
+    expect(homework_section).to_be_visible()
+    expect(
+        homework_section.get_by_role(
+            "button", name="Показать таблицу: ДЗ по урокам", exact=True
+        )
+    ).to_be_visible()
+    expect(homework_table).to_be_hidden()
+    expect(lesson_progress_table).to_be_visible()
+
+    admin_page.goto("/admin/students", wait_until="domcontentloaded")
+    expect(admin_page.get_by_role("heading", name="Ученики")).to_be_visible()
+    admin_page.goto("/admin/analytics", wait_until="domcontentloaded")
+    expect(homework_section).to_be_visible()
+    expect(
+        homework_section.get_by_role(
+            "button", name="Показать таблицу: ДЗ по урокам", exact=True
+        )
+    ).to_be_visible()
+    expect(homework_table).to_be_hidden()
+
+    homework_section.get_by_role(
+        "button", name="Показать таблицу: ДЗ по урокам", exact=True
+    ).click()
+    expect(homework_table).to_be_visible()
+
+    # Wait for navigation commit, then let the persisted table state be the
+    # readiness condition; remote authenticated SSR can delay DOMContentLoaded.
+    admin_page.reload(wait_until="commit")
+    expect(homework_table).to_be_visible()
+
+
+@pytest.mark.authenticated
+@pytest.mark.admin
+def test_admin_archie_motivation_section_can_be_hidden_and_remembers_preference(admin_page):
+    admin_page.goto("/admin/archie", wait_until="domcontentloaded")
+
+    motivation_section = admin_page.get_by_role(
+        "heading", name="Мотивация и достижения", exact=True
+    ).locator("xpath=ancestor::section[1]")
+    message_fields = motivation_section.locator("textarea")
+    expect(message_fields.first).to_be_visible()
+
+    motivation_section.get_by_role(
+        "button", name="Скрыть блок: мотивация и достижения", exact=True
+    ).click()
+    expect(message_fields.first).to_be_hidden()
+
+    admin_page.reload(wait_until="domcontentloaded")
+    expect(
+        motivation_section.get_by_role(
+            "button", name="Показать блок: мотивация и достижения", exact=True
+        )
+    ).to_be_visible()
+    expect(message_fields.first).to_be_hidden()
+
+    admin_page.goto("/admin/students", wait_until="domcontentloaded")
+    admin_page.goto("/admin/archie", wait_until="domcontentloaded")
+    expect(message_fields.first).to_be_hidden()
+
+    motivation_section.get_by_role(
+        "button", name="Показать блок: мотивация и достижения", exact=True
+    ).click()
+    expect(message_fields.first).to_be_visible()
+    admin_page.reload(wait_until="domcontentloaded")
+    expect(message_fields.first).to_be_visible()
+
+
+@pytest.mark.authenticated
+@pytest.mark.admin
+def test_admin_archie_main_settings_and_provider_can_be_hidden_and_remembered(admin_page):
+    admin_page.goto("/admin/archie", wait_until="domcontentloaded")
+
+    for heading, label in [
+        ("Основные настройки", "основные настройки"),
+        ("AI-провайдер", "AI-провайдер"),
+    ]:
+        section = admin_page.get_by_role("heading", name=heading, exact=True).locator(
+            "xpath=ancestor::section[1]"
+        )
+        hide_button = section.get_by_role("button", name=f"Скрыть блок: {label}", exact=True)
+        content_id = hide_button.get_attribute("aria-controls")
+        assert content_id
+        content = admin_page.locator(f"#{content_id}")
+        expect(content).to_be_visible()
+        hide_button.click()
+        expect(content).to_be_hidden()
+
+        admin_page.reload(wait_until="domcontentloaded")
+        section = admin_page.get_by_role("heading", name=heading, exact=True).locator(
+            "xpath=ancestor::section[1]"
+        )
+        show_button = section.get_by_role("button", name=f"Показать блок: {label}", exact=True)
+        expect(show_button).to_be_visible()
+        content_id = show_button.get_attribute("aria-controls")
+        assert content_id
+        expect(admin_page.locator(f"#{content_id}")).to_be_hidden()
+
+        admin_page.goto("/admin/students", wait_until="domcontentloaded")
+        admin_page.goto("/admin/archie", wait_until="domcontentloaded")
+        section = admin_page.get_by_role("heading", name=heading, exact=True).locator(
+            "xpath=ancestor::section[1]"
+        )
+        show_button = section.get_by_role("button", name=f"Показать блок: {label}", exact=True)
+        expect(show_button).to_be_visible()
+        content_id = show_button.get_attribute("aria-controls")
+        assert content_id
+        show_button.click()
+        expect(admin_page.locator(f"#{content_id}")).to_be_visible()
 
 
 @pytest.mark.authenticated
@@ -145,7 +280,9 @@ def test_admin_final_quiz_settings_are_available(admin_page):
     admin_page.goto("/admin/lessons", wait_until="domcontentloaded")
     admin_page.get_by_role("button", name=re.compile(r"14\s+Итоговый тест")).click()
 
-    expect(admin_page.get_by_role("heading", name="Настройки итогового теста")).to_be_visible()
+    # The settings form is the contract; avoid coupling the test to copy that
+    # may differ across the production locale/build.
+    expect(admin_page.get_by_label("Вопросов в попытке")).to_be_visible()
     expect(admin_page.get_by_role("link", name="Итоговый тест", exact=True)).to_have_count(0)
     expect(admin_page.get_by_text("Сейчас в банке:", exact=False)).to_contain_text("90 вопросов")
     expect(admin_page.get_by_label("Вопросов в попытке")).to_have_value("30")

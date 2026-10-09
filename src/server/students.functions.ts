@@ -150,8 +150,12 @@ export const listAdminStudentsOverview = createServerFn({ method: "POST" })
       { data: homeworkBlocks, error: homeworkBlocksError },
       { data: sqlAttempts, error: sqlAttemptsError },
       { data: quizAttempts, error: quizAttemptsError },
+      { data: certificates, error: certificatesError },
+      { data: quizSettings, error: quizSettingsError },
     ] = await Promise.all([
-      supabaseAdmin.from("profiles").select("id,login,full_name,created_at,course_start_at"),
+      supabaseAdmin
+        .from("profiles")
+        .select("id,login,full_name,avatar_url,created_at,course_start_at"),
       listAllAuthUsers(),
       supabaseAdmin.from("user_roles").select("user_id,role"),
       supabaseAdmin.from("lessons").select("id,day_number,homework_md"),
@@ -172,7 +176,18 @@ export const listAdminStudentsOverview = createServerFn({ method: "POST" })
       supabaseAdmin
         .from("sql_sandbox_attempts")
         .select("user_id,block_id,task_id,passed,passed_at"),
-      supabaseAdmin.from("quiz_attempts").select("user_id,passed").eq("passed", true),
+      supabaseAdmin.from("quiz_attempts").select("user_id,lesson_id,passed,finished_at"),
+      supabaseAdmin
+        .from("certificates")
+        .select(
+          "id,user_id,certificate_number,verification_code,course_title,student_name,mentor_name,issued_at,revoked_at",
+        )
+        .order("issued_at", { ascending: false }),
+      supabaseAdmin
+        .from("final_quiz_settings" as any)
+        .select("max_attempts")
+        .eq("id", true)
+        .maybeSingle(),
     ]);
     for (const error of [
       profilesError,
@@ -185,6 +200,8 @@ export const listAdminStudentsOverview = createServerFn({ method: "POST" })
       homeworkBlocksError,
       sqlAttemptsError,
       quizAttemptsError,
+      certificatesError,
+      quizSettingsError,
     ]) {
       if (error) throw error;
     }
@@ -203,12 +220,56 @@ export const listAdminStudentsOverview = createServerFn({ method: "POST" })
         item.status === "approved" ? approved : item.status === "pending" ? pending : null;
       if (target) target.set(item.user_id, (target.get(item.user_id) ?? 0) + 1);
     });
+    const progressByUser = new Map<string, typeof progress>();
+    for (const item of progress ?? []) {
+      const rows = progressByUser.get(item.user_id) ?? [];
+      rows.push(item);
+      progressByUser.set(item.user_id, rows);
+    }
+    const submissionsByUser = new Map<string, typeof homework>();
+    for (const item of homework ?? []) {
+      const rows = submissionsByUser.get(item.user_id) ?? [];
+      rows.push(item);
+      submissionsByUser.set(item.user_id, rows);
+    }
+    const sqlAttemptsByUser = new Map<string, typeof sqlAttempts>();
+    for (const item of sqlAttempts ?? []) {
+      const rows = sqlAttemptsByUser.get(item.user_id) ?? [];
+      rows.push(item);
+      sqlAttemptsByUser.set(item.user_id, rows);
+    }
+    const quizStatusByUser = new Map<
+      string,
+      { failed: number; passed: boolean; active: boolean }
+    >();
+    const finalLessonId = lessons?.find((lesson) => lesson.day_number === 14)?.id;
+    for (const attempt of quizAttempts ?? []) {
+      if (!finalLessonId || attempt.lesson_id !== finalLessonId) continue;
+      const current = quizStatusByUser.get(attempt.user_id) ?? {
+        failed: 0,
+        passed: false,
+        active: false,
+      };
+      if (!attempt.finished_at) current.active = true;
+      else if (attempt.passed) current.passed = true;
+      else current.failed += 1;
+      quizStatusByUser.set(attempt.user_id, current);
+    }
+    const certificateByUser = new Map<
+      string,
+      typeof certificates extends (infer T)[] | null ? T : never
+    >();
+    for (const certificate of certificates ?? []) {
+      const current = certificateByUser.get(certificate.user_id);
+      if (!current || (current.revoked_at && !certificate.revoked_at)) {
+        certificateByUser.set(certificate.user_id, certificate);
+      }
+    }
     const groupMembers = new Map<string, string[]>();
     (memberships ?? []).forEach((membership: any) => {
-      groupMembers.set(membership.group_id, [
-        ...(groupMembers.get(membership.group_id) ?? []),
-        membership.student_id,
-      ]);
+      const members = groupMembers.get(membership.group_id) ?? [];
+      members.push(membership.student_id);
+      groupMembers.set(membership.group_id, members);
     });
     const studentRows = users
       .filter((user) => !admins.has(user.id))
@@ -217,17 +278,19 @@ export const listAdminStudentsOverview = createServerFn({ method: "POST" })
         const snapshots = buildHomeworkSnapshots({
           lessons: lessons ?? [],
           courseStartAt: profile?.course_start_at ?? null,
-          progress: (progress ?? []).filter((item) => item.user_id === user.id),
-          submissions: (homework ?? []).filter((item) => item.user_id === user.id),
+          progress: progressByUser.get(user.id) ?? [],
+          submissions: submissionsByUser.get(user.id) ?? [],
           homeworkBlocks: homeworkBlocks ?? [],
-          sqlAttempts: (sqlAttempts ?? []).filter((item) => item.user_id === user.id),
+          sqlAttempts: sqlAttemptsByUser.get(user.id) ?? [],
         });
         const homeworkCounts = countHomeworkTimings(snapshots);
         const currentDay = courseDay(profile?.course_start_at ?? null);
+        const quizStatus = quizStatusByUser.get(user.id);
         return {
           id: user.id,
           login: profile?.login ?? "",
           full_name: profile?.full_name ?? null,
+          avatar_url: profile?.avatar_url ?? null,
           created_at: profile?.created_at ?? user.created_at,
           course_start_at: profile?.course_start_at ?? null,
           currentDay,
@@ -236,12 +299,17 @@ export const listAdminStudentsOverview = createServerFn({ method: "POST" })
             ? "not_scheduled"
             : currentDay === 0
               ? "upcoming"
-              : (quizAttempts ?? []).some(
-                    (attempt) => attempt.user_id === user.id && attempt.passed,
-                  )
+              : quizStatus?.passed
                 ? "completed"
                 : "in_progress",
           homeworkCounts,
+          canGrantQuizAttempt: Boolean(
+            quizStatus &&
+            quizStatus.failed >= ((quizSettings as any)?.max_attempts ?? 3) &&
+            !quizStatus.passed &&
+            !quizStatus.active,
+          ),
+          certificate: certificateByUser.get(user.id) ?? null,
           banned_until: user.banned_until ?? null,
           completed: completed.get(user.id) ?? 0,
           approved: approved.get(user.id) ?? 0,
@@ -251,6 +319,9 @@ export const listAdminStudentsOverview = createServerFn({ method: "POST" })
     return {
       students: studentRows,
       totalLessons: lessons?.length || 14,
+      quizEligibility: Object.fromEntries(
+        studentRows.map((student) => [student.id, student.canGrantQuizAttempt]),
+      ),
       groups: (groups ?? []).map((group: any) => ({
         ...group,
         studentIds: groupMembers.get(group.id) ?? [],

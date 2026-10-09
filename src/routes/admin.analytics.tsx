@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
   BookOpen,
   CheckCircle2,
   Clock3,
+  Eye,
+  EyeOff,
   GraduationCap,
   Loader2,
   RefreshCw,
@@ -90,11 +92,73 @@ function ProgressRow({ label, value, total }: { label: string; value: number; to
   );
 }
 
+function CollapsibleAnalyticsTable({
+  title,
+  storageKey,
+  heading,
+  className,
+  children,
+}: {
+  title: string;
+  storageKey: string;
+  heading: ReactNode;
+  className: string;
+  children: ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const [loadedStorageKey, setLoadedStorageKey] = useState<string | null>(null);
+  const contentId = useId();
+
+  useEffect(() => {
+    let savedExpanded = true;
+    try {
+      savedExpanded = window.localStorage.getItem(storageKey) !== "false";
+    } catch {
+      // Keep the tables usable if browser storage is unavailable.
+    }
+    setExpanded(savedExpanded);
+    setLoadedStorageKey(storageKey);
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (loadedStorageKey !== storageKey) return;
+    try {
+      window.localStorage.setItem(storageKey, String(expanded));
+    } catch {
+      // The controls still work for this visit if browser storage is unavailable.
+    }
+  }, [expanded, loadedStorageKey, storageKey]);
+
+  return (
+    <section className={className}>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0 flex-1">{heading}</div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          aria-expanded={expanded}
+          aria-controls={contentId}
+          aria-label={`${expanded ? "Скрыть" : "Показать"} таблицу: ${title}`}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          {expanded ? "Скрыть таблицу" : "Показать таблицу"}
+        </Button>
+      </div>
+      <div id={contentId} hidden={!expanded}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
 function AdminAnalytics() {
   const { session, isAdmin } = useAuth();
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const preferencePrefix = `qastart:admin-analytics:v1:${session?.user.id ?? "admin"}`;
 
   const load = useCallback(async () => {
     if (!session?.access_token) return;
@@ -298,13 +362,19 @@ function AdminAnalytics() {
         </section>
       </div>
 
-      <section className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
-        <div>
-          <h2 className="text-lg font-bold">ДЗ по урокам</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Считаются задания, уже открытые ученикам по их индивидуальному расписанию.
-          </p>
-        </div>
+      <CollapsibleAnalyticsTable
+        title="ДЗ по урокам"
+        storageKey={`${preferencePrefix}:homework`}
+        className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]"
+        heading={
+          <div>
+            <h2 className="text-lg font-bold">ДЗ по урокам</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Считаются задания, уже открытые ученикам по их индивидуальному расписанию.
+            </p>
+          </div>
+        }
+      >
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1050px] text-left text-sm">
             <thead>
@@ -353,16 +423,22 @@ function AdminAnalytics() {
         <p className="text-xs text-muted-foreground">
           Категория «тот же день» является подмножеством «&lt; 24 ч».
         </p>
-      </section>
+      </CollapsibleAnalyticsTable>
 
-      <section className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
-        <div>
-          <h2 className="text-lg font-bold">Прохождение по урокам</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            «Есть действие» — сохранённый прогресс, ответ, отправка ДЗ или попытка SQL. Это не
-            просмотры страниц.
-          </p>
-        </div>
+      <CollapsibleAnalyticsTable
+        title="Прохождение по урокам"
+        storageKey={`${preferencePrefix}:lesson-progress`}
+        className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]"
+        heading={
+          <div>
+            <h2 className="text-lg font-bold">Прохождение по урокам</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              «Есть действие» — сохранённый прогресс, ответ, отправка ДЗ или попытка SQL. Это не
+              просмотры страниц.
+            </p>
+          </div>
+        }
+      >
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead>
@@ -405,19 +481,25 @@ function AdminAnalytics() {
             </tbody>
           </table>
         </div>
-      </section>
+      </CollapsibleAnalyticsTable>
 
-      <section className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-bold">Сложные вопросы итогового теста</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Доля правильных ответов и самый частый неверный вариант. При числе показов меньше 10
-              вывод предварительный.
-            </p>
+      <CollapsibleAnalyticsTable
+        title="Сложные вопросы итогового теста"
+        storageKey={`${preferencePrefix}:final-quiz-questions`}
+        className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]"
+        heading={
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold">Сложные вопросы итогового теста</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Доля правильных ответов и самый частый неверный вариант. При числе показов меньше 10
+                вывод предварительный.
+              </p>
+            </div>
+            <span className="text-sm text-muted-foreground">Аналитика ответов итогового теста</span>
           </div>
-          <span className="text-sm text-muted-foreground">Аналитика ответов итогового теста</span>
-        </div>
+        }
+      >
         {analytics.questionStats.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
@@ -475,16 +557,22 @@ function AdminAnalytics() {
             ))}
           </div>
         )}
-      </section>
+      </CollapsibleAnalyticsTable>
 
-      <section className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
-        <div>
-          <h2 className="text-lg font-bold">Ответы на вопросы в уроках</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Сохраняется первый отправленный ответ каждого ученика; показаны только агрегаты без
-            привязки к именам. При числе ответов меньше 10 вывод предварительный.
-          </p>
-        </div>
+      <CollapsibleAnalyticsTable
+        title="Ответы на вопросы в уроках"
+        storageKey={`${preferencePrefix}:lesson-answers`}
+        className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]"
+        heading={
+          <div>
+            <h2 className="text-lg font-bold">Ответы на вопросы в уроках</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Сохраняется первый отправленный ответ каждого ученика; показаны только агрегаты без
+              привязки к именам. При числе ответов меньше 10 вывод предварительный.
+            </p>
+          </div>
+        }
+      >
         {analytics.lessonQuestionStats.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-left text-sm">
@@ -558,16 +646,22 @@ function AdminAnalytics() {
             уроках.
           </p>
         )}
-      </section>
+      </CollapsibleAnalyticsTable>
 
-      <section className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <CollapsibleAnalyticsTable
+        title="Активность учеников"
+        storageKey={`${preferencePrefix}:student-activity`}
+        className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]"
+        heading={
           <div>
             <h2 className="text-lg font-bold">Активность учеников</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Прогресс, тест, ДЗ и давность последнего сохранённого действия
             </p>
           </div>
+        }
+      >
+        <div className="space-y-4">
           <div className="relative w-full sm:w-72">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -577,135 +671,137 @@ function AdminAnalytics() {
               className="pl-9"
             />
           </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1180px] text-left text-sm">
-            <thead>
-              <tr className="border-b text-muted-foreground">
-                <th className="py-3 pr-4 font-medium">Ученик</th>
-                <th className="px-3 py-3 font-medium">Регистрация</th>
-                <th className="px-3 py-3 font-medium">Уроки</th>
-                <th className="px-3 py-3 font-medium">Старт / день</th>
-                <th className="px-3 py-3 font-medium">Итоговый тест</th>
-                <th className="px-3 py-3 font-medium">ДЗ: принято / проверка / ответ</th>
-                <th className="px-3 py-3 font-medium">ДЗ: отправлено / не отправлено</th>
-                <th className="px-3 py-3 font-medium">Задержка ДЗ: среднее / медиана</th>
-                <th className="px-3 py-3 font-medium">Нет активности</th>
-                <th className="px-3 py-3 font-medium">Дней от первого действия до сдачи</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStudents.map((student) => (
-                <tr key={student.id} className="border-b last:border-0">
-                  <td className="py-3 pr-4">
-                    <p className="font-semibold">{student.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {student.login || "Логин не указан"}
-                    </p>
-                    {student.homeworkSnapshots.some((item) => item.assigned) && (
-                      <details className="mt-2 max-w-72 text-xs">
-                        <summary className="cursor-pointer text-primary">
-                          Время сдачи по каждому ДЗ
-                        </summary>
-                        <div className="mt-2 space-y-2">
-                          {student.homeworkSnapshots
-                            .filter((item) => item.assigned)
-                            .map((item) => (
-                              <div key={item.lessonId} className="rounded-lg bg-muted/60 p-2">
-                                <p className="font-semibold">Урок {item.dayNumber}</p>
-                                <p>
-                                  Открыт:{" "}
-                                  {item.lessonAvailableAt
-                                    ? formatDate(item.lessonAvailableAt)
-                                    : "—"}
-                                </p>
-                                <p>
-                                  Пройден:{" "}
-                                  {item.lessonCompletedAt
-                                    ? formatCourseDateTime(item.lessonCompletedAt)
-                                    : "—"}
-                                </p>
-                                <p>
-                                  Первая отправка:{" "}
-                                  {item.firstSubmittedAt
-                                    ? formatCourseDateTime(item.firstSubmittedAt)
-                                    : "не отправлено"}
-                                </p>
-                                <p>
-                                  Последняя отправка:{" "}
-                                  {item.lastSubmittedAt
-                                    ? formatCourseDateTime(item.lastSubmittedAt)
-                                    : "—"}
-                                </p>
-                                <p>Интервал после урока: {formatHours(item.delayHours)}</p>
-                              </div>
-                            ))}
-                        </div>
-                      </details>
-                    )}
-                  </td>
-                  <td className="px-3 py-3">{formatDate(student.registeredAt)}</td>
-                  <td className="px-3 py-3 tabular-nums">
-                    {student.completedLessons} / {student.totalLessons}
-                  </td>
-                  <td className="px-3 py-3">
-                    {student.courseStartAt
-                      ? `${formatDate(student.courseStartAt)} · день ${student.currentDay} · уроков открыто: ${student.availableLessonCount}`
-                      : "Не назначен"}
-                  </td>
-                  <td className="px-3 py-3">
-                    {student.passedCourse ? (
-                      <span className="text-emerald-700 dark:text-emerald-400">
-                        Сдан · {student.bestQuizPercent}%
-                      </span>
-                    ) : student.quizAttempts ? (
-                      `Попыток: ${student.quizAttempts}`
-                    ) : (
-                      "Не начинал"
-                    )}
-                  </td>
-                  <td className="px-3 py-3 tabular-nums">
-                    {student.approvedHomework} / {student.pendingHomework} /{" "}
-                    {student.awaitingMentorHomework}
-                    {student.rejectedHomework ? ` · на доработке: ${student.rejectedHomework}` : ""}
-                  </td>
-                  <td className="px-3 py-3 tabular-nums">
-                    {student.homeworkMetrics.submitted} / {student.homeworkMetrics.notSubmitted} из{" "}
-                    {student.homeworkMetrics.assigned}
-                  </td>
-                  <td className="px-3 py-3 tabular-nums">
-                    {formatHours(student.homeworkMetrics.averageDelayHours)} /{" "}
-                    {formatHours(student.homeworkMetrics.medianDelayHours)}
-                  </td>
-                  <td className="px-3 py-3">
-                    {student.idleDays === null
-                      ? "Нет событий"
-                      : student.idleDays === 0
-                        ? "Сегодня"
-                        : `${student.idleDays} дн.`}
-                  </td>
-                  <td className="px-3 py-3">
-                    {!student.passedCourse || student.elapsedDays === null
-                      ? "—"
-                      : `${student.elapsedDays} дн.`}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1180px] text-left text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground">
+                  <th className="py-3 pr-4 font-medium">Ученик</th>
+                  <th className="px-3 py-3 font-medium">Регистрация</th>
+                  <th className="px-3 py-3 font-medium">Уроки</th>
+                  <th className="px-3 py-3 font-medium">Старт / день</th>
+                  <th className="px-3 py-3 font-medium">Итоговый тест</th>
+                  <th className="px-3 py-3 font-medium">ДЗ: принято / проверка / ответ</th>
+                  <th className="px-3 py-3 font-medium">ДЗ: отправлено / не отправлено</th>
+                  <th className="px-3 py-3 font-medium">Задержка ДЗ: среднее / медиана</th>
+                  <th className="px-3 py-3 font-medium">Нет активности</th>
+                  <th className="px-3 py-3 font-medium">Дней от первого действия до сдачи</th>
                 </tr>
-              ))}
-              {!filteredStudents.length && (
-                <tr>
-                  <td colSpan={10} className="py-8 text-center text-muted-foreground">
-                    Ничего не найдено
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredStudents.map((student) => (
+                  <tr key={student.id} className="border-b last:border-0">
+                    <td className="py-3 pr-4">
+                      <p className="font-semibold">{student.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {student.login || "Логин не указан"}
+                      </p>
+                      {student.homeworkSnapshots.some((item) => item.assigned) && (
+                        <details className="mt-2 max-w-72 text-xs">
+                          <summary className="cursor-pointer text-primary">
+                            Время сдачи по каждому ДЗ
+                          </summary>
+                          <div className="mt-2 space-y-2">
+                            {student.homeworkSnapshots
+                              .filter((item) => item.assigned)
+                              .map((item) => (
+                                <div key={item.lessonId} className="rounded-lg bg-muted/60 p-2">
+                                  <p className="font-semibold">Урок {item.dayNumber}</p>
+                                  <p>
+                                    Открыт:{" "}
+                                    {item.lessonAvailableAt
+                                      ? formatDate(item.lessonAvailableAt)
+                                      : "—"}
+                                  </p>
+                                  <p>
+                                    Пройден:{" "}
+                                    {item.lessonCompletedAt
+                                      ? formatCourseDateTime(item.lessonCompletedAt)
+                                      : "—"}
+                                  </p>
+                                  <p>
+                                    Первая отправка:{" "}
+                                    {item.firstSubmittedAt
+                                      ? formatCourseDateTime(item.firstSubmittedAt)
+                                      : "не отправлено"}
+                                  </p>
+                                  <p>
+                                    Последняя отправка:{" "}
+                                    {item.lastSubmittedAt
+                                      ? formatCourseDateTime(item.lastSubmittedAt)
+                                      : "—"}
+                                  </p>
+                                  <p>Интервал после урока: {formatHours(item.delayHours)}</p>
+                                </div>
+                              ))}
+                          </div>
+                        </details>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">{formatDate(student.registeredAt)}</td>
+                    <td className="px-3 py-3 tabular-nums">
+                      {student.completedLessons} / {student.totalLessons}
+                    </td>
+                    <td className="px-3 py-3">
+                      {student.courseStartAt
+                        ? `${formatDate(student.courseStartAt)} · день ${student.currentDay} · уроков открыто: ${student.availableLessonCount}`
+                        : "Не назначен"}
+                    </td>
+                    <td className="px-3 py-3">
+                      {student.passedCourse ? (
+                        <span className="text-emerald-700 dark:text-emerald-400">
+                          Сдан · {student.bestQuizPercent}%
+                        </span>
+                      ) : student.quizAttempts ? (
+                        `Попыток: ${student.quizAttempts}`
+                      ) : (
+                        "Не начинал"
+                      )}
+                    </td>
+                    <td className="px-3 py-3 tabular-nums">
+                      {student.approvedHomework} / {student.pendingHomework} /{" "}
+                      {student.awaitingMentorHomework}
+                      {student.rejectedHomework
+                        ? ` · на доработке: ${student.rejectedHomework}`
+                        : ""}
+                    </td>
+                    <td className="px-3 py-3 tabular-nums">
+                      {student.homeworkMetrics.submitted} / {student.homeworkMetrics.notSubmitted}{" "}
+                      из {student.homeworkMetrics.assigned}
+                    </td>
+                    <td className="px-3 py-3 tabular-nums">
+                      {formatHours(student.homeworkMetrics.averageDelayHours)} /{" "}
+                      {formatHours(student.homeworkMetrics.medianDelayHours)}
+                    </td>
+                    <td className="px-3 py-3">
+                      {student.idleDays === null
+                        ? "Нет событий"
+                        : student.idleDays === 0
+                          ? "Сегодня"
+                          : `${student.idleDays} дн.`}
+                    </td>
+                    <td className="px-3 py-3">
+                      {!student.passedCourse || student.elapsedDays === null
+                        ? "—"
+                        : `${student.elapsedDays} дн.`}
+                    </td>
+                  </tr>
+                ))}
+                {!filteredStudents.length && (
+                  <tr>
+                    <td colSpan={10} className="py-8 text-center text-muted-foreground">
+                      Ничего не найдено
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Время «путь до результата» — календарный интервал между первым сохранённым действием и
+            завершением (или последним действием), это не активное время за экраном.
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Время «путь до результата» — календарный интервал между первым сохранённым действием и
-          завершением (или последним действием), это не активное время за экраном.
-        </p>
-      </section>
+      </CollapsibleAnalyticsTable>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">

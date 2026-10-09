@@ -33,7 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import guideSheet from "@/assets/lesson-guide-sheet.jpg";
-import pendingArtwork from "@/assets/lesson-guide-pending.png";
+import pendingArtwork from "@/assets/lesson-guide-pending.webp";
 import {
   lessonGuideArtworkPosition,
   lessonGuideVariantLabels,
@@ -348,20 +348,26 @@ function AdminLessons() {
 
   async function exportActiveLesson() {
     if (!active || active.id.startsWith("new-")) return;
-    const { data, error } = await supabase
-      .from("lesson_blocks")
-      .select("id, block_type, content")
-      .eq("lesson_id", active.id)
-      .order("position");
-    if (error) {
-      toast.error("Не удалось загрузить блоки для экспорта");
-      return;
+    let exportBlocks: LessonBlockDraft[];
+    if (loadedBlocksLessonRef.current === active.id && !blocksLoading && !blocksLoadError) {
+      // Export the editor's current state and avoid another network roundtrip.
+      exportBlocks = blocks;
+    } else {
+      const { data, error } = await supabase
+        .from("lesson_blocks")
+        .select("id, block_type, content")
+        .eq("lesson_id", active.id)
+        .order("position");
+      if (error) {
+        toast.error("Не удалось загрузить блоки для экспорта");
+        return;
+      }
+      exportBlocks = ((data ?? []) as DbBlock[]).map(({ id, block_type, content }) => ({
+        id,
+        block_type: block_type as LessonBlockType,
+        content: content as Record<string, unknown>,
+      }));
     }
-    const exportBlocks = ((data ?? []) as DbBlock[]).map(({ id, block_type, content }) => ({
-      id,
-      block_type: block_type as LessonBlockType,
-      content: content as Record<string, unknown>,
-    }));
     const packageData = exportLessonPackage(active, exportBlocks);
     downloadFile(
       `qa-start-lesson-day-${active.day_number}.json`,
@@ -377,20 +383,25 @@ function AdminLessons() {
       toast.error("Не удалось найти День 1 для примера");
       return;
     }
-    const { data, error } = await supabase
-      .from("lesson_blocks")
-      .select("id, block_type, content")
-      .eq("lesson_id", example.id)
-      .order("position");
-    if (error) {
-      toast.error("Не удалось подготовить пример урока");
-      return;
+    let exampleBlocks: LessonBlockDraft[];
+    if (loadedBlocksLessonRef.current === example.id && !blocksLoading && !blocksLoadError) {
+      exampleBlocks = blocks;
+    } else {
+      const { data, error } = await supabase
+        .from("lesson_blocks")
+        .select("id, block_type, content")
+        .eq("lesson_id", example.id)
+        .order("position");
+      if (error) {
+        toast.error("Не удалось подготовить пример урока");
+        return;
+      }
+      exampleBlocks = ((data ?? []) as DbBlock[]).map(({ id, block_type, content }) => ({
+        id,
+        block_type: block_type as LessonBlockType,
+        content: content as Record<string, unknown>,
+      }));
     }
-    const exampleBlocks = ((data ?? []) as DbBlock[]).map(({ id, block_type, content }) => ({
-      id,
-      block_type: block_type as LessonBlockType,
-      content: content as Record<string, unknown>,
-    }));
     const files = createAiKitFiles(exportLessonPackage(example, exampleBlocks), lessonGuidelines);
     downloadFile("qa-start-ai-kit.zip", createZip(files), "application/zip");
     toast.success("AI-kit скачан");

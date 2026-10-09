@@ -1,6 +1,6 @@
 {
   "name": "tanstack_start_ts",
-  "version": "0.1.1",
+  "version": "0.5.0",
   "private": true,
   "sideEffects": false,
   "type": "module",
@@ -9,13 +9,16 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "test:autotests": "python -m pytest autotests",
+    "test:unit": "node --experimental-strip-types --test autotests/unit/*.test.ts",
     "test:admin-rpc-retry": "node --experimental-strip-types --test autotests/unit/admin-rpc-retry.test.ts",
     "test:final-quiz-bank": "node --experimental-strip-types --test autotests/unit/final-quiz-bank.test.ts",
     "test:lesson-package": "node --experimental-strip-types --test autotests/unit/lesson-package.test.ts",
     "test:sql-sandbox": "node --experimental-strip-types --test autotests/unit/sql-sandbox.test.ts",
     "preview": "vite preview",
+    "test:load:local": "node scripts/local-load-smoke.mjs",
     "deploy:prod": "powershell -ExecutionPolicy Bypass -File ./deploy/deploy-prod.ps1",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "smoke:prod": "node scripts/prod-smoke.mjs"
   },
@@ -81,7 +84,6 @@
     "tailwindcss": "^4.2.1",
     "tw-animate-css": "^1.3.4",
     "vaul": "^1.1.2",
-    "vite-tsconfig-paths": "^6.0.2",
     "web-push": "^3.6.7",
     "zod": "^3.24.2"
   },

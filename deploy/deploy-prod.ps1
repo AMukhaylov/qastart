@@ -8,14 +8,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+if ($AppDir -ne "/var/www/qastart") {
+  throw "Unexpected deployment target: $AppDir"
+}
+if (-not (Test-Path -LiteralPath $KeyPath -PathType Leaf)) {
+  throw "Deployment SSH key was not found: $KeyPath"
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $localDeployDir = Join-Path $repoRoot ".deploy"
 $archive = Join-Path $localDeployDir "qastart-src.tgz"
+$remoteDeployScript = Join-Path $PSScriptRoot "remote-deploy.sh"
 
 Write-Host "Checking SSH ${HostName}:${Port}..."
-# The operating system TCP probe can be routed through a VPN while ssh.exe is
-# explicitly excluded from it. Verify the actual deployment path instead.
-ssh -i $KeyPath -p $Port -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${User}@${HostName}" "true"
+ssh -i $KeyPath -p $Port -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new "${User}@${HostName}" "true"
 if ($LASTEXITCODE -ne 0) {
   throw "SSH ${HostName}:${Port} is not reachable with the deployment key."
 }
@@ -44,88 +50,17 @@ try {
   Pop-Location
 }
 
-scp -i $KeyPath -P $Port -o StrictHostKeyChecking=no $archive "${User}@${HostName}:/tmp/qastart-deploy-src.tgz"
+scp -i $KeyPath -P $Port -o StrictHostKeyChecking=accept-new $archive "${User}@${HostName}:/tmp/qastart-deploy-src.tgz"
 if ($LASTEXITCODE -ne 0) {
-  throw "scp failed with exit code $LASTEXITCODE"
+  throw "scp of source archive failed with exit code $LASTEXITCODE"
 }
 
-$remoteScript = @'
-set -euo pipefail
-
-APP_DIR="__APP_DIR__"
-if [ "$APP_DIR" != "/var/www/qastart" ]; then
-  echo "Unexpected APP_DIR: $APP_DIR" >&2
-  exit 1
-fi
-
-cd "$APP_DIR"
-if [ ! -f .env ]; then
-  echo "Missing $APP_DIR/.env; refusing to deploy" >&2
-  exit 1
-fi
-
-upsert_env() {
-  key="$1"
-  value="$2"
-  if grep -q "^${key}=" .env; then
-    sed -i "s|^${key}=.*|${key}=${value}|" .env
-  else
-    printf '%s=%s\n' "$key" "$value" >> .env
-  fi
+scp -i $KeyPath -P $Port -o StrictHostKeyChecking=accept-new $remoteDeployScript "${User}@${HostName}:/tmp/qastart-remote-deploy.sh"
+if ($LASTEXITCODE -ne 0) {
+  throw "scp of rollback-safe deploy script failed with exit code $LASTEXITCODE"
 }
 
-upsert_env "SUPABASE_URL" "https://bhvbydcddoxjfpcschzw.supabase.co"
-upsert_env "SUPABASE_PUBLISHABLE_KEY" "sb_publishable_EihhWnfiwTJYBiHQXvah1g_xCqt0t5r"
-upsert_env "VITE_SUPABASE_PROJECT_ID" "bhvbydcddoxjfpcschzw"
-upsert_env "VITE_SUPABASE_PUBLISHABLE_KEY" "sb_publishable_EihhWnfiwTJYBiHQXvah1g_xCqt0t5r"
-upsert_env "VITE_SUPABASE_URL" "https://bhvbydcddoxjfpcschzw.supabase.co"
-
-if ! grep -q "bhvbydcddoxjfpcschzw" .env; then
-  echo "Server .env points to an unexpected Supabase project; refusing to deploy" >&2
-  exit 1
-fi
-
-cp .env /tmp/qastart-env.backup
-rm -rf /tmp/qastart-deploy-unpack
-mkdir -p /tmp/qastart-deploy-unpack
-tar -xzf /tmp/qastart-deploy-src.tgz -C /tmp/qastart-deploy-unpack
-
-# Keep operator-managed rollback snapshots in the app directory across deploys.
-find "$APP_DIR" -mindepth 1 -maxdepth 1 ! -name ".env" ! -name ".qastart-*" -exec rm -rf {} +
-cp -a /tmp/qastart-deploy-unpack/. "$APP_DIR/"
-cp /tmp/qastart-env.backup "$APP_DIR/.env"
-chmod 600 "$APP_DIR/.env"
-
-rm -f seed-test-data-retry.mjs seed-test-data.mjs verify-attachments.mjs
-
-if [ -f "$APP_DIR/deploy/nginx-startqa.ru" ]; then
-  cp "$APP_DIR/deploy/nginx-startqa.ru" /etc/nginx/sites-available/startqa.ru
-  ln -sf /etc/nginx/sites-available/startqa.ru /etc/nginx/sites-enabled/startqa.ru
-  nginx -t
-  systemctl reload nginx
-fi
-
-npm ci
-npm run lint -- --ignore-pattern '**/.qastart-*/**'
-npm run build
-pm2 restart qastart --update-env
-pm2 flush qastart
-npm run smoke:prod
-
-echo "--- env ref ---"
-grep '^SUPABASE_URL=' .env | sed -E 's#.*https://([^.]+).*#\1#'
-echo "--- pm2 ---"
-pm2 list | grep qastart || true
-echo "--- errors ---"
-tail -n 50 /root/.pm2/logs/qastart-error.log || true
-'@
-
-$remoteScript = $remoteScript.Replace("__APP_DIR__", $AppDir)
-# PowerShell here-strings inherit Windows CRLF line endings. Normalize the
-# payload so bash on the production host does not parse a trailing `\r`.
-$remoteScript = $remoteScript.Replace("`r`n", "`n")
-$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($remoteScript))
-ssh -i $KeyPath -p $Port -o StrictHostKeyChecking=no "${User}@${HostName}" "printf '%s' '$encoded' | base64 -d | bash"
+ssh -i $KeyPath -p $Port -o StrictHostKeyChecking=accept-new "${User}@${HostName}" "bash /tmp/qastart-remote-deploy.sh"
 if ($LASTEXITCODE -ne 0) {
   throw "ssh deploy failed with exit code $LASTEXITCODE"
 }

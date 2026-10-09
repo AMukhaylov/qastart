@@ -57,10 +57,32 @@ export const saveLessonQuestionAnswer = createServerFn({ method: "POST" })
 
     const answer = buildLessonQuestionAnswer(block.content, data.selectedIndexes);
     if (existingAnswer) {
-      if (!sameIndexes(existingAnswer.selected_indexes, answer.selectedIndexes)) {
-        throw new Error("Ответ на этот вопрос уже сохранён");
+      const existingIsCorrectForCurrentContent = buildLessonQuestionAnswer(
+        block.content,
+        existingAnswer.selected_indexes,
+      ).isCorrect;
+      if (existingIsCorrectForCurrentContent) {
+        if (!sameIndexes(existingAnswer.selected_indexes, answer.selectedIndexes)) {
+          throw new Error("Верный ответ на этот вопрос уже сохранён");
+        }
+        return { saved: true, isCorrect: true };
       }
-      return { saved: true, isCorrect: existingAnswer.is_correct };
+
+      // An incorrect answer must not lock a required question forever. Keep the
+      // answer record server-owned, but let the learner retry until correct.
+      const { error: retryError } = await supabaseAdmin
+        .from("lesson_question_answers")
+        .update({
+          question_text: answer.questionText,
+          options: answer.options,
+          selected_indexes: answer.selectedIndexes,
+          correct_indexes: answer.correctIndexes,
+          is_correct: answer.isCorrect,
+        })
+        .eq("id", existingAnswer.id)
+        .eq("user_id", userId);
+      if (retryError) throw retryError;
+      return { saved: true, isCorrect: answer.isCorrect };
     }
 
     const { error: saveError } = await supabaseAdmin.from("lesson_question_answers").insert({

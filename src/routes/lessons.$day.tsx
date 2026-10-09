@@ -32,17 +32,17 @@ import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  persistProgressWithRecovery,
   progressQueueKey,
   queuePendingProgressIds,
   readPendingProgressIds,
   removePendingProgressIds,
-  runProgressRequest,
 } from "@/lib/lesson-progress";
 import { listHomeworkMessages, submitHomeworkForCurrentUser } from "@/server/homework.functions";
 import { getStudentLessonData } from "@/server/lesson-content.functions";
 import { saveLessonQuestionAnswer } from "@/server/lesson-question-answers.functions";
 import { completeLessonForCurrentUser } from "@/server/lesson-access.functions";
+import { markLessonBlocksCompleted } from "@/server/lesson-progress.functions";
+import { submitSqlSandboxAttempt } from "@/server/sql-sandbox-assessment.functions";
 
 export const Route = createFileRoute("/lessons/$day")({
   validateSearch: z.object({ focus: z.literal("homework").optional() }),
@@ -145,6 +145,7 @@ function LessonPage() {
     "dashboard" | number | null
   >(null);
   const loadedLessonKeyRef = useRef<string | null>(null);
+  const lessonLoadRequestRef = useRef(0);
   const focusedHomeworkKeyRef = useRef<string | null>(null);
   const pendingBlockIdsRef = useRef(new Set<string>());
   const progressSyncInFlightRef = useRef(false);
@@ -202,6 +203,7 @@ function LessonPage() {
   }, [user?.id, dayNum, isAdmin, rolesLoading]);
 
   async function load() {
+    const requestId = ++lessonLoadRequestRef.current;
     setLoading(true);
     setFinalQuizPassed(false);
     setSubmission(null);
@@ -222,6 +224,7 @@ function LessonPage() {
     const lessonData = await getStudentLessonData({
       data: { accessToken: session.access_token, dayNumber: dayNum },
     });
+    if (requestId !== lessonLoadRequestRef.current) return;
     const l = lessonData.lesson;
     if (!l) {
       setLesson(null);
@@ -252,7 +255,9 @@ function LessonPage() {
       const currentSubmission = lessonData.submission as Submission;
       setSubmission(currentSubmission);
       setHwText(currentSubmission.status === "rejected" ? "" : currentSubmission.content);
-      await loadMessages(currentSubmission);
+      // Message history is secondary to lesson content. Load it after the
+      // lesson becomes interactive so a slow thread lookup cannot block study.
+      void loadMessages(currentSubmission, requestId);
     } else {
       setHwText("");
     }
@@ -271,51 +276,25 @@ function LessonPage() {
     if (typeof window !== "undefined") {
       queuePendingProgressIds(window.localStorage, key, pendingIds);
     }
-    // Move the learner forward immediately; local pending marks survive reloads
-    // and are retried until the server confirms them.
-    setViewedBlockIds((ids) => Array.from(new Set([...ids, ...pendingIds])));
-    const rows = pendingIds.map((blockId) => ({
-      user_id: user.id,
-      lesson_id: lesson.id,
-      block_id: blockId,
-    }));
-    const saveResult = await persistProgressWithRecovery(
-      async () => {
-        const result = await runProgressRequest((signal) =>
-          supabase
-            .from("lesson_block_progress")
-            .upsert(rows, { onConflict: "user_id,block_id" })
-            .abortSignal(signal),
-        );
-        return { error: result.error };
-      },
-      async () => {
-        const result = await runProgressRequest((signal) =>
-          supabase
-            .from("lesson_block_progress")
-            .select("block_id")
-            .eq("user_id", user.id)
-            .eq("lesson_id", lesson.id)
-            .in("block_id", pendingIds)
-            .abortSignal(signal),
-        );
-        return {
-          persisted:
-            !result.error &&
-            new Set((result.data ?? []).map((row) => row.block_id)).size === pendingIds.length,
-          error: result.error,
-        };
-      },
-    );
-    pendingIds.forEach((id) => pendingBlockIdsRef.current.delete(id));
-    if (!saveResult.saved) {
-      // Keep the learner moving and retain the unsynced marks locally. The
-      // background sync below retries on reconnect, focus, and a short interval.
-      return true;
-    }
-    if (typeof window !== "undefined")
+    try {
+      if (!session?.access_token) throw new Error("Сессия истекла");
+      const result = await markLessonBlocksCompleted({
+        data: { accessToken: session.access_token, blockIds: pendingIds },
+      });
+      pendingIds.forEach((id) => pendingBlockIdsRef.current.delete(id));
+      if (!result.saved) {
+        removePendingProgressIds(window.localStorage, key, pendingIds);
+        return false;
+      }
       removePendingProgressIds(window.localStorage, key, pendingIds);
-    return true;
+      setViewedBlockIds((ids) => Array.from(new Set([...ids, ...pendingIds])));
+      return true;
+    } catch {
+      pendingIds.forEach((id) => pendingBlockIdsRef.current.delete(id));
+      // Keep the queued ids so a transient network failure can be retried. The
+      // server still validates every assessment before persisting them.
+      return false;
+    }
   }
 
   async function saveQuestionAnswer(blockId: string, selectedIndexes: number[]) {
@@ -324,7 +303,7 @@ function LessonPage() {
       const result = await saveLessonQuestionAnswer({
         data: { accessToken: session.access_token, blockId, selectedIndexes },
       });
-      return result.saved;
+      return result;
     } catch {
       return false;
     }
@@ -346,43 +325,17 @@ function LessonPage() {
       if (validIds.length === 0) return;
 
       progressSyncInFlightRef.current = true;
-      const rows = validIds.map((blockId) => ({
-        user_id: user.id,
-        lesson_id: lesson.id,
-        block_id: blockId,
-      }));
       try {
-        const result = await persistProgressWithRecovery(
-          async () => {
-            const response = await runProgressRequest((signal) =>
-              supabase
-                .from("lesson_block_progress")
-                .upsert(rows, { onConflict: "user_id,block_id" })
-                .abortSignal(signal),
-            );
-            return { error: response.error };
-          },
-          async () => {
-            const response = await runProgressRequest((signal) =>
-              supabase
-                .from("lesson_block_progress")
-                .select("block_id")
-                .eq("user_id", user.id)
-                .eq("lesson_id", lesson.id)
-                .in("block_id", validIds)
-                .abortSignal(signal),
-            );
-            return {
-              persisted:
-                !response.error &&
-                new Set((response.data ?? []).map((row) => row.block_id)).size === validIds.length,
-              error: response.error,
-            };
-          },
-        );
+        if (!session?.access_token) return;
+        const result = await markLessonBlocksCompleted({
+          data: { accessToken: session.access_token, blockIds: validIds },
+        });
         if (result.saved) {
           removePendingProgressIds(window.localStorage, key, validIds);
           setViewedBlockIds((ids) => Array.from(new Set([...ids, ...validIds])));
+        } else {
+          removePendingProgressIds(window.localStorage, key, validIds);
+          setViewedBlockIds((ids) => ids.filter((id) => !validIds.includes(id)));
         }
       } catch {
         // Keep queued marks for the next online/focus retry.
@@ -404,7 +357,7 @@ function LessonPage() {
       window.removeEventListener("online", onReconnect);
       window.removeEventListener("focus", onFocus);
     };
-  }, [blocks, lesson, user]);
+  }, [blocks, lesson, session?.access_token, user]);
 
   async function completeLesson() {
     if (!lesson || !user || lesson.day_number === 14 || completed) return;
@@ -413,27 +366,6 @@ function LessonPage() {
       setCompletingLesson(false);
       toast.error("Не удалось подтвердить сессию. Войди заново");
       return;
-    }
-    const requiredBlockIds = blocks.filter(isBlockRequired).map((block) => block.id);
-    if (requiredBlockIds.length > 0) {
-      const saveBlocks = await runProgressRequest((signal) =>
-        supabase
-          .from("lesson_block_progress")
-          .upsert(
-            requiredBlockIds.map((blockId) => ({
-              user_id: user.id,
-              lesson_id: lesson.id,
-              block_id: blockId,
-            })),
-            { onConflict: "user_id,block_id" },
-          )
-          .abortSignal(signal),
-      );
-      if (saveBlocks.error) {
-        setCompletingLesson(false);
-        toast.error("Не удалось сохранить шаги урока. Проверь подключение и попробуй ещё раз.");
-        return;
-      }
     }
     let result: Awaited<ReturnType<typeof completeLessonForCurrentUser>>;
     try {
@@ -502,24 +434,30 @@ function LessonPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blocks, lesson, loading, sqlSandboxAttempts, viewedBlockIds]);
 
-  async function loadMessages(currentSubmission: Submission) {
+  async function loadMessages(currentSubmission: Submission, requestId: number) {
     if (!session?.access_token) {
-      setMessages(
-        await hydrateMessageAuthors(buildLegacyMessages(currentSubmission), currentSubmission),
+      const legacyMessages = await hydrateMessageAuthors(
+        buildLegacyMessages(currentSubmission),
+        currentSubmission,
       );
+      if (requestId === lessonLoadRequestRef.current) setMessages(legacyMessages);
       return;
     }
     try {
       const data = await listHomeworkMessages({
         data: { accessToken: session.access_token, submissionId: currentSubmission.id },
       });
+      if (requestId !== lessonLoadRequestRef.current) return;
       const loaded = (data as HomeworkMessage[]) ?? [];
       const nextMessages = loaded.length > 0 ? loaded : buildLegacyMessages(currentSubmission);
-      setMessages(await hydrateMessageAuthors(nextMessages, currentSubmission));
+      const hydrated = await hydrateMessageAuthors(nextMessages, currentSubmission);
+      if (requestId === lessonLoadRequestRef.current) setMessages(hydrated);
     } catch {
-      setMessages(
-        await hydrateMessageAuthors(buildLegacyMessages(currentSubmission), currentSubmission),
+      const legacyMessages = await hydrateMessageAuthors(
+        buildLegacyMessages(currentSubmission),
+        currentSubmission,
       );
+      if (requestId === lessonLoadRequestRef.current) setMessages(legacyMessages);
     }
   }
 
@@ -633,7 +571,7 @@ function LessonPage() {
       setSubmission(savedSubmission);
       setHwText(savedSubmission.content);
       setAttachments([]);
-      await loadMessages(savedSubmission);
+      await loadMessages(savedSubmission, lessonLoadRequestRef.current);
       const homeworkBlock = blocks.find((block) => block.block_type === "homework");
       if (homeworkBlock) await markBlocksCompleted([homeworkBlock.id]);
       toast.success("Домашка отправлена на проверку");
@@ -648,13 +586,12 @@ function LessonPage() {
     block: LessonBlock,
     taskId: string,
     query: string,
-    result: SqlSandboxResult,
-  ) {
+  ): Promise<SqlSandboxResult> {
     if (!lesson || !user || !session?.access_token)
       throw new Error("Войди заново, чтобы сохранить прогресс SQL-задания.");
-    const config = block.content.sandbox as SqlSandboxConfig | undefined;
-    if (!config?.tasks.some((task) => task.id === taskId))
-      throw new Error("Задание не найдено в конфигурации урока.");
+    const { result, passedAt, blockCompleted } = await submitSqlSandboxAttempt({
+      data: { accessToken: session.access_token, blockId: block.id, taskId, query },
+    });
     const row: SavedSqlSandboxAttempt = {
       block_id: block.id,
       task_id: taskId,
@@ -663,49 +600,16 @@ function LessonPage() {
       result_columns: result.columns,
       result_rows: result.rows,
       feedback: result.message,
+      passed_at: passedAt,
     };
-    const { data: savedAttempt, error } = await supabase
-      .from("sql_sandbox_attempts")
-      .upsert(
-        {
-          user_id: user.id,
-          lesson_id: lesson.id,
-          block_id: block.id,
-          task_id: taskId,
-          query_text: query,
-          passed: result.passed,
-          result_columns: result.columns,
-          result_rows: result.rows,
-          feedback: result.message,
-        },
-        { onConflict: "user_id,block_id,task_id" },
-      )
-      .select("passed_at")
-      .single();
-    if (error)
-      throw new Error(
-        "Не удалось сохранить ответ и прогресс. Проверь подключение и повтори попытку.",
-      );
-    row.passed_at = savedAttempt.passed_at;
     setSqlSandboxAttempts((current) => [
       ...current.filter(
         (attempt) => !(attempt.task_id === taskId && attempt.block_id === block.id),
       ),
       row,
     ]);
-    const progress = getSqlSandboxProgress(config.tasks, [
-      ...sqlSandboxAttempts.filter(
-        (attempt) => attempt.block_id === block.id && attempt.task_id !== taskId,
-      ),
-      row,
-    ]);
-    if (progress.isComplete) {
-      const saved = await markBlocksCompleted([block.id]);
-      if (!saved)
-        throw new Error(
-          "Ответ верный, но не удалось сохранить завершение домашнего задания. Нажми «Проверить» ещё раз.",
-        );
-    }
+    if (blockCompleted) setViewedBlockIds((ids) => Array.from(new Set([...ids, block.id])));
+    return result;
   }
 
   if (authLoading || rolesLoading || loading) {
@@ -834,167 +738,175 @@ function LessonPage() {
         </div>
       </header>
 
-      <main className="container-page py-10 max-w-4xl space-y-8">
-        <div>
-          <Badge variant="secondary" className="mb-3">
-            День {lesson.day_number}
-          </Badge>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">{lesson.title}</h1>
-          <p className="mt-3 text-lg text-muted-foreground">{lesson.description}</p>
-          {!isAdmin && session?.access_token && (
-            <ArchieChat key={lesson.id} accessToken={session.access_token} lessonId={lesson.id} />
+      <main className="container-page py-10">
+        <div className="mx-auto max-w-4xl space-y-8">
+          <div>
+            <Badge variant="secondary" className="mb-3">
+              День {lesson.day_number}
+            </Badge>
+            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">{lesson.title}</h1>
+            <p className="mt-3 text-lg text-muted-foreground">{lesson.description}</p>
+            <div className="mt-5 max-w-xl">
+              <div className="mb-2 flex justify-between text-sm">
+                <span className="font-semibold">Прогресс урока</span>
+                <span className="text-muted-foreground">{lessonProgress}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${lessonProgress}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {blocks.length === 0 && lesson.video_url && (
+            <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-soft)]">
+              <div className="aspect-video bg-muted">
+                <iframe
+                  src={lesson.video_url}
+                  className="h-full w-full"
+                  allow="autoplay; encrypted-media"
+                  allowFullScreen
+                  title="Дополнительное видео"
+                />
+              </div>
+            </div>
           )}
-          <div className="mt-5 max-w-xl">
-            <div className="mb-2 flex justify-between text-sm">
-              <span className="font-semibold">Прогресс урока</span>
-              <span className="text-muted-foreground">{lessonProgress}%</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary transition-all"
-                style={{ width: `${lessonProgress}%` }}
-              />
-            </div>
-          </div>
-        </div>
 
-        {blocks.length === 0 && lesson.video_url && (
-          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-soft)]">
-            <div className="aspect-video bg-muted">
-              <iframe
-                src={lesson.video_url}
-                className="h-full w-full"
-                allow="autoplay; encrypted-media"
-                allowFullScreen
-                title="Дополнительное видео"
-              />
-            </div>
-          </div>
-        )}
-
-        {hasHomework && (
-          <div className="rounded-xl border border-primary/20 bg-primary-soft/40 px-5 py-4 text-sm">
-            <p>
-              Домашнее задание можно отправить после прохождения урока. Его сдача не влияет на
-              открытие следующих уроков.
-            </p>
-          </div>
-        )}
-
-        <InteractiveLesson
-          blocks={
-            submission
-              ? blocks.filter(
-                  (block) =>
-                    !(
-                      block.block_type === "guide" &&
-                      stringValue(block.content, "title").toLowerCase().includes("почти готов")
-                    ),
-                )
-              : blocks
-          }
-          completedBlockIds={new Set(viewedBlockIds)}
-          onBlocksCompleted={markBlocksCompleted}
-          onQuestionAnswered={isAdmin ? undefined : saveQuestionAnswer}
-          legacyContent={lesson.content_md}
-          lessonDay={lesson.day_number}
-          lessonTitle={lesson.title}
-          previousDay={prevDay || undefined}
-          renderHomework={(block) =>
-            showHomework && block.id === homeworkBlock?.id ? (
-              block.content.mode === "sql_sandbox" && block.content.sandbox ? (
-                <SqlSandboxHomework
-                  title={stringValue(block.content, "title", "SQL-практика")}
-                  instruction={homeworkInstruction}
-                  successMessage={stringValue(
-                    block.content,
-                    "sqlSandboxCompletionMessage",
-                    "Все задания выполнены. Молодец!",
-                  )}
-                  config={block.content.sandbox as SqlSandboxConfig}
-                  attempts={sqlSandboxAttempts.filter((attempt) => attempt.block_id === block.id)}
-                  onAttemptSaved={(taskId, query, result) =>
-                    saveSqlSandboxAttempt(block, taskId, query, result)
-                  }
-                />
-              ) : (
-                <HomeworkSubmissionCard
-                  title={stringValue(block.content, "title", "Домашнее задание")}
-                  instruction={homeworkInstruction}
-                  submission={submission}
-                  messages={messages}
-                  hwText={hwText}
-                  setHwText={setHwText}
-                  attachments={attachments}
-                  onFiles={handleFiles}
-                  onRemoveAttachment={(index) =>
-                    setAttachments((previous) =>
-                      previous.filter((_, itemIndex) => itemIndex !== index),
-                    )
-                  }
-                  onSubmit={submitHomework}
-                  saving={saving}
-                  lessonCompleted={completed}
-                />
-              )
-            ) : null
-          }
-          renderFinalQuiz={(block) =>
-            lesson.day_number === 14 && session?.access_token ? (
-              <FinalQuiz
-                accessToken={session.access_token}
-                exitRequest={finalQuizExitRequest}
-                onActiveChange={setFinalQuizActive}
-                onPassed={() => {
-                  void markBlocksCompleted([block.id]);
-                  setFinalQuizPassed(true);
-                  setCompleted(true);
-                }}
-                onExitComplete={() => {
-                  const destination = finalQuizExitDestination;
-                  setFinalQuizExitDestination(null);
-                  if (typeof destination === "number") {
-                    navigate({ to: "/lessons/$day", params: { day: String(destination) } });
-                    return;
-                  }
-                  navigate({ to: "/dashboard" });
-                }}
-              />
-            ) : null
-          }
-        />
-
-        {lesson.day_number !== 14 && showHomework && !homeworkBlock ? (
-          <HomeworkSubmissionCard
-            title="Домашнее задание"
-            instruction={homeworkInstruction}
-            submission={submission}
-            messages={messages}
-            hwText={hwText}
-            setHwText={setHwText}
-            attachments={attachments}
-            onFiles={handleFiles}
-            onRemoveAttachment={(index) =>
-              setAttachments((previous) => previous.filter((_, itemIndex) => itemIndex !== index))
+          <InteractiveLesson
+            blocks={
+              submission
+                ? blocks.filter(
+                    (block) =>
+                      !(
+                        block.block_type === "guide" &&
+                        stringValue(block.content, "title").toLowerCase().includes("почти готов")
+                      ),
+                  )
+                : blocks
             }
-            onSubmit={submitHomework}
-            saving={saving}
-            lessonCompleted={completed}
+            completedBlockIds={new Set(viewedBlockIds)}
+            onBlocksCompleted={markBlocksCompleted}
+            onQuestionAnswered={isAdmin ? undefined : saveQuestionAnswer}
+            legacyContent={lesson.content_md}
+            lessonDay={lesson.day_number}
+            lessonTitle={lesson.title}
+            previousDay={prevDay || undefined}
+            renderHomework={(block) =>
+              showHomework && block.id === homeworkBlock?.id ? (
+                block.content.mode === "sql_sandbox" && block.content.sandbox ? (
+                  <SqlSandboxHomework
+                    title={stringValue(block.content, "title", "SQL-практика")}
+                    instruction={homeworkInstruction}
+                    successMessage={stringValue(
+                      block.content,
+                      "sqlSandboxCompletionMessage",
+                      "Все задания выполнены. Молодец!",
+                    )}
+                    config={block.content.sandbox as SqlSandboxConfig}
+                    attempts={sqlSandboxAttempts.filter((attempt) => attempt.block_id === block.id)}
+                    onAttemptSaved={(taskId, query) => saveSqlSandboxAttempt(block, taskId, query)}
+                  />
+                ) : (
+                  <HomeworkSubmissionCard
+                    title={stringValue(block.content, "title", "Домашнее задание")}
+                    instruction={homeworkInstruction}
+                    submission={submission}
+                    messages={messages}
+                    hwText={hwText}
+                    setHwText={setHwText}
+                    attachments={attachments}
+                    onFiles={handleFiles}
+                    onRemoveAttachment={(index) =>
+                      setAttachments((previous) =>
+                        previous.filter((_, itemIndex) => itemIndex !== index),
+                      )
+                    }
+                    onSubmit={submitHomework}
+                    saving={saving}
+                    lessonCompleted={completed}
+                  />
+                )
+              ) : null
+            }
+            renderFinalQuiz={(block) =>
+              lesson.day_number === 14 && session?.access_token ? (
+                <FinalQuiz
+                  accessToken={session.access_token}
+                  exitRequest={finalQuizExitRequest}
+                  onActiveChange={setFinalQuizActive}
+                  onPassed={() => {
+                    void markBlocksCompleted([block.id]);
+                    setFinalQuizPassed(true);
+                    setCompleted(true);
+                  }}
+                  onExitComplete={() => {
+                    const destination = finalQuizExitDestination;
+                    setFinalQuizExitDestination(null);
+                    if (typeof destination === "number") {
+                      navigate({ to: "/lessons/$day", params: { day: String(destination) } });
+                      return;
+                    }
+                    navigate({ to: "/dashboard" });
+                  }}
+                />
+              ) : null
+            }
           />
-        ) : null}
 
-        {completionCardVisible && (
-          <section
-            className={`rounded-2xl p-5 shadow-[var(--shadow-soft)] md:p-7 ${homeworkPending ? "border border-primary/20 bg-primary-soft/30" : "border border-emerald-200 bg-emerald-50"}`}
-          >
-            <LessonGuide
-              variant={displayedCompletionVariant}
-              title={displayedCompletionTitle}
-              text={displayedCompletionText}
+          {lesson.day_number !== 14 && showHomework && !homeworkBlock ? (
+            <HomeworkSubmissionCard
+              title="Домашнее задание"
+              instruction={homeworkInstruction}
+              submission={submission}
+              messages={messages}
+              hwText={hwText}
+              setHwText={setHwText}
+              attachments={attachments}
+              onFiles={handleFiles}
+              onRemoveAttachment={(index) =>
+                setAttachments((previous) => previous.filter((_, itemIndex) => itemIndex !== index))
+              }
+              onSubmit={submitHomework}
+              saving={saving}
+              lessonCompleted={completed}
             />
-          </section>
-        )}
+          ) : null}
+
+          {completionCardVisible && (
+            <section
+              className={`rounded-2xl p-5 shadow-[var(--shadow-soft)] md:p-7 ${homeworkPending ? "border border-primary/20 bg-primary-soft/30" : "border border-emerald-200 bg-emerald-50"}`}
+            >
+              <LessonGuide
+                variant={displayedCompletionVariant}
+                title={displayedCompletionTitle}
+                text={displayedCompletionText}
+              />
+            </section>
+          )}
+        </div>
       </main>
+
+      {!isAdmin &&
+        !loading &&
+        lesson &&
+        lesson.day_number === dayNum &&
+        lesson.day_number <= availableDay &&
+        session?.access_token &&
+        user?.id && (
+          <ArchieChat
+            key={`${lesson.id}:${user.id}`}
+            accessToken={session.access_token}
+            lessonId={lesson.id}
+            studentId={user.id}
+            lessonCompleted={completed}
+            progressSignature={`${completed}:${viewedBlockIds.join(",")}:${submission?.id ?? ""}:${submission?.status ?? ""}:${submission?.reviewed_at ?? ""}:${sqlSandboxAttempts
+              .filter((attempt) => attempt.passed)
+              .map((attempt) => `${attempt.block_id}:${attempt.task_id}`)
+              .join(",")}`}
+          />
+        )}
 
       <footer className="container-page pb-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

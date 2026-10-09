@@ -3,13 +3,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = ROOT / "supabase/migrations/20260919000000_interactive_lesson_blocks.sql"
-DAY_ONE_UPDATE = ROOT / "supabase/migrations/20260920090000_day1_video_and_check_quiz.sql"
-ASSESSMENT_FORMAT = ROOT / "supabase/migrations/20260920100000_course_assessment_format.sql"
-INTERACTIVE_LESSONS = ROOT / "supabase/migrations/20260920110000_seed_interactive_lessons_2_to_13.sql"
-EXPANDED_LESSONS = ROOT / "supabase/migrations/20260920120000_expand_interactive_lessons_2_and_3.sql"
-DAY_THREE_ORDER = ROOT / "supabase/migrations/20260920130000_reorder_day3_question_after_material.sql"
-DAY_TWO_REBUILD = ROOT / "supabase/migrations/20260922131500_rebuild_day_two_team_lesson.sql"
-RESET_PROGRESS = ROOT / "supabase/migrations/20260925120000_reset_all_account_progress.sql"
+DAY_ONE_UPDATE = ROOT / "supabase/legacy-migrations/20260920090000_day1_video_and_check_quiz.sql"
+ASSESSMENT_FORMAT = ROOT / "supabase/legacy-migrations/20260920100000_course_assessment_format.sql"
+INTERACTIVE_LESSONS = ROOT / "supabase/legacy-migrations/20260920110000_seed_interactive_lessons_2_to_13.sql"
+EXPANDED_LESSONS = ROOT / "supabase/legacy-migrations/20260920120000_expand_interactive_lessons_2_and_3.sql"
+DAY_THREE_ORDER = ROOT / "supabase/legacy-migrations/20260920130000_reorder_day3_question_after_material.sql"
+DAY_TWO_REBUILD = ROOT / "supabase/migrations/20260921204851_rebuild_day_two_team_lesson.sql"
+RESET_PROGRESS = ROOT / "supabase/migrations/20260925063647_reset_all_account_progress.sql"
 RENDERER = ROOT / "src/components/interactive-lesson.tsx"
 LESSON_PAGE = ROOT / "src/routes/lessons.$day.tsx"
 ADMIN = ROOT / "src/routes/admin.lessons.tsx"
@@ -108,7 +108,7 @@ def test_homework_and_guide_are_independent_sortable_blocks():
     lesson = (ROOT / "src/routes/lessons.$day.tsx").read_text(encoding="utf-8")
     interactive = (ROOT / "src/components/interactive-lesson.tsx").read_text(encoding="utf-8")
     admin = (ROOT / "src/routes/admin.lessons.tsx").read_text(encoding="utf-8")
-    migration = (ROOT / "supabase/migrations/20260924144816_split_homework_guide_blocks.sql").read_text(
+    migration = (ROOT / "supabase/migrations/20260924145420_split_homework_guide_blocks.sql").read_text(
         encoding="utf-8"
     )
 
@@ -179,8 +179,11 @@ def test_homework_instruction_renders_markdown_in_preview_and_lesson():
 
 def test_sql_sandbox_attempts_are_owner_scoped_and_user_sql_is_only_saved_as_data():
     migration = SQL_SANDBOX_MIGRATION.read_text(encoding="utf-8")
+    lockdown = next((ROOT / "supabase/migrations").glob("*_secure_student_assessment_progress.sql"))
+    lockdown_sql = lockdown.read_text(encoding="utf-8").lower()
     worker = (ROOT / "src/lib/sql-sandbox.worker.ts").read_text(encoding="utf-8")
     lesson = (ROOT / "src/routes/lessons.$day.tsx").read_text(encoding="utf-8")
+    server_action = (ROOT / "src/server/sql-sandbox-assessment.functions.ts").read_text(encoding="utf-8")
     student_ui = (ROOT / "src/components/sql-sandbox-homework.tsx").read_text(encoding="utf-8")
     admin_ui = (ROOT / "src/components/admin-sql-sandbox-editor.tsx").read_text(encoding="utf-8")
 
@@ -188,10 +191,14 @@ def test_sql_sandbox_attempts_are_owner_scoped_and_user_sql_is_only_saved_as_dat
     assert "revoke all on public.sql_sandbox_attempts from public, anon" in migration.lower()
     assert "(select auth.uid()) = user_id" in migration
     assert "grant select, insert, update on public.sql_sandbox_attempts to authenticated" in migration.lower()
+    assert "revoke insert, update, delete on public.sql_sandbox_attempts from public, anon, authenticated" in lockdown_sql
     assert "seedSandboxDatabase(database, config.tables)" in worker
     assert "runSandboxTask(database, sql, task, config)" in worker
-    assert '.from("sql_sandbox_attempts")' in lesson
-    assert '.upsert(' in lesson
+    assert '.from("sql_sandbox_attempts")' not in lesson
+    assert "submitSqlSandboxAttempt" in lesson
+    assert "evaluateSqlTask(config, task, data.query)" in server_action
+    assert "passed: result.passed" in server_action
+    assert "onAttemptSaved\n        ? await onAttemptSaved(task.id, query)" in student_ui
     assert "database.exec(sql)" not in worker
     assert "Проверочный SQL (только для наставника/админа" in admin_ui
     assert "Ученику этот запрос не показывается" in admin_ui
@@ -292,6 +299,130 @@ def test_dashboard_distinguishes_homework_waiting_from_completed_lessons():
     assert "TooltipContent" in source
 
 
+def test_dashboard_does_not_render_redundant_course_conditions_card():
+    source = DASHBOARD.read_text(encoding="utf-8")
+
+    assert "Условия курса" not in source
+
+
+def test_archie_is_a_compact_floating_lesson_widget_on_all_screen_sizes():
+    lesson = LESSON_PAGE.read_text(encoding="utf-8")
+    archie = (ROOT / "src/components/archie-chat.tsx").read_text(encoding="utf-8")
+    server = (ROOT / "src/server/archie.functions.ts").read_text(encoding="utf-8")
+
+    assert "lg:grid-cols-[minmax(0,1fr)_350px]" not in lesson
+    assert 'className="fixed bottom-4 right-4' in archie
+    assert "max-w-[380px]" in archie
+    assert "h-[min(350px,calc(100dvh-7rem))]" in archie
+    assert "h-[min(500px,calc(100dvh-7rem))]" in archie
+    assert 'key={`${lesson.id}:${user.id}`}' in lesson
+    assert "DEFAULT_ARCHIE_GREETING_MESSAGES" in archie
+    assert 'lesson.day_number === dayNum' in lesson
+    assert 'studentId={user.id}' in lesson
+    assert '!loading' in lesson
+    assert "loadArchieStudentContext(userId, data.lessonId)" in server
+    assert 'studentContext.mode !== "chat"' in server
+    assert "{greetingText}" in archie
+    admin = (ROOT / "src/components/admin-archie-panel.tsx").read_text(encoding="utf-8")
+    assert "config.greetingMessages" in archie
+    assert "form.greetingMessages.join(\"\\n\")" in admin
+    assert "greeting_messages: normalizeArchieGreetingMessages(data.greetingMessages)" in server
+    assert "setGreetingVisible(true)" in archie
+    assert "archie-greeting-seen" not in archie
+    assert "void initialize();" in archie
+    assert "Escape" in archie
+    assert 'aria-controls="archie-chat-panel"' in archie
+    assert "DialogContent" not in archie
+    assert "ARCHIE_FACE_ASSETS[faceState]" in archie
+    assert "lesson-guide-sheet" not in archie
+    assert "object-cover" in archie
+    assert "new Image()" in archie
+    assert "decode()" in archie
+    assert "setDisplayedSrc(src)" in archie
+    assert "onError={() => setImageLoaded(false)}" in archie
+    assert "className={`block overflow-hidden ${className}`}" in archie
+    assert 'className="absolute inset-1 rounded-full ring-2 ring-white/90"' in archie
+    assert 'className="relative h-10 w-10 shrink-0 rounded-full' in archie
+    assert "archie-face-enter" not in archie
+    assert "right-20" in archie
+    assert "sm:right-[6.25rem]" in archie
+
+
+def test_archie_greeting_message_is_admin_editable_and_shared_by_bubble_and_chat():
+    archie = (ROOT / "src/components/archie-chat.tsx").read_text(encoding="utf-8")
+    admin = (ROOT / "src/components/admin-archie-panel.tsx").read_text(encoding="utf-8")
+    server = (ROOT / "src/server/archie.functions.ts").read_text(encoding="utf-8")
+    migration = ROOT / "supabase/migrations/20261006180318_archie_admin_greeting_messages.sql"
+    assert "Приветствия Арчи" in admin
+    assert "становится первым сообщением Арчи в чате" in admin
+    assert archie.count("greetingText.trim()") == 1
+    assert "currentMotivation?.message?.trim()" in archie
+    assert "lockedNotice ||" in archie
+    assert "greetingText.trim()" in archie
+    assert "{welcome}" not in archie
+    assert "welcomeMessage: normalizeArchieGreetingMessages(form.greetingMessages)[0]" in admin
+    assert "greetingMessages: z.array" in server
+    assert "greeting_messages: normalizeArchieGreetingMessages(data.greetingMessages)" in server
+    assert migration.exists()
+
+
+def test_archie_switches_between_the_five_provided_face_assets():
+    archie = (ROOT / "src/components/archie-chat.tsx").read_text(encoding="utf-8")
+    for state in ("idle", "typing", "thinking", "responding", "error"):
+        asset = ROOT / f"src/assets/archie-{state}-256.png"
+        assert asset.exists()
+        assert asset.stat().st_size < 100_000
+        assert f'import archie{state.title()} from "@/assets/archie-{state}-256.png"' in archie
+        assert f"{state}: archie{state.title()}" in archie
+
+    assert "const faceState: ArchieFaceState = loading" in archie
+    assert 'draft.trim().length > 0' in archie
+    assert 'assistantMessage.error ? "error" : "responding"' in archie
+    assert 'showFaceFeedback("error")' in archie
+    assert "state === \"responding\" ? 2200 : 2600" in archie
+
+
+def test_student_admin_load_is_batched_and_uses_student_group_indexes():
+    page = (ROOT / "src/routes/admin.students.tsx").read_text(encoding="utf-8")
+    server = (ROOT / "src/server/students.functions.ts").read_text(encoding="utf-8")
+
+    assert "await listAdminStudentsOverview" in page
+    assert "listAdminCertificates" not in page
+    assert "listAdminFinalQuizEligibility" not in page
+    assert "groupsByStudent" in page
+    assert 'from("certificates")' in server
+    assert 'from("final_quiz_settings" as any)' in server
+    assert "quizEligibility" in server
+    assert "progressByUser.get(user.id)" in server
+    assert "submissionsByUser.get(user.id)" in server
+    assert "sqlAttemptsByUser.get(user.id)" in server
+
+
+def test_auth_roles_use_the_existing_self_read_rls_policy_before_server_fallback():
+    source = (ROOT / "src/lib/auth-roles.ts").read_text(encoding="utf-8")
+    policy = (ROOT / "supabase/migrations/20260526102429_add_indexes_and_rls_initplan_tuning.sql").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'supabase.from("user_roles").select("role").eq("user_id", userId)' in source
+    assert source.index('.from("user_roles")') < source.index("return await getCurrentUserRoles(")
+    assert 'using ((select auth.uid()) = user_id)' in policy
+
+
+def test_lesson_loading_overlaps_schedule_and_content_reads_and_does_not_wait_for_homework_chat():
+    lesson = (ROOT / "src/server/lesson-content.functions.ts").read_text(encoding="utf-8")
+    page = LESSON_PAGE.read_text(encoding="utf-8")
+
+    assert "const [access, lessonRows] = await Promise.all([" in lesson
+    assert "getLessonScheduleAccess(userId, lesson.day_number)" in lesson
+    assert "if (!access.allowed)" in lesson
+    assert "lessonLoadRequestRef" in page
+    assert "void loadMessages(currentSubmission, requestId)" in page
+    assert "Не удалось получить список учеников" in (ROOT / "src/routes/admin.students.tsx").read_text(
+        encoding="utf-8"
+    )
+
+
 def test_dashboard_uses_semantic_homework_status_colors_and_reset_migration_clears_training_state():
     source = DASHBOARD.read_text(encoding="utf-8")
     reset_sql = RESET_PROGRESS.read_text(encoding="utf-8")
@@ -348,9 +479,16 @@ def test_notifications_use_realtime_fallback_and_unlocked_sound():
     assert "proxy_set_header Connection $qastart_connection_upgrade;" in nginx
 
 
+def test_lesson_page_does_not_show_redundant_homework_availability_notice():
+    source = (ROOT / "src/routes/lessons.$day.tsx").read_text(encoding="utf-8")
+
+    assert "Домашнее задание можно отправить после прохождения урока" not in source
+    assert "Его сдача не влияет на открытие следующих уроков" not in source
+
+
 def test_notifications_are_always_available_and_can_be_cleared():
     source = (ROOT / "src/components/notification-bell.tsx").read_text(encoding="utf-8")
-    migration = (ROOT / "supabase/migrations/20260925130000_notifications_recipient_delete.sql").read_text(
+    migration = (ROOT / "supabase/migrations/20260925073601_notifications_recipient_delete.sql").read_text(
         encoding="utf-8"
     )
 

@@ -1,11 +1,14 @@
 import {
   ARCHIE_PROVIDER_DEFAULTS,
   DEFAULT_ARCHIE_SETTINGS,
+  normalizeArchieGreetingMessages,
+  normalizeArchieMotivationMessages,
   parseArchieModelOptions,
   type ArchieModelOption,
   type ArchieProviderId,
 } from "@/lib/archie";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import type { Json } from "@/integrations/supabase/types";
 import { decryptProviderKey, encryptProviderKey, maskProviderKey } from "./archie-crypto.server";
 
 type SettingsRow = {
@@ -14,6 +17,8 @@ type SettingsRow = {
   name: string;
   subtitle: string;
   welcome_message: string;
+  greeting_messages: string[];
+  motivation_messages: Json;
   system_prompt: string;
   max_message_length: number;
   max_history_messages: number;
@@ -31,7 +36,13 @@ type SettingsRow = {
   updated_at: string;
 };
 
-export type ArchiePublicSettings = typeof DEFAULT_ARCHIE_SETTINGS;
+export type ArchiePublicSettings = Omit<
+  typeof DEFAULT_ARCHIE_SETTINGS,
+  "greetingMessages" | "motivationMessages"
+> & {
+  greetingMessages: string[];
+  motivationMessages: ReturnType<typeof normalizeArchieMotivationMessages>;
+};
 export type ArchieSettingsPatch = Omit<
   SettingsRow,
   | "id"
@@ -72,6 +83,8 @@ export function toPublicSettings(row: SettingsRow): ArchiePublicSettings {
     name: row.name,
     subtitle: row.subtitle,
     welcomeMessage: row.welcome_message,
+    greetingMessages: normalizeArchieGreetingMessages(row.greeting_messages),
+    motivationMessages: normalizeArchieMotivationMessages(row.motivation_messages),
     systemPrompt: row.system_prompt,
     maxMessageLength: row.max_message_length,
     maxHistoryMessages: row.max_history_messages,
@@ -90,22 +103,33 @@ export function toPublicSettings(row: SettingsRow): ArchiePublicSettings {
 }
 
 export async function saveArchieSettings(
-  patch: ArchieSettingsPatch,
+  patch: Partial<ArchieSettingsPatch>,
   encryptedApiKey: string | null | undefined,
   apiKeyMask: string | undefined,
   adminUserId: string,
 ) {
   const previous = await loadArchieSettings();
+  const provider = patch.provider ?? previous.provider;
+  const baseUrl =
+    patch.provider !== undefined || patch.base_url !== undefined
+      ? providerBaseUrl(provider as ArchieProviderId, patch.base_url ?? previous.base_url)
+      : previous.base_url;
+  const providerSettingsChanged =
+    patch.provider !== undefined ||
+    patch.base_url !== undefined ||
+    patch.model !== undefined ||
+    encryptedApiKey !== undefined;
   const next = {
     id: true,
     ...patch,
-    base_url: providerBaseUrl(patch.provider as ArchieProviderId, patch.base_url),
+    provider,
+    base_url: baseUrl,
     encrypted_api_key:
       encryptedApiKey === null ? null : (encryptedApiKey ?? previous.encrypted_api_key),
     api_key_mask: encryptedApiKey === null ? "" : (apiKeyMask ?? previous.api_key_mask),
-    connection_status: "unknown" as const,
-    connection_checked_at: null,
-    connection_error: "",
+    connection_status: providerSettingsChanged ? ("unknown" as const) : previous.connection_status,
+    connection_checked_at: providerSettingsChanged ? null : previous.connection_checked_at,
+    connection_error: providerSettingsChanged ? "" : previous.connection_error,
     updated_by: adminUserId,
     updated_at: new Date().toISOString(),
   };
@@ -250,6 +274,7 @@ export async function testAIConnection(input: {
 }
 
 export async function recordArchieRequest(input: {
+  reservationId?: number;
   userId: string | null;
   lessonId: string | null;
   provider: string;
@@ -259,7 +284,7 @@ export async function recordArchieRequest(input: {
   outputTokens?: number | null;
   totalTokens?: number | null;
 }) {
-  const { error } = await supabaseAdmin.from("archie_request_stats").insert({
+  const values = {
     user_id: input.userId,
     lesson_id: input.lessonId,
     provider: input.provider,
@@ -268,7 +293,11 @@ export async function recordArchieRequest(input: {
     input_tokens: input.inputTokens ?? null,
     output_tokens: input.outputTokens ?? null,
     total_tokens: input.totalTokens ?? null,
-  });
+  };
+  const query = input.reservationId
+    ? supabaseAdmin.from("archie_request_stats").update(values).eq("id", input.reservationId)
+    : supabaseAdmin.from("archie_request_stats").insert(values);
+  const { error } = await query;
   if (error) throw error;
 }
 

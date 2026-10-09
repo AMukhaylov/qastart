@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -20,6 +20,24 @@ def _as_bool(value: str | None, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--run-mutation",
+        action="store_true",
+        default=False,
+        help="Explicitly allow tests that mutate accounts or consume attempts.",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if config.getoption("--run-mutation"):
+        return
+    skip_mutation = pytest.mark.skip(reason="Mutation tests require the explicit --run-mutation option.")
+    for item in items:
+        if "mutation" in item.keywords:
+            item.add_marker(skip_mutation)
+
+
 @dataclass(frozen=True)
 class TestSettings:
     base_url: str
@@ -27,10 +45,10 @@ class TestSettings:
     headless: bool
     timeout_ms: int
     artifact_dir: Path
-    student_login: str | None
-    student_password: str | None
-    admin_email: str | None
-    admin_password: str | None
+    student_login: str | None = field(repr=False)
+    student_password: str | None = field(repr=False)
+    admin_email: str | None = field(repr=False)
+    admin_password: str | None = field(repr=False)
     allow_mutation: bool
     run_prod_mutation: bool
 
@@ -114,7 +132,9 @@ def page(request: pytest.FixtureRequest, browser, settings: TestSettings):
     context.close()
 
 
-def require_mutation(settings: TestSettings) -> None:
+def require_mutation(settings: TestSettings, request: pytest.FixtureRequest) -> None:
+    if not request.config.getoption("--run-mutation"):
+        pytest.skip("Mutation tests require the explicit --run-mutation option.")
     if not settings.allow_mutation:
         pytest.skip("Mutation tests are disabled. Set QA_ALLOW_MUTATION=true for a disposable test account.")
     if settings.is_production and not settings.run_prod_mutation:

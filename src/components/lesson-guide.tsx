@@ -1,6 +1,6 @@
 import { Clock3, Lightbulb, MessageCircleQuestion, PartyPopper, Sparkles } from "lucide-react";
 import guideSheet from "@/assets/lesson-guide-sheet.jpg";
-import pendingArtwork from "@/assets/lesson-guide-pending.png";
+import pendingArtwork from "@/assets/lesson-guide-pending.webp";
 import { lessonGuideArtworkPosition, type LessonGuideVariant } from "@/lib/lesson-guide";
 import { LessonRichContent } from "@/components/lesson-rich-content";
 

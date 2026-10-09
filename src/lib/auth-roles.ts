@@ -28,6 +28,23 @@ export async function fetchUserRoles(
   const accessToken = explicitAccessToken ?? sessionData.session?.access_token;
   if (accessToken && (explicitAccessToken || sessionData.session?.user.id === userId)) {
     try {
+      // The user's own roles are readable under RLS. Querying Supabase directly
+      // avoids an extra browser -> app server -> Supabase Auth/DB round trip on
+      // every login and refresh. Keep the server function as a fallback.
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId);
+      if (!error) {
+        return (data ?? [])
+          .map((row) => row.role)
+          .filter((role): role is AppRole => typeof role === "string" && isAppRole(role));
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    try {
       return await getCurrentUserRoles({ data: { accessToken } });
     } catch (error) {
       lastError = error;

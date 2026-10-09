@@ -83,6 +83,8 @@ function AdminLayout() {
               <Link
                 key={t.to}
                 to={t.to}
+                preload="intent"
+                preloadDelay={60}
                 className={`flex h-12 items-center gap-2 whitespace-nowrap border-b-2 px-4 text-sm font-medium transition-colors ${
                   active
                     ? "border-primary text-foreground"

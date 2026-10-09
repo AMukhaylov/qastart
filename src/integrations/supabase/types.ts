@@ -17,6 +17,8 @@ export type Database = {
           connection_status: string;
           enabled: boolean;
           encrypted_api_key: string | null;
+          greeting_messages: string[];
+          motivation_messages: Json;
           id: boolean;
           max_history_messages: number;
           max_message_length: number;
@@ -40,6 +42,8 @@ export type Database = {
           connection_status?: string;
           enabled?: boolean;
           encrypted_api_key?: string | null;
+          greeting_messages?: string[];
+          motivation_messages?: Json;
           id?: boolean;
           max_history_messages?: number;
           max_message_length?: number;
@@ -63,6 +67,8 @@ export type Database = {
           connection_status?: string;
           enabled?: boolean;
           encrypted_api_key?: string | null;
+          greeting_messages?: string[];
+          motivation_messages?: Json;
           id?: boolean;
           max_history_messages?: number;
           max_message_length?: number;
@@ -851,6 +857,16 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      reserve_archie_request: {
+        Args: {
+          p_lesson_id: string;
+          p_limit: number;
+          p_model: string;
+          p_provider: string;
+          p_user_id: string;
+        };
+        Returns: number;
+      };
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"];

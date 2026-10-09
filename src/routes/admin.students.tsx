@@ -31,6 +31,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -60,14 +61,10 @@ import {
 } from "@/server/students.functions";
 import {
   deleteAdminCertificate,
-  listAdminCertificates,
   restoreAdminCertificate,
   revokeAdminCertificate,
 } from "@/server/certificates.functions";
-import {
-  grantAdditionalFinalQuizAttempt,
-  listAdminFinalQuizEligibility,
-} from "@/server/final-quiz.functions";
+import { grantAdditionalFinalQuizAttempt } from "@/server/final-quiz.functions";
 import {
   deleteAdminStudentGroup,
   listAdminStudentGroups,
@@ -80,6 +77,7 @@ export const Route = createFileRoute("/admin/students")({ component: AdminStuden
 type Row = {
   id: string;
   full_name: string | null;
+  avatar_url: string | null;
   login: string;
   created_at: string;
   course_start_at: string | null;
@@ -133,6 +131,7 @@ function AdminStudents() {
   const [rows, setRows] = useState<Row[]>([]);
   const [totalLessons, setTotalLessons] = useState(14);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingCertificateId, setSavingCertificateId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
@@ -151,56 +150,60 @@ function AdminStudents() {
   const [studentGroupsStudent, setStudentGroupsStudent] = useState<Row | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<Row | null>(null);
   const [studentGroupSelection, setStudentGroupSelection] = useState<string[]>([]);
-  const load = useCallback(async () => {
-    if (!session?.access_token) return;
-    setLoading(true);
-    try {
-      const [overview, certificates, quizEligibility] = await Promise.all([
-        listAdminStudentsOverview({ data: { accessToken: session.access_token } }),
-        listAdminCertificates({ data: { accessToken: session.access_token } }),
-        listAdminFinalQuizEligibility({ data: { accessToken: session.access_token } }),
-      ]);
-      const students = overview.students;
-      const groupData = overview.groups as Group[];
-      setGroups(groupData);
-      const certificatesByUser = new Map<string, Certificate>();
-      ((certificates as Certificate[]) ?? []).forEach((certificate) => {
-        const current = certificatesByUser.get(certificate.user_id);
-        if (!current || (current.revoked_at && !certificate.revoked_at)) {
-          certificatesByUser.set(certificate.user_id, certificate);
+  const load = useCallback(
+    async (showSpinner = true) => {
+      if (!session?.access_token) return;
+      if (showSpinner) setLoading(true);
+      if (showSpinner) setLoadError(false);
+      try {
+        const overview = await listAdminStudentsOverview({
+          data: { accessToken: session.access_token },
+        });
+        const students = overview.students;
+        const groupData = overview.groups as Group[];
+        setGroups(groupData);
+        const groupsByStudent = new Map<string, Array<{ id: string; name: string }>>();
+        for (const group of groupData) {
+          for (const studentId of group.studentIds) {
+            const studentGroups = groupsByStudent.get(studentId) ?? [];
+            studentGroups.push({ id: group.id, name: group.name });
+            groupsByStudent.set(studentId, studentGroups);
+          }
         }
-      });
-      setTotalLessons(overview.totalLessons);
-      setRows(
-        students.map((student) => {
-          const studentGroups = groupData.filter((group) => group.studentIds.includes(student.id));
-          return {
-            id: student.id,
-            full_name: student.full_name,
-            login: student.login,
-            created_at: student.created_at,
-            course_start_at: student.course_start_at,
-            currentDay: student.currentDay,
-            currentAvailableLesson: student.currentAvailableLesson,
-            courseStatus: student.courseStatus,
-            homeworkCounts: student.homeworkCounts,
-            blocked: Boolean(student.banned_until),
-            completed: student.completed,
-            approved: student.approved,
-            pending: student.pending,
-            canGrantQuizAttempt: Boolean(quizEligibility?.[student.id]),
-            certificate: certificatesByUser.get(student.id) ?? null,
-            groups: studentGroups.map(({ id, name }) => ({ id, name })),
-          };
-        }),
-      );
-    } catch (error) {
-      console.error("Не удалось загрузить учеников", error);
-      toast.error("Не удалось загрузить учеников");
-    } finally {
-      setLoading(false);
-    }
-  }, [session?.access_token]);
+        setTotalLessons(overview.totalLessons);
+        setRows(
+          students.map((student) => {
+            return {
+              id: student.id,
+              full_name: student.full_name,
+              avatar_url: student.avatar_url,
+              login: student.login,
+              created_at: student.created_at,
+              course_start_at: student.course_start_at,
+              currentDay: student.currentDay,
+              currentAvailableLesson: student.currentAvailableLesson,
+              courseStatus: student.courseStatus,
+              homeworkCounts: student.homeworkCounts,
+              blocked: Boolean(student.banned_until),
+              completed: student.completed,
+              approved: student.approved,
+              pending: student.pending,
+              canGrantQuizAttempt: Boolean(overview.quizEligibility?.[student.id]),
+              certificate: (student.certificate as Certificate | null) ?? null,
+              groups: groupsByStudent.get(student.id) ?? [],
+            };
+          }),
+        );
+      } catch (error) {
+        console.error("Не удалось загрузить учеников", error);
+        if (showSpinner) setLoadError(true);
+        toast.error(showSpinner ? "Не удалось загрузить учеников" : "Список не удалось обновить");
+      } finally {
+        if (showSpinner) setLoading(false);
+      }
+    },
+    [session?.access_token],
+  );
   useEffect(() => {
     if (isAdmin) void load();
   }, [isAdmin, load]);
@@ -256,7 +259,9 @@ function AdminStudents() {
         toast.success("Ученик создан");
       }
       setForm(null);
-      await load();
+      // Don't keep the save/create dialog waiting for a full course-wide
+      // overview refresh; reconcile the list in the background instead.
+      void load(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось сохранить ученика");
     } finally {
@@ -289,6 +294,7 @@ function AdminStudents() {
     await resetPassword({
       id: form.userId,
       full_name: `${form.firstName} ${form.lastName}`.trim(),
+      avatar_url: null,
       login: form.login,
       created_at: "",
       course_start_at: null,
@@ -315,7 +321,7 @@ function AdminStudents() {
       toast.success(
         `Дополнительная попытка добавлена. Новых попыток доступно: ${result.availableAttempts} из ${result.maxAttempts}`,
       );
-      await load();
+      void load(false);
     } catch (error) {
       const message =
         error instanceof Error
@@ -345,8 +351,11 @@ function AdminStudents() {
       await setAdminStudentBlocked({
         data: { accessToken: session.access_token, userId: row.id, blocked: next },
       });
+      setRows((current) =>
+        current.map((item) => (item.id === row.id ? { ...item, blocked: next } : item)),
+      );
       toast.success(next ? "Ученик заблокирован" : "Ученик разблокирован");
-      await load();
+      void load(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось изменить статус");
     } finally {
@@ -367,7 +376,8 @@ function AdminStudents() {
         data: { accessToken: session.access_token, userId: row.id },
       });
       toast.success("Ученик полностью удалён");
-      await load();
+      setRows((current) => current.filter((item) => item.id !== row.id));
+      void load(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось удалить ученика");
     } finally {
@@ -383,7 +393,7 @@ function AdminStudents() {
         data: { accessToken: session.access_token, certificateId: certificate.id },
       });
       toast.success("Сертификат аннулирован");
-      await load();
+      void load(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось аннулировать сертификат");
     } finally {
@@ -399,7 +409,7 @@ function AdminStudents() {
         data: { accessToken: session.access_token, certificateId: certificate.id },
       });
       toast.success("Сертификат возобновлён");
-      await load();
+      void load(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось возобновить сертификат");
     } finally {
@@ -420,7 +430,7 @@ function AdminStudents() {
         data: { accessToken: session.access_token, certificateId: certificate.id },
       });
       toast.success("Сертификат удалён");
-      await load();
+      void load(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось удалить сертификат");
     } finally {
@@ -462,7 +472,7 @@ function AdminStudents() {
         }),
       );
       setStudentGroupsStudent(null);
-      await load();
+      void load(false);
       toast.success("Группы ученика обновлены");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось обновить группы ученика");
@@ -487,7 +497,7 @@ function AdminStudents() {
         },
       });
       setEditingGroup(null);
-      await load();
+      void load(false);
       toast.success("Группа обновлена");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось сохранить группу");
@@ -536,6 +546,14 @@ function AdminStudents() {
           onClose={() => setIssued(null)}
         />
       )}
+      {loadError && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+          <span>Не удалось получить список учеников. Проверь соединение и попробуй ещё раз.</span>
+          <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} /> Повторить
+          </Button>
+        </div>
+      )}
       {showGroups && (
         <section className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
           <div className="flex flex-wrap items-end gap-3">
@@ -572,7 +590,7 @@ function AdminStudents() {
                   },
                 });
                 setGroupDraft({ name: "", description: "" });
-                await load();
+                void load(false);
               }}
             >
               Создать группу
@@ -605,7 +623,7 @@ function AdminStudents() {
                         await deleteAdminStudentGroup({
                           data: { accessToken: session.access_token, id: group.id },
                         });
-                        await load();
+                        void load(false);
                       }}
                     >
                       Удалить
@@ -695,9 +713,18 @@ function AdminStudents() {
             </div>
             {selectedStudent && (
               <div className="relative flex items-center gap-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-xl font-bold text-white shadow-lg shadow-blue-200">
-                  {(selectedStudent.full_name ?? selectedStudent.login)[0]?.toUpperCase()}
-                </div>
+                <Avatar className="h-14 w-14 shrink-0 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-xl font-bold text-white shadow-lg shadow-blue-200">
+                  {selectedStudent.avatar_url && (
+                    <AvatarImage
+                      src={selectedStudent.avatar_url}
+                      alt={selectedStudent.full_name ?? selectedStudent.login}
+                      className="rounded-2xl object-cover"
+                    />
+                  )}
+                  <AvatarFallback className="rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white">
+                    {(selectedStudent.full_name ?? selectedStudent.login)[0]?.toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
                 <div className="min-w-0">
                   <DialogTitle className="truncate text-xl">
                     {selectedStudent.full_name ?? "Ученик"}
@@ -948,9 +975,14 @@ function AdminStudents() {
                         className="inline-flex max-w-64 items-center gap-2 text-left font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                         aria-label={`Подробная информация: ${row.full_name ?? row.login}`}
                       >
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-soft text-primary">
-                          {(row.full_name ?? "?")[0]}
-                        </span>
+                        <Avatar className="h-7 w-7 bg-primary-soft text-primary">
+                          {row.avatar_url && (
+                            <AvatarImage src={row.avatar_url} alt="" className="object-cover" />
+                          )}
+                          <AvatarFallback className="bg-primary-soft text-primary">
+                            {(row.full_name ?? "?")[0]}
+                          </AvatarFallback>
+                        </Avatar>
                         <span className="min-w-0">
                           <span className="block truncate">{row.full_name ?? "Без имени"}</span>
                           <span className="block truncate font-mono text-xs text-muted-foreground">

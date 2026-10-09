@@ -62,6 +62,7 @@ const blockedKeywords = new Set([
   "SAVEPOINT",
   "RELEASE",
   "LOAD_EXTENSION",
+  "RECURSIVE",
   "RANDOMBLOB",
   "ZEROBLOB",
   "PRINTF",
