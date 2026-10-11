@@ -4,16 +4,18 @@ import {
   ARCHIE_BASE_SYSTEM_PROMPT,
   DEFAULT_ARCHIE_SETTINGS,
   ARCHIE_MOTIVATION_MESSAGE_CATEGORIES,
+  normalizeArchieGreetingOptions,
+  isArchieIntroductionGreeting,
   getArchieLessonMode,
   pickArchieLessonCompletionMessage,
   pickArchieMotivationMessage,
-  normalizeArchieGreetingMessages,
   normalizeArchieMotivationMessages,
   buildSafeLessonContext,
   parseArchieAnswer,
   type ArchieChatMessage,
   type ArchieMotivationEvent,
   type ArchieProviderId,
+  type ArchieGreetingOption,
 } from "@/lib/archie";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getUserIdForAccessToken, getRolesForAccessToken } from "./admin-auth.server";
@@ -27,6 +29,8 @@ import {
   getArchieStats,
   loadArchieSettings,
   recordArchieRequest,
+  normalizeFirstLessonGreetings,
+  normalizeRegularLessonGreetings,
   saveArchieSettings,
   saveConnectionStatus,
   testAIConnection,
@@ -41,6 +45,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const providerSchema = z.enum(["openrouter", "openai", "deepseek", "custom"]);
+const greetingOptionSchema = z.object({
+  text: z.string().trim().min(1).max(240),
+  enabled: z.boolean(),
+});
+const regularGreetingOptionsSchema = z
+  .array(greetingOptionSchema)
+  .max(8)
+  .optional()
+  .refine(
+    (options) => !options || options.every((option) => !isArchieIntroductionGreeting(option.text)),
+    "В приветствиях уроков 2–14 не нужно заново представлять Арчи.",
+  );
 const historySchema = z
   .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(6000) }))
   .max(20);
@@ -60,6 +76,8 @@ const updateInput = z.object({
   subtitle: z.string().trim().min(1).max(120),
   welcomeMessage: z.string().trim().min(1).max(1000),
   greetingMessages: z.array(z.string().trim().min(1).max(240)).max(8),
+  firstLessonGreetings: z.array(greetingOptionSchema).max(8).optional(),
+  regularLessonGreetings: regularGreetingOptionsSchema,
   motivationMessages: z.record(
     z.enum(ARCHIE_MOTIVATION_MESSAGE_CATEGORIES),
     z.array(z.string().trim().min(1).max(400)).max(8),
@@ -84,6 +102,8 @@ const updateMainSettingsInput = z.object({
   subtitle: z.string().trim().min(1).max(120),
   welcomeMessage: z.string().trim().min(1).max(1000),
   greetingMessages: z.array(z.string().trim().min(1).max(240)).max(8),
+  firstLessonGreetings: z.array(greetingOptionSchema).max(8).optional(),
+  regularLessonGreetings: regularGreetingOptionsSchema,
   motivationMessages: z.record(
     z.enum(ARCHIE_MOTIVATION_MESSAGE_CATEGORIES),
     z.array(z.string().trim().min(1).max(400)).max(8),
@@ -115,6 +135,10 @@ async function requireAdmin(accessToken: string) {
   const roles = await getRolesForAccessToken(accessToken);
   if (!roles.includes("admin")) throw new Error("Недостаточно прав");
   return getUserIdForAccessToken(accessToken);
+}
+
+function activeGreetingTexts(options: ArchieGreetingOption[]) {
+  return options.filter((option) => option.enabled).map((option) => option.text);
 }
 
 async function loadArchieStudentContext(userId: string, lessonId: string) {
@@ -242,6 +266,10 @@ async function loadArchieStudentContext(userId: string, lessonId: string) {
 
   return {
     lesson,
+    isFirstLesson:
+      courseLessons.length > 0 &&
+      lesson.id ===
+        [...courseLessons].sort((left, right) => left.day_number - right.day_number)[0]?.id,
     courseLessons,
     finalLesson,
     courseCompleted,
@@ -384,7 +412,12 @@ export const getArchieForStudent = createServerFn({ method: "POST" })
       name: settings.name || DEFAULT_ARCHIE_SETTINGS.name,
       subtitle: settings.subtitle || DEFAULT_ARCHIE_SETTINGS.subtitle,
       welcomeMessage: settings.welcome_message || DEFAULT_ARCHIE_SETTINGS.welcomeMessage,
-      greetingMessages: normalizeArchieGreetingMessages(settings.greeting_messages),
+      greetingMessages: normalizeRegularLessonGreetings(settings.regular_lesson_greetings)
+        .filter((option) => option.enabled)
+        .map((option) => option.text),
+      firstLessonGreetings: normalizeFirstLessonGreetings(settings.first_lesson_greetings),
+      regularLessonGreetings: normalizeRegularLessonGreetings(settings.regular_lesson_greetings),
+      isFirstLesson: context.isFirstLesson,
       motivationMessages,
       motivationEvents: buildArchieMotivationEvents(context, motivationMessages),
       mode: context.mode,
@@ -561,7 +594,23 @@ export const updateArchieAdminSettings = createServerFn({ method: "POST" })
       name: data.name,
       subtitle: data.subtitle,
       welcome_message: data.welcomeMessage,
-      greeting_messages: normalizeArchieGreetingMessages(data.greetingMessages),
+      greeting_messages: activeGreetingTexts(
+        normalizeArchieGreetingOptions(
+          data.regularLessonGreetings ?? data.greetingMessages,
+          normalizeRegularLessonGreetings(undefined),
+        ),
+      ),
+      ...(data.firstLessonGreetings
+        ? { first_lesson_greetings: normalizeFirstLessonGreetings(data.firstLessonGreetings) }
+        : {}),
+      ...(data.regularLessonGreetings
+        ? { regular_lesson_greetings: normalizeRegularLessonGreetings(data.regularLessonGreetings) }
+        : {
+            regular_lesson_greetings: normalizeArchieGreetingOptions(
+              data.greetingMessages,
+              normalizeRegularLessonGreetings(undefined),
+            ),
+          }),
       motivation_messages: normalizeArchieMotivationMessages(data.motivationMessages),
       system_prompt: data.systemPrompt,
       max_message_length: data.maxMessageLength,
@@ -585,7 +634,23 @@ export const updateArchieMainSettings = createServerFn({ method: "POST" })
       name: data.name,
       subtitle: data.subtitle,
       welcome_message: data.welcomeMessage,
-      greeting_messages: normalizeArchieGreetingMessages(data.greetingMessages),
+      greeting_messages: activeGreetingTexts(
+        normalizeArchieGreetingOptions(
+          data.regularLessonGreetings ?? data.greetingMessages,
+          normalizeRegularLessonGreetings(undefined),
+        ),
+      ),
+      ...(data.firstLessonGreetings
+        ? { first_lesson_greetings: normalizeFirstLessonGreetings(data.firstLessonGreetings) }
+        : {}),
+      ...(data.regularLessonGreetings
+        ? { regular_lesson_greetings: normalizeRegularLessonGreetings(data.regularLessonGreetings) }
+        : {
+            regular_lesson_greetings: normalizeArchieGreetingOptions(
+              data.greetingMessages,
+              normalizeRegularLessonGreetings(undefined),
+            ),
+          }),
       motivation_messages: normalizeArchieMotivationMessages(data.motivationMessages),
       system_prompt: data.systemPrompt,
       max_message_length: data.maxMessageLength,

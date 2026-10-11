@@ -98,7 +98,9 @@ def test_completed_archie_waits_for_server_state_before_rendering_and_uses_nonem
 
     assert "lessonCompleted && !initialized" in component
     assert "currentMotivation?.message?.trim()" in component
-    assert "DEFAULT_ARCHIE_GREETING_MESSAGES[0]" in component
+    assert 'const [greetingText, setGreetingText] = useState("")' in component
+    assert "setGreetingVisible(Boolean(selectedGreeting))" in component
+    assert "DEFAULT_ARCHIE_GREETING_MESSAGES" not in component
     assert 'config.mode === "checked-exercise"' in component
     assert "config.motivationMessages.checkedExercise[0]" in component
 

@@ -9,6 +9,10 @@ def test_student_can_open_dashboard_and_first_lesson(student_page):
 
     student_page.goto("/lessons/1", wait_until="domcontentloaded")
     expect(student_page.locator("h1", has_text="Что такое тестирование")).to_be_visible()
+    greeting = student_page.get_by_test_id("archie-floating-greeting").locator("span")
+    expect(greeting).to_be_visible()
+    greeting_text = greeting.inner_text()
+    assert "Арчи" in greeting_text or "Меня зовут" in greeting_text
 
 
 @pytest.mark.authenticated

@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import archieIdleAvatar from "@/assets/archie-idle-256.png";
 import {
   ArrowLeft,
   ArrowRight,
@@ -46,6 +47,9 @@ import { submitSqlSandboxAttempt } from "@/server/sql-sandbox-assessment.functio
 
 export const Route = createFileRoute("/lessons/$day")({
   validateSearch: z.object({ focus: z.literal("homework").optional() }),
+  head: () => ({
+    links: [{ rel: "preload", as: "image", href: archieIdleAvatar, type: "image/png" }],
+  }),
   component: LessonPage,
 });
 

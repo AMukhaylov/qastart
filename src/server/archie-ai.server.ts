@@ -1,7 +1,8 @@
 import {
   ARCHIE_PROVIDER_DEFAULTS,
   DEFAULT_ARCHIE_SETTINGS,
-  normalizeArchieGreetingMessages,
+  normalizeArchieGreetingOptions,
+  isArchieIntroductionGreeting,
   normalizeArchieMotivationMessages,
   parseArchieModelOptions,
   type ArchieModelOption,
@@ -11,6 +12,40 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Json } from "@/integrations/supabase/types";
 import { decryptProviderKey, encryptProviderKey, maskProviderKey } from "./archie-crypto.server";
 
+export const DEFAULT_ARCHIE_FIRST_LESSON_GREETINGS = [
+  {
+    text: "Привет! Я Арчи, твой ИИ-помощник курса 👋 Если что-то будет непонятно, помогу разобраться в материале урока. Смело обращайся!",
+    enabled: true,
+  },
+  {
+    text: "Привет! Я Арчи, ИИ-помощник курса 👋 Буду рядом во время обучения. Если что-то покажется сложным или непонятным, просто напиши мне.",
+    enabled: true,
+  },
+  {
+    text: "Привет! Меня зовут Арчи 👋 Я ИИ-помощник курса. Если появятся вопросы по материалу, помогу во всём разобраться.",
+    enabled: true,
+  },
+] as const;
+
+export const DEFAULT_ARCHIE_REGULAR_LESSON_GREETINGS = [
+  {
+    text: "Привет! Рад тебя видеть 👋 Если появятся вопросы по этому уроку, смело обращайся.",
+    enabled: true,
+  },
+  {
+    text: "Привет! Я рядом 👋 Если что-то в этом уроке окажется непонятным, напиши мне.",
+    enabled: true,
+  },
+  {
+    text: "Привет! Продолжаем обучение 🙂 Если понадобится помощь с материалом урока, обращайся.",
+    enabled: true,
+  },
+  {
+    text: "Привет! Если по ходу урока появятся вопросы, я здесь и помогу разобраться.",
+    enabled: true,
+  },
+] as const;
+
 type SettingsRow = {
   id: boolean;
   enabled: boolean;
@@ -18,6 +53,8 @@ type SettingsRow = {
   subtitle: string;
   welcome_message: string;
   greeting_messages: string[];
+  first_lesson_greetings: Json;
+  regular_lesson_greetings: Json;
   motivation_messages: Json;
   system_prompt: string;
   max_message_length: number;
@@ -38,9 +75,11 @@ type SettingsRow = {
 
 export type ArchiePublicSettings = Omit<
   typeof DEFAULT_ARCHIE_SETTINGS,
-  "greetingMessages" | "motivationMessages"
+  "greetingMessages" | "firstLessonGreetings" | "regularLessonGreetings" | "motivationMessages"
 > & {
   greetingMessages: string[];
+  firstLessonGreetings: ReturnType<typeof normalizeArchieGreetingOptions>;
+  regularLessonGreetings: ReturnType<typeof normalizeArchieGreetingOptions>;
   motivationMessages: ReturnType<typeof normalizeArchieMotivationMessages>;
 };
 export type ArchieSettingsPatch = Omit<
@@ -77,13 +116,34 @@ export async function loadArchieSettings(): Promise<SettingsRow> {
   return data as SettingsRow;
 }
 
+export function normalizeFirstLessonGreetings(value: unknown) {
+  return normalizeArchieGreetingOptions(value, [...DEFAULT_ARCHIE_FIRST_LESSON_GREETINGS]);
+}
+
+export function normalizeRegularLessonGreetings(value: unknown) {
+  const fallback = [...DEFAULT_ARCHIE_REGULAR_LESSON_GREETINGS];
+  const options = normalizeArchieGreetingOptions(value, fallback).filter(
+    (option) => !isArchieIntroductionGreeting(option.text),
+  );
+  return options.some((option) => option.enabled) ? options : fallback;
+}
+
 export function toPublicSettings(row: SettingsRow): ArchiePublicSettings {
+  const firstLessonGreetings = normalizeFirstLessonGreetings(row.first_lesson_greetings);
+  const regularLessonGreetings = normalizeRegularLessonGreetings(row.regular_lesson_greetings);
+  const activeRegularGreetings = regularLessonGreetings
+    .filter((option) => option.enabled)
+    .map((option) => option.text);
   return {
     enabled: row.enabled,
     name: row.name,
     subtitle: row.subtitle,
     welcomeMessage: row.welcome_message,
-    greetingMessages: normalizeArchieGreetingMessages(row.greeting_messages),
+    greetingMessages: activeRegularGreetings.length
+      ? activeRegularGreetings
+      : [...row.greeting_messages],
+    firstLessonGreetings,
+    regularLessonGreetings,
     motivationMessages: normalizeArchieMotivationMessages(row.motivation_messages),
     systemPrompt: row.system_prompt,
     maxMessageLength: row.max_message_length,

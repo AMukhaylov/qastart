@@ -316,7 +316,9 @@ def test_archie_is_a_compact_floating_lesson_widget_on_all_screen_sizes():
     assert "h-[min(350px,calc(100dvh-7rem))]" in archie
     assert "h-[min(500px,calc(100dvh-7rem))]" in archie
     assert 'key={`${lesson.id}:${user.id}`}' in lesson
-    assert "DEFAULT_ARCHIE_GREETING_MESSAGES" in archie
+    assert "pickArchieGreetingMessage" in archie
+    assert "config.isFirstLesson ? config.firstLessonGreetings : config.regularLessonGreetings" in archie
+    assert 'qastart:archie:greeting:v1:${studentId}:${greetingGroup}' in archie
     assert 'lesson.day_number === dayNum' in lesson
     assert 'studentId={user.id}' in lesson
     assert '!loading' in lesson
@@ -324,9 +326,10 @@ def test_archie_is_a_compact_floating_lesson_widget_on_all_screen_sizes():
     assert 'studentContext.mode !== "chat"' in server
     assert "{greetingText}" in archie
     admin = (ROOT / "src/components/admin-archie-panel.tsx").read_text(encoding="utf-8")
-    assert "config.greetingMessages" in archie
-    assert "form.greetingMessages.join(\"\\n\")" in admin
-    assert "greeting_messages: normalizeArchieGreetingMessages(data.greetingMessages)" in server
+    assert "config.firstLessonGreetings" in archie
+    assert "config.regularLessonGreetings" in archie
+    assert "firstLessonGreetings: cleanGreetingOptions(form.firstLessonGreetings)" in admin
+    assert "regularLessonGreetings: cleanGreetingOptions(form.regularLessonGreetings)" in admin
     assert "setGreetingVisible(true)" in archie
     assert "archie-greeting-seen" not in archie
     assert "void initialize();" in archie
@@ -344,25 +347,41 @@ def test_archie_is_a_compact_floating_lesson_widget_on_all_screen_sizes():
     assert 'className="absolute inset-1 rounded-full ring-2 ring-white/90"' in archie
     assert 'className="relative h-10 w-10 shrink-0 rounded-full' in archie
     assert "archie-face-enter" not in archie
+    assert 'rel: "preload", as: "image", href: archieIdleAvatar' in lesson
+    assert 'loading="eager"' in archie
+    assert 'fetchPriority="high"' in archie
     assert "right-20" in archie
     assert "sm:right-[6.25rem]" in archie
 
 
-def test_archie_greeting_message_is_admin_editable_and_shared_by_bubble_and_chat():
+def test_archie_has_separate_editable_first_and_regular_lesson_greetings():
     archie = (ROOT / "src/components/archie-chat.tsx").read_text(encoding="utf-8")
     admin = (ROOT / "src/components/admin-archie-panel.tsx").read_text(encoding="utf-8")
     server = (ROOT / "src/server/archie.functions.ts").read_text(encoding="utf-8")
-    migration = ROOT / "supabase/migrations/20261006180318_archie_admin_greeting_messages.sql"
-    assert "Приветствия Арчи" in admin
-    assert "становится первым сообщением Арчи в чате" in admin
+    migration = ROOT / "supabase/migrations/20261009214353_split_archie_lesson_greetings.sql"
+    migration_sql = migration.read_text(encoding="utf-8")
+    assert "Первый урок" in admin
+    assert "Уроки 2–14" in admin
+    assert "Добавить вариант" in admin
+    assert "Использовать вариант" in admin
+    assert "Удалить вариант" in admin
     assert archie.count("greetingText.trim()") == 1
     assert "currentMotivation?.message?.trim()" in archie
     assert "lockedNotice ||" in archie
     assert "greetingText.trim()" in archie
     assert "{welcome}" not in archie
-    assert "welcomeMessage: normalizeArchieGreetingMessages(form.greetingMessages)[0]" in admin
-    assert "greetingMessages: z.array" in server
-    assert "greeting_messages: normalizeArchieGreetingMessages(data.greetingMessages)" in server
+    assert "firstLessonGreetings: z.array(greetingOptionSchema).max(8).optional()" in server
+    assert "regularLessonGreetings: regularGreetingOptionsSchema" in server
+    assert "normalizeFirstLessonGreetings(data.firstLessonGreetings)" in server
+    assert "normalizeRegularLessonGreetings(data.regularLessonGreetings)" in server
+    assert "isArchieIntroductionGreeting(option.text)" in server
+    assert "В приветствиях уроков 2–14 не нужно заново представлять Арчи." in server
+    assert "courseLessons" in server and "isFirstLesson" in server
+    assert "first_lesson_greetings jsonb" in migration_sql
+    assert "regular_lesson_greetings jsonb" in migration_sql
+    assert "set first_lesson_greetings" in migration_sql
+    assert "greeting_messages" in migration_sql
+    assert "system_prompt" not in migration_sql
     assert migration.exists()
 
 

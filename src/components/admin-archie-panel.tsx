@@ -4,6 +4,7 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  Plus,
   RefreshCw,
   Save,
   Send,
@@ -29,8 +30,8 @@ import {
   ARCHIE_MOTIVATION_MESSAGE_CATEGORIES,
   ARCHIE_MOTIVATION_MESSAGE_LABELS,
   ARCHIE_PROVIDER_DEFAULTS,
-  normalizeArchieGreetingMessages,
   parseArchieModelOptions,
+  type ArchieGreetingOption,
   type ArchieModelOption,
   type ArchieProviderId,
 } from "@/lib/archie";
@@ -40,6 +41,94 @@ type Settings = Data["settings"];
 type Lesson = Data["lessons"][number];
 
 const inputClass = "mt-1.5";
+
+function GreetingVariantEditor({
+  title,
+  description,
+  options,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  options: ArchieGreetingOption[];
+  onChange: (options: ArchieGreetingOption[]) => void;
+}) {
+  return (
+    <section className="rounded-xl border border-border bg-background/70 p-4">
+      <div className="mb-3">
+        <h4 className="text-sm font-semibold">{title}</h4>
+        <p className="mt-1 text-xs font-normal text-muted-foreground">{description}</p>
+      </div>
+      <div className="space-y-2">
+        {options.map((option, index) => (
+          <div key={index} className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              checked={option.enabled}
+              onChange={(event) =>
+                onChange(
+                  options.map((current, currentIndex) =>
+                    currentIndex === index
+                      ? { ...current, enabled: event.target.checked }
+                      : current,
+                  ),
+                )
+              }
+              aria-label={`Использовать вариант ${index + 1}: ${title}`}
+              className="mt-3.5 h-4 w-4 shrink-0 accent-primary"
+            />
+            <Input
+              value={option.text}
+              maxLength={240}
+              aria-label={`Текст варианта ${index + 1}: ${title}`}
+              onChange={(event) =>
+                onChange(
+                  options.map((current, currentIndex) =>
+                    currentIndex === index ? { ...current, text: event.target.value } : current,
+                  ),
+                )
+              }
+              className="mt-1.5 min-w-0"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="mt-1.5 shrink-0 text-muted-foreground hover:text-destructive"
+              aria-label={`Удалить вариант ${index + 1}: ${title}`}
+              onClick={() => onChange(options.filter((_, currentIndex) => currentIndex !== index))}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mt-3"
+        disabled={options.length >= 8}
+        onClick={() => onChange([...options, { text: "", enabled: true }])}
+      >
+        <Plus className="h-4 w-4" /> Добавить вариант
+      </Button>
+    </section>
+  );
+}
+
+function cleanGreetingOptions(options: ArchieGreetingOption[]) {
+  return options
+    .map((option) => ({ ...option, text: option.text.trim() }))
+    .filter((option) => option.text)
+    .slice(0, 8);
+}
+
+function activeGreetingTexts(options: ArchieGreetingOption[]) {
+  return cleanGreetingOptions(options)
+    .filter((option) => option.enabled)
+    .map((option) => option.text);
+}
 
 function usePersistentSectionExpanded(userId: string, section: string) {
   const [expanded, setExpanded] = useState(true);
@@ -139,11 +228,13 @@ export function AdminArchiePanel() {
           enabled: data?.settings.enabled ?? form.enabled,
           name: data?.settings.name ?? form.name,
           subtitle: data?.settings.subtitle ?? form.subtitle,
-          // Keep the legacy single welcome field in sync for older clients.
-          welcomeMessage: normalizeArchieGreetingMessages(
-            data?.settings.greetingMessages ?? form.greetingMessages,
-          )[0],
-          greetingMessages: data?.settings.greetingMessages ?? form.greetingMessages,
+          // Keep legacy fields in sync for already-open browser tabs.
+          welcomeMessage:
+            cleanGreetingOptions(form.firstLessonGreetings).find((option) => option.enabled)
+              ?.text ?? form.welcomeMessage,
+          greetingMessages: activeGreetingTexts(form.regularLessonGreetings),
+          firstLessonGreetings: cleanGreetingOptions(form.firstLessonGreetings),
+          regularLessonGreetings: cleanGreetingOptions(form.regularLessonGreetings),
           motivationMessages: data?.settings.motivationMessages ?? form.motivationMessages,
           systemPrompt: data?.settings.systemPrompt ?? form.systemPrompt,
           maxMessageLength: data?.settings.maxMessageLength ?? form.maxMessageLength,
@@ -180,8 +271,12 @@ export function AdminArchiePanel() {
           enabled: form.enabled,
           name: form.name,
           subtitle: form.subtitle,
-          welcomeMessage: normalizeArchieGreetingMessages(form.greetingMessages)[0],
-          greetingMessages: form.greetingMessages,
+          welcomeMessage:
+            cleanGreetingOptions(form.firstLessonGreetings).find((option) => option.enabled)
+              ?.text ?? form.welcomeMessage,
+          greetingMessages: activeGreetingTexts(form.regularLessonGreetings),
+          firstLessonGreetings: cleanGreetingOptions(form.firstLessonGreetings),
+          regularLessonGreetings: cleanGreetingOptions(form.regularLessonGreetings),
           motivationMessages: form.motivationMessages,
           systemPrompt: form.systemPrompt,
           maxMessageLength: form.maxMessageLength,
@@ -201,6 +296,8 @@ export function AdminArchiePanel() {
               subtitle: settings.subtitle,
               welcomeMessage: settings.welcomeMessage,
               greetingMessages: settings.greetingMessages,
+              firstLessonGreetings: settings.firstLessonGreetings,
+              regularLessonGreetings: settings.regularLessonGreetings,
               motivationMessages: settings.motivationMessages,
               systemPrompt: settings.systemPrompt,
               maxMessageLength: settings.maxMessageLength,
@@ -427,31 +524,30 @@ export function AdminArchiePanel() {
               />
             </label>
           </div>
-          <label className="block text-sm font-semibold">
-            Приветствия Арчи
-            <Textarea
-              className={inputClass}
-              rows={4}
-              value={form.greetingMessages.join("\n")}
-              onChange={(event) =>
-                update(
-                  "greetingMessages",
-                  event.target.value
-                    .split("\n")
-                    .map((message) => message.trim())
-                    .filter(Boolean),
-                )
-              }
-              aria-describedby="archie-greeting-messages-help"
-            />
-            <span
-              id="archie-greeting-messages-help"
-              className="mt-1 block text-xs font-normal text-muted-foreground"
-            >
-              По одной фразе на строку, максимум 8 фраз по 240 символов. При входе на урок выбранная
-              фраза показывается рядом с кнопкой и становится первым сообщением Арчи в чате.
-            </span>
-          </label>
+          <div className="space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold">Приветствия при входе в урок</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Для первого урока Арчи знакомится с учеником; в следующих уроках он здоровается без
+                повторного представления. Отметь варианты, которые можно показывать. Максимум 8 фраз
+                по 240 символов в каждой группе.
+              </p>
+            </div>
+            <div className="grid gap-3 xl:grid-cols-2">
+              <GreetingVariantEditor
+                title="Первый урок"
+                description="Знакомство и короткое объяснение, чем Арчи поможет."
+                options={form.firstLessonGreetings}
+                onChange={(options) => update("firstLessonGreetings", options)}
+              />
+              <GreetingVariantEditor
+                title="Уроки 2–14"
+                description="Неповторяющиеся приветствия без представления Арчи."
+                options={form.regularLessonGreetings}
+                onChange={(options) => update("regularLessonGreetings", options)}
+              />
+            </div>
+          </div>
           <section className="rounded-xl border border-primary/10 bg-primary-soft/20 p-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="min-w-0 flex-1">

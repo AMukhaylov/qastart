@@ -46,11 +46,45 @@ export function SiteHeader() {
 
         {!user && (
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
-            <a href="#how" className="hover:text-foreground transition-colors">
+            <a
+              href="#how"
+              onClick={(event) => {
+                event.preventDefault();
+                document.getElementById("how")?.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="hover:text-foreground transition-colors"
+            >
               Что внутри
             </a>
-            <a href="#program" className="hover:text-foreground transition-colors">
+            <a
+              href="#archie"
+              onClick={(event) => {
+                event.preventDefault();
+                document.getElementById("archie")?.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="hover:text-foreground transition-colors"
+            >
+              Арчи
+            </a>
+            <a
+              href="#program"
+              onClick={(event) => {
+                event.preventDefault();
+                document.getElementById("program")?.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="hover:text-foreground transition-colors"
+            >
               Маршрут обучения
+            </a>
+            <a
+              href="#mentor"
+              onClick={(event) => {
+                event.preventDefault();
+                document.getElementById("mentor")?.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="hover:text-foreground transition-colors"
+            >
+              Наставник
             </a>
           </nav>
         )}

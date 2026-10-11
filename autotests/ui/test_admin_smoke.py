@@ -154,6 +154,45 @@ def test_admin_archie_main_settings_and_provider_can_be_hidden_and_remembered(ad
 
 @pytest.mark.authenticated
 @pytest.mark.admin
+def test_admin_archie_greeting_variants_can_be_managed_without_saving(admin_page):
+    admin_page.goto("/admin/archie", wait_until="domcontentloaded")
+
+    first_group = admin_page.get_by_role("heading", name="Первый урок", exact=True).locator(
+        "xpath=ancestor::section[1]"
+    )
+    regular_group = admin_page.get_by_role("heading", name="Уроки 2–14", exact=True).locator(
+        "xpath=ancestor::section[1]"
+    )
+    first_inputs = first_group.locator('input[aria-label^="Текст варианта"]')
+    regular_inputs = regular_group.locator('input[aria-label^="Текст варианта"]')
+    expect(first_inputs.first).to_be_visible()
+    expect(regular_inputs.first).to_be_visible()
+    first_count = first_inputs.count()
+    original_value = first_inputs.first.input_value()
+
+    first_group.get_by_role("button", name="Добавить вариант", exact=True).click()
+    expect(first_inputs).to_have_count(first_count + 1)
+    first_inputs.last.fill("Временный тестовый вариант")
+    first_group.get_by_role("checkbox", name=f"Использовать вариант {first_count + 1}: Первый урок").uncheck()
+    first_group.get_by_role("button", name=f"Удалить вариант {first_count + 1}: Первый урок").click()
+    expect(first_inputs).to_have_count(first_count)
+    expect(first_inputs.first).to_have_value(original_value)
+
+    admin_page.reload(wait_until="domcontentloaded")
+    first_group = admin_page.get_by_role("heading", name="Первый урок", exact=True).locator(
+        "xpath=ancestor::section[1]"
+    )
+    regular_group = admin_page.get_by_role("heading", name="Уроки 2–14", exact=True).locator(
+        "xpath=ancestor::section[1]"
+    )
+    expect(first_group.locator('input[aria-label^="Текст варианта"]').first).to_have_value(
+        original_value
+    )
+    expect(regular_group.locator('input[aria-label^="Текст варианта"]').first).to_be_visible()
+
+
+@pytest.mark.authenticated
+@pytest.mark.admin
 def test_admin_lessons_editor_is_available(admin_page):
     admin_page.goto("/admin/lessons", wait_until="domcontentloaded")
 

@@ -1,21 +1,47 @@
 export type ArchieAnswerType = "lesson" | "additional" | "off_topic" | "hint";
 export type ArchieChatMessage = { role: "user" | "assistant"; content: string };
 
-export const DEFAULT_ARCHIE_GREETING_MESSAGES = [
-  "Привет! Я Арчи, AI-помощник курса. Если что-то непонятно — помогу разобраться.",
-  "Привет, я Арчи — AI-помощник курса. Давай разберём материал вместе.",
-  "Привет! Я Арчи, твой AI-помощник курса. У тебя всё получится — я рядом.",
-  "Привет, я Арчи. Если появятся вопросы по уроку, помогу разобраться.",
-] as const;
+export type ArchieGreetingOption = { text: string; enabled: boolean };
 
-export function normalizeArchieGreetingMessages(value: unknown): string[] {
-  if (!Array.isArray(value)) return [...DEFAULT_ARCHIE_GREETING_MESSAGES];
-  const messages = value
-    .filter((message): message is string => typeof message === "string")
-    .map((message) => message.trim().slice(0, 240))
-    .filter(Boolean)
+export function isArchieIntroductionGreeting(text: string) {
+  const introductionPattern =
+    /(?:^|[^\p{L}\p{N}])(?:я\s+арчи|меня\s+зовут\s+арчи|(?:я\s+)?ии[-\s]?помощник|(?:я\s+)?помощник\s+курса)(?=$|[^\p{L}\p{N}])/iu;
+  return introductionPattern.test(text);
+}
+
+export function normalizeArchieGreetingOptions(
+  value: unknown,
+  fallback: ArchieGreetingOption[] = [],
+): ArchieGreetingOption[] {
+  if (!Array.isArray(value)) return fallback.map((option) => ({ ...option }));
+  const options = value
+    .map((option): ArchieGreetingOption | null => {
+      if (typeof option === "string") {
+        const text = option.trim().slice(0, 240);
+        return text ? { text, enabled: true } : null;
+      }
+      if (typeof option !== "object" || option === null || Array.isArray(option)) return null;
+      const record = option as Record<string, unknown>;
+      const text = typeof record.text === "string" ? record.text.trim().slice(0, 240) : "";
+      if (!text) return null;
+      return { text, enabled: record.enabled !== false };
+    })
+    .filter((option): option is ArchieGreetingOption => option !== null)
     .slice(0, 8);
-  return messages.length ? messages : [...DEFAULT_ARCHIE_GREETING_MESSAGES];
+  return options.length ? options : fallback.map((option) => ({ ...option }));
+}
+
+export function pickArchieGreetingMessage(
+  options: ArchieGreetingOption[],
+  previousMessage: string | null,
+  random: () => number = Math.random,
+): string {
+  const active = options.filter((option) => option.enabled && option.text.trim());
+  if (!active.length) return "";
+  const candidates = active.filter((option) => option.text !== previousMessage);
+  const pool = candidates.length ? candidates : active;
+  const index = Math.min(pool.length - 1, Math.floor(random() * pool.length));
+  return pool[Math.max(0, index)].text;
 }
 
 export const ARCHIE_MOTIVATION_MESSAGE_CATEGORIES = [
@@ -211,8 +237,10 @@ export const DEFAULT_ARCHIE_SETTINGS = {
   enabled: false,
   name: "Арчи",
   subtitle: "Помощник курса",
-  welcomeMessage: "Привет! Я Арчи. Помогу разобраться в материале этого урока.",
-  greetingMessages: [...DEFAULT_ARCHIE_GREETING_MESSAGES] as string[],
+  welcomeMessage: "",
+  greetingMessages: [] as string[],
+  firstLessonGreetings: [] as ArchieGreetingOption[],
+  regularLessonGreetings: [] as ArchieGreetingOption[],
   motivationMessages: { ...DEFAULT_ARCHIE_MOTIVATION_MESSAGES },
   systemPrompt:
     "Объясняй материал простым языком. Сначала помогай понять принцип и давай подсказку, а не готовое решение активного задания.",

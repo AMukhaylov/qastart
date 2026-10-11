@@ -2,6 +2,16 @@
 
 Все заметные изменения QA START будут фиксироваться здесь.
 
+## 0.5.1 — Archie experience and release regression, 2026-10-11
+
+- Добавлены отдельные настраиваемые наборы приветствий Арчи для первого и последующих уроков; варианты можно включать, редактировать и удалять в админке. Приветствия хранятся в настройках БД и не попадают в system prompt.
+- Сохранена существующая доступность Арчи на промежуточных вопросах и его ограничения на ДЗ/практических проверках.
+- Обновлён лендинг: секция Арчи, иллюстрация, фирменная favicon-эмблема и адаптивная навигация.
+- Regression: Python safe suite — 109 passed, 4 deselected; TypeScript unit — 75 passed; lint, typecheck и production build — passed.
+- Read-only PROD smoke прошёл для сайта, маршрутов, Auth, REST и CORS. Проверка Storage в локальном smoke пропущена: локально отсутствует `SUPABASE_SERVICE_ROLE_KEY`; production deployment smoke выполняется отдельно.
+- Миграция `20261009214353_split_archie_lesson_greetings` уже присутствует в production ledger, а требуемые JSONB-поля и defaults проверены read-only; SQL повторно не запускался.
+- Не запускались destructive/mutation тесты на PROD. Локальный clean DB reset по-прежнему не проверялся без Docker.
+
 ## 0.5.0 — production deployment and migration reconciliation, 2026-10-09
 
 - Production 0.5.0 остаётся источником истины; в этой сверке схема и учебные данные production не менялись.

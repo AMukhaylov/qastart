@@ -10,8 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { getArchieForStudent, askArchie } from "@/server/archie.functions";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  DEFAULT_ARCHIE_GREETING_MESSAGES,
-  normalizeArchieGreetingMessages,
+  normalizeArchieGreetingOptions,
+  pickArchieGreetingMessage,
   type ArchieLessonMode,
   type ArchieMotivationEvent,
   type ArchieMotivationMessages,
@@ -141,6 +141,8 @@ function ArchieFace({ src, className }: { src: string; className: string }) {
       <img
         src={displayedSrc}
         alt=""
+        loading="eager"
+        fetchPriority="high"
         className={`absolute inset-0 h-full w-full object-cover ${imageLoaded ? "" : "opacity-0"}`}
         onLoad={() => setImageLoaded(true)}
         onError={() => setImageLoaded(false)}
@@ -165,10 +167,7 @@ export function ArchieChat({
   const [panelOpen, setPanelOpen] = useState(false);
   // Don't render the fallback greeting while the lesson-specific greeting is loading.
   const [greetingVisible, setGreetingVisible] = useState(false);
-  const [greetingMessages, setGreetingMessages] = useState<string[]>([
-    ...DEFAULT_ARCHIE_GREETING_MESSAGES,
-  ]);
-  const [greetingText, setGreetingText] = useState<string>(DEFAULT_ARCHIE_GREETING_MESSAGES[0]);
+  const [greetingText, setGreetingText] = useState("");
   const [greetingReady, setGreetingReady] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [configLoading, setConfigLoading] = useState(true);
@@ -324,14 +323,30 @@ export function ArchieChat({
       setEnabled(config.enabled);
       setName(config.name);
       setSubtitle(config.subtitle);
-      const configuredGreetings = normalizeArchieGreetingMessages(config.greetingMessages);
-      setGreetingMessages(configuredGreetings);
-      const greetingIndex =
-        Array.from(lessonId).reduce((sum, character) => sum + character.charCodeAt(0), 0) %
-        configuredGreetings.length;
-      if (config.mode === "chat") {
-        setGreetingText(configuredGreetings[greetingIndex]);
-        setGreetingVisible(true);
+      const configuredGreetings = normalizeArchieGreetingOptions(
+        config.isFirstLesson ? config.firstLessonGreetings : config.regularLessonGreetings,
+      );
+      if (config.mode === "chat" && config.enabled) {
+        const greetingGroup = config.isFirstLesson ? "first" : "regular";
+        const previousGreetingKey = `qastart:archie:greeting:v1:${studentId}:${greetingGroup}`;
+        let previousGreeting: string | null = null;
+        try {
+          previousGreeting = window.localStorage.getItem(previousGreetingKey);
+        } catch {
+          // Greetings still work if browser storage is blocked.
+        }
+        const selectedGreeting = pickArchieGreetingMessage(configuredGreetings, previousGreeting);
+        setGreetingText(selectedGreeting);
+        setGreetingVisible(Boolean(selectedGreeting));
+        if (selectedGreeting) {
+          try {
+            window.localStorage.setItem(previousGreetingKey, selectedGreeting);
+          } catch {
+            // The greeting is still shown even if browser storage is unavailable.
+          }
+        }
+      } else if (config.mode !== "checked-exercise") {
+        setGreetingVisible(false);
       } else if (config.mode === "checked-exercise") {
         setGreetingText(
           config.motivationMessages.checkedExercise[0] ||
@@ -361,8 +376,8 @@ export function ArchieChat({
       pendingOpenRef.current = false;
       setErrorMessage("Арчи сейчас не смог ответить. Попробуй ещё раз чуть позже.");
       showFaceFeedback("error");
-      setGreetingText(DEFAULT_ARCHIE_GREETING_MESSAGES[0]);
-      setGreetingVisible(true);
+      setGreetingText("");
+      setGreetingVisible(false);
       setGreetingReady(true);
       window.setTimeout(() => setGreetingVisible(false), 7500);
     } finally {
@@ -537,12 +552,7 @@ export function ArchieChat({
             data-testid="archie-floating-greeting"
             className="fixed bottom-20 right-20 z-40 flex max-w-[min(12rem,calc(100vw-6rem))] items-start gap-2 rounded-2xl border border-primary/15 bg-card px-3.5 py-2.5 text-sm leading-snug text-foreground shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300 sm:bottom-[5.75rem] sm:right-[6.25rem]"
           >
-            <span>
-              {currentMotivation?.message?.trim() ||
-                lockedNotice ||
-                greetingText.trim() ||
-                DEFAULT_ARCHIE_GREETING_MESSAGES[0]}
-            </span>
+            <span>{currentMotivation?.message?.trim() || lockedNotice || greetingText.trim()}</span>
             <button
               type="button"
               className="-mr-1 -mt-1 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"

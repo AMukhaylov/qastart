@@ -1,5 +1,12 @@
 # Найденные проблемы
 
+## Повторный regression 0.5.1 — 2026-10-11
+
+- По выполненной safe regression и read-only smoke проверке новых Blocker/Critical не обнаружено.
+- **Ограничение проверки:** 4 mutation-теста не запускались против PROD; локальная проверка Storage пропущена без `SUPABASE_SERVICE_ROLE_KEY`; clean local DB reset недоступен без Docker.
+- Остаются рекомендации, не являющиеся подтверждёнными релиз-блокерами: включить leaked-password protection в Supabase Auth; запланировать least-privilege проверку остаточных Advisor findings и отдельный signed-in staging integration run.
+- Миграция приветствий `20261009214353_split_archie_lesson_greetings` уже отражена в PROD ledger и схема проверена read-only; миграция повторно не применялась.
+
 ## Актуальный PROD 0.5.0 — повторная сверка 2026-10-09
 
 Подтверждённых Blocker/Critical дефектов по доступным read-only проверкам не выявлено. Старая запись ниже о migration drift и о TRUNCATE-grants была создана до этой reconciliation и superseded текущим разделом.

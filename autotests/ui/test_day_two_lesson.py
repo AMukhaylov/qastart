@@ -20,6 +20,8 @@ def test_day_two_and_archie_widget_are_available_on_desktop_and_mobile(student_p
     greeting_bubble = student_page.get_by_test_id("archie-floating-greeting")
     expect(greeting_bubble).to_be_visible()
     greeting_text = greeting_bubble.locator("span").inner_text()
+    assert "ИИ-помощник" not in greeting_text
+    assert "Я Арчи" not in greeting_text
     button_box = archie_button.bounding_box()
     assert button_box and button_box["x"] + button_box["width"] > 1200
     assert archie_button.evaluate("element => getComputedStyle(element).position") == "fixed"
@@ -39,6 +41,11 @@ def test_day_two_and_archie_widget_are_available_on_desktop_and_mobile(student_p
         # Checked exercises keep the widget but must never expose the AI composer.
         expect(greeting_bubble.locator("span")).not_to_be_empty()
         expect(chat_input).not_to_be_visible()
+
+    student_page.reload(wait_until="domcontentloaded")
+    expect(student_page.get_by_test_id("archie-floating-greeting")).to_be_visible()
+    repeated_lesson_greeting = student_page.get_by_test_id("archie-floating-greeting").locator("span")
+    expect(repeated_lesson_greeting).not_to_have_text(greeting_text)
 
     student_page.set_viewport_size({"width": 390, "height": 844})
     if chat_input.is_visible():

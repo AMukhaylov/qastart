@@ -18,6 +18,8 @@ export type Database = {
           enabled: boolean;
           encrypted_api_key: string | null;
           greeting_messages: string[];
+          first_lesson_greetings: Json;
+          regular_lesson_greetings: Json;
           motivation_messages: Json;
           id: boolean;
           max_history_messages: number;
@@ -43,6 +45,8 @@ export type Database = {
           enabled?: boolean;
           encrypted_api_key?: string | null;
           greeting_messages?: string[];
+          first_lesson_greetings?: Json;
+          regular_lesson_greetings?: Json;
           motivation_messages?: Json;
           id?: boolean;
           max_history_messages?: number;
@@ -68,6 +72,8 @@ export type Database = {
           enabled?: boolean;
           encrypted_api_key?: string | null;
           greeting_messages?: string[];
+          first_lesson_greetings?: Json;
+          regular_lesson_greetings?: Json;
           motivation_messages?: Json;
           id?: boolean;
           max_history_messages?: number;

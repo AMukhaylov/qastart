@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { FaVk } from "react-icons/fa6";
 import heroQa from "@/assets/hero-qa.png";
+import archiePortrait from "@/assets/archie-study-transparent.png";
 import mentorPhoto from "@/assets/mentor-mukhailov.jpg";
 
 export const Route = createFileRoute("/")({
@@ -298,8 +299,55 @@ function LandingPage() {
         </div>
       </section>
 
+      {/* ARCHIE */}
+      <section id="archie" className="scroll-mt-20 py-20 md:py-24">
+        <div className="container-page">
+          <header className="mx-auto max-w-3xl text-center">
+            <span className="inline-flex items-center rounded-full border border-primary/10 bg-primary-soft px-3 py-1 text-xs font-semibold tracking-wide text-primary">
+              ИИ-ПОМОЩНИК
+            </span>
+            <h2 className="mt-5 text-3xl font-extrabold tracking-tight md:text-5xl">«Арчи»</h2>
+            <p className="mt-4 text-lg text-muted-foreground">
+              Твой ИИ-помощник всегда рядом во время обучения
+            </p>
+          </header>
+          <div className="mx-auto mt-7 grid max-w-5xl items-center gap-6 md:mt-8 md:grid-cols-[280px_minmax(0,1fr)] md:gap-8">
+            <div className="mx-auto h-[220px] w-[220px] overflow-hidden rounded-3xl md:h-[280px] md:w-[280px]">
+              <img
+                src={archiePortrait}
+                alt="Арчи в академической шапочке"
+                width={1254}
+                height={1254}
+                loading="lazy"
+                decoding="async"
+                className="h-full w-full object-contain"
+              />
+            </div>
+            <div className="mx-auto w-full max-w-2xl">
+              <p className="text-lg leading-relaxed text-muted-foreground">
+                Поможет разобраться в материале, если что-то окажется непонятным. Объяснит сложное
+                простыми словами и ответит на вопросы по теме урока.
+              </p>
+              <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+                {[
+                  "Объясняет материал простыми словами",
+                  "Отвечает на вопросы по теме урока",
+                  "Помогает разобраться, если что-то непонятно",
+                  "Доступен прямо во время обучения",
+                ].map((benefit) => (
+                  <li key={benefit} className="flex items-start gap-2.5 text-base leading-relaxed">
+                    <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-primary" />
+                    <span>{benefit}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ROADMAP */}
-      <section id="program" className="py-20 md:py-28 bg-[var(--gradient-soft)]">
+      <section id="program" className="bg-[var(--gradient-soft)] py-20 md:py-24">
         <div className="container-page">
           <SectionHead
             badge="14 дней"

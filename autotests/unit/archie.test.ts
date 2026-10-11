@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  DEFAULT_ARCHIE_GREETING_MESSAGES,
   DEFAULT_ARCHIE_MOTIVATION_MESSAGES,
   getArchieLessonMode,
   buildSafeLessonContext,
-  normalizeArchieGreetingMessages,
+  normalizeArchieGreetingOptions,
+  isArchieIntroductionGreeting,
+  pickArchieGreetingMessage,
   normalizeArchieMotivationMessages,
   pickArchieLessonCompletionMessage,
   pickArchieMotivationMessage,
@@ -18,22 +19,47 @@ import {
   maskProviderKey,
 } from "../../src/server/archie-crypto.server.ts";
 
-test("Archie greeting bubbles normalize editable text and keep safe defaults", () => {
-  assert.deepEqual(normalizeArchieGreetingMessages(undefined), [
-    ...DEFAULT_ARCHIE_GREETING_MESSAGES,
-  ]);
-  assert.deepEqual(normalizeArchieGreetingMessages(["  Привет!  ", "", "  Давай разберёмся. "]), [
-    "Привет!",
-    "Давай разберёмся.",
-  ]);
-  assert.equal(normalizeArchieGreetingMessages(["А".repeat(300)])[0].length, 240);
+test("Archie greeting options normalize text, active state, limits, and server fallback", () => {
+  const fallback = [{ text: "Серверный fallback", enabled: true }];
+  assert.deepEqual(normalizeArchieGreetingOptions([], fallback), fallback);
+  assert.deepEqual(
+    normalizeArchieGreetingOptions(
+      ["  Привет!  ", "", { text: "  Выключено  ", enabled: false }],
+      fallback,
+    ),
+    [
+      { text: "Привет!", enabled: true },
+      { text: "Выключено", enabled: false },
+    ],
+  );
+  assert.equal(normalizeArchieGreetingOptions(["А".repeat(300)])[0].text.length, 240);
   assert.equal(
-    normalizeArchieGreetingMessages(Array.from({ length: 12 }, (_, i) => `Фраза ${i}`)).length,
+    normalizeArchieGreetingOptions(Array.from({ length: 12 }, (_, i) => `Фраза ${i}`)).length,
     8,
   );
-  assert.deepEqual(normalizeArchieGreetingMessages(["", "   "]), [
-    ...DEFAULT_ARCHIE_GREETING_MESSAGES,
-  ]);
+});
+
+test("Archie greetings select only enabled variants and avoid repeating the previous one", () => {
+  const options = [
+    { text: "Первый", enabled: true },
+    { text: "Выключен", enabled: false },
+    { text: "Второй", enabled: true },
+  ];
+  assert.equal(
+    pickArchieGreetingMessage(options, "Первый", () => 0),
+    "Второй",
+  );
+  assert.equal(
+    pickArchieGreetingMessage(options, null, () => 0.99),
+    "Второй",
+  );
+  assert.equal(
+    pickArchieGreetingMessage(options, "Второй", () => 0.99),
+    "Первый",
+  );
+  assert.equal(pickArchieGreetingMessage([{ text: "Выкл", enabled: false }], null), "");
+  assert.equal(isArchieIntroductionGreeting("Привет! Я Арчи, ИИ-помощник курса."), true);
+  assert.equal(isArchieIntroductionGreeting("Привет! Я рядом и помогу с уроком."), false);
 });
 
 test("Archie motivation text is editable, bounded, deterministic, and falls back per category", () => {

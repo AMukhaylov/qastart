@@ -1,5 +1,17 @@
 # Предрелизный регресс QA START
 
+## Release regression 0.5.1 — 2026-10-11
+
+- Проверен текущий checkout с изменениями Арчи, лендинга/favicon и тестов; release branch: `codex/final-quiz-bank-admin`.
+- Production migration ledger содержит `20261009214353_split_archie_lesson_greetings`; read-only проверка подтвердила JSONB-колонки `first_lesson_greetings` и `regular_lesson_greetings` с `NOT NULL` и defaults. Повторное применение миграции не выполнялось.
+- Python safe regression: **109 passed, 4 deselected** (`pytest autotests -m "not mutation"`). Mutation-тесты не запускались против PROD, чтобы не менять ученические данные/попытки.
+- TypeScript unit: **75 passed**. Lint, typecheck и production build: **passed**.
+- Read-only PROD smoke: публичная главная и основные auth/admin routes, Supabase Auth, REST unauthenticated response и CORS прошли. Локальная проверка приватного Storage bucket пропущена из-за отсутствия локального `SUPABASE_SERVICE_ROLE_KEY`.
+- В проверенном наборе новых Blocker/Critical не выявлено. Это не подтверждает сценарии, требующие destructive mutation или двух отдельных пользовательских production-токенов.
+- Ограничения: чистый локальный DB reset не выполнялся без Docker; полный подписанный student/admin mutation E2E по PROD не запускался.
+
+Итоговый smoke после публикации и deployment необходимо оценивать по результату текущего релизного прогона; исторические записи ниже сохранены для аудита.
+
 ## Итог reconciliation 0.5.0 — 2026-10-09
 
 - Источник истины — работающий PROD 0.5.0. Старые миграции на production не исполнялись; schema/data tables не менялись.

@@ -65,13 +65,14 @@ export const Route = createRootRoute({
     links: [
       {
         rel: "icon",
-        href: "/favicon.svg?v=3",
-        type: "image/svg+xml",
+        href: "/favicon.png?v=8",
+        type: "image/png",
+        sizes: "any",
       },
       {
         rel: "shortcut icon",
-        href: "/favicon.svg?v=3",
-        type: "image/svg+xml",
+        href: "/favicon.png?v=8",
+        type: "image/png",
       },
       {
         rel: "canonical",
