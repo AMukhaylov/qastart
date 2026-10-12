@@ -1,5 +1,7 @@
 # Матрица автопокрытия QA START
 
+**0.5.3 homework acceptance metric (2026-10-12):** dashboard now displays accepted homeworks / total course homeworks, with submitted count below. Contract verifies the distinct accepted and sent values. 37 Python contract + 75 TypeScript unit passed; lint/typecheck/build passed.
+
 **0.5.2 dashboard fix (2026-10-12):** обновлён dashboard contract: denominator отображает все домашние задания курса, а выданные/неотправленные задания показываются отдельно. Проверки: 37 Python contract + 75 TypeScript unit passed; lint/typecheck/build passed.
 
 **Release regression 0.5.1 (2026-10-11):** Python safe regression — 109 passed / 4 deselected; TypeScript unit — 75 passed; lint, typecheck, production build и read-only PROD smoke — passed. Mutation tests intentionally excluded from production run. Added/updated coverage includes configurable first-vs-regular Archie greetings, admin greeting editor persistence contract, landing Archie section/mobile layout, favicon asset/metadata, and existing Archie availability/security contracts. PROD Storage smoke was skipped locally because `SUPABASE_SERVICE_ROLE_KEY` is unavailable.

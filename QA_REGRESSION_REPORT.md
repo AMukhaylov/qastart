@@ -1,5 +1,12 @@
 # Предрелизный регресс QA START
 
+## Homework acceptance metric 0.5.3 — 2026-10-12
+
+- Dashboard metric теперь использует число принятых ДЗ (`hwApproved`) и показывает его из общего количества заданий курса; под карточкой отображается число отправленных.
+- Существующая логика считает принятыми последние одобренные наставником задания и полностью пройденные SQL homework blocks.
+- Проверки: TypeScript unit **75 passed**, Python dashboard/lesson contract **37 passed**, lint/typecheck/production build — passed.
+- Production deployment и smoke фиксируются по фактическому результату после выкладки.
+
 ## Dashboard homework metric fix 0.5.2 — 2026-10-12
 
 - Знаменатель карточки ДЗ изменён с `assigned` (только уже выданные по расписанию) на полный размер `homeworkSnapshots` (все задания курса). В текущем PROD-контенте это 9 заданий.

@@ -469,11 +469,11 @@ function Dashboard() {
             <StatCard
               icon={CheckCircle2}
               iconClassName="text-emerald-600"
-              label="ДЗ отправлено"
-              value={`${homeworkCounts.submitted} / ${homeworkSnapshots.length}`}
+              label="ДЗ принято"
+              value={`${hwApproved} / ${homeworkSnapshots.length}`}
             />
             <p className="px-2 text-xs text-muted-foreground">
-              Выдано: {homeworkCounts.assigned} · не отправлено: {homeworkCounts.notSubmitted}
+              Отправлено: {homeworkCounts.submitted}
             </p>
             <StatCard icon={Trophy} label="Прогресс" value={`${progressPct}%`} />
           </div>

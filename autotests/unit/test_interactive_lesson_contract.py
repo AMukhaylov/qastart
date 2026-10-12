@@ -464,8 +464,9 @@ def test_dashboard_refreshes_progress_when_returning_from_a_lesson():
     assert "useLocation" in source
     assert 'if (location.pathname !== "/dashboard") loadedUserIdRef.current = null;' in source
     assert 'if (location.pathname !== "/dashboard") return;' in source
-    assert 'value={`${homeworkCounts.submitted} / ${homeworkSnapshots.length}`}' in source
-    assert 'Выдано: {homeworkCounts.assigned} · не отправлено: {homeworkCounts.notSubmitted}' in source
+    assert 'label="ДЗ принято"' in source
+    assert 'value={`${hwApproved} / ${homeworkSnapshots.length}`}' in source
+    assert 'Отправлено: {homeworkCounts.submitted}' in source
     assert "getStudentDashboardData" in source
     dashboard_server = (ROOT / "src/server/dashboard.functions.ts").read_text(encoding="utf-8")
     assert '.from("lesson_blocks")' in dashboard_server
