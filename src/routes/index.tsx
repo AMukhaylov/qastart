@@ -30,7 +30,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { FaVk } from "react-icons/fa6";
-import heroQa from "@/assets/hero-qa.png";
+import archieLaptop from "@/assets/archie-laptop.png";
 import archiePortrait from "@/assets/archie-study-transparent.png";
 import mentorPhoto from "@/assets/mentor-mukhailov.jpg";
 
@@ -216,8 +216,8 @@ function LandingPage() {
             <div className="relative aspect-square max-w-[520px] mx-auto">
               <div className="absolute inset-0 rounded-[2.5rem] bg-gradient-to-br from-primary/5 to-primary/0 border border-border" />
               <img
-                src={heroQa}
-                alt="Иллюстрация старта обучения QA"
+                src={archieLaptop}
+                alt="Арчи за ноутбуком"
                 width={520}
                 height={520}
                 className="relative z-10 w-full h-full object-contain animate-float-slow"
