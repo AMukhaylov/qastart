@@ -1,5 +1,12 @@
 # Предрелизный регресс QA START
 
+## Dashboard homework metric fix 0.5.2 — 2026-10-12
+
+- Знаменатель карточки ДЗ изменён с `assigned` (только уже выданные по расписанию) на полный размер `homeworkSnapshots` (все задания курса). В текущем PROD-контенте это 9 заданий.
+- Вторичная подпись показывает раздельно выданные по расписанию и ещё не отправленные из выданных.
+- Проверки после изменения: TypeScript unit **75 passed**; dashboard/lesson contract tests **37 passed**; lint, typecheck и production build — passed.
+- Production deploy/smoke фиксируются по фактическому результату после выкладки.
+
 ## Release regression 0.5.1 — 2026-10-11
 
 - Проверен текущий checkout с изменениями Арчи, лендинга/favicon и тестов; release branch: `codex/final-quiz-bank-admin`.
