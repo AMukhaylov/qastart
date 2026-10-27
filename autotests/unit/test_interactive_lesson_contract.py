@@ -75,6 +75,14 @@ def test_lesson_steps_unlock_in_order_and_progress_is_saved_automatically():
     assert "Завершить урок" not in page
 
 
+def test_feedback_is_not_announced_before_its_form_becomes_available():
+    page = LESSON_PAGE.read_text(encoding="utf-8")
+
+    assert "Опрос появится после того" not in page
+    assert "Сначала пройди все обязательные шаги урока" not in page
+    assert "feedbackAvailable && !isAdmin" in page
+
+
 def test_state_diagram_editor_and_canvas_are_loaded_on_demand():
     renderer = RENDERER.read_text(encoding="utf-8")
     admin = ADMIN.read_text(encoding="utf-8")

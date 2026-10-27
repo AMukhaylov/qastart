@@ -1064,14 +1064,6 @@ function LessonPage() {
             </section>
           )}
 
-          {feedbackRequired && !feedbackSubmitted && !feedbackAvailable && !isAdmin && (
-            <p className="rounded-xl border border-primary/20 bg-primary-soft/20 p-4 text-sm text-muted-foreground">
-              {hasHomework && submission?.status !== "approved"
-                ? "Опрос появится после того, как наставник примет домашнее задание."
-                : "Сначала пройди все обязательные шаги урока, затем появится короткий опрос."}
-            </p>
-          )}
-
           {completionCardVisible && (
             <section
               className={`rounded-2xl p-5 shadow-[var(--shadow-soft)] md:p-7 ${homeworkPending ? "border border-primary/20 bg-primary-soft/30" : "border border-emerald-200 bg-emerald-50"}`}
