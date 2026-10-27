@@ -56,9 +56,9 @@ function AdminLayout() {
     { to: "/admin/lessons", label: "Уроки", icon: BookOpen },
     { to: "/admin/meetings", label: "Встречи", icon: CalendarDays },
     { to: "/admin/students", label: "Студенты", icon: Users },
+    { to: "/admin/archie", label: "Арчи", icon: Bot },
     { to: "/admin/analytics", label: "Аналитика", icon: ChartNoAxesCombined },
     { to: "/admin/feedback", label: "Обратная связь", icon: MessageSquareText },
-    { to: "/admin/archie", label: "Арчи", icon: Bot },
   ] as const;
 
   return (
