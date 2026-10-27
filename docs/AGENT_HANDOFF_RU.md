@@ -11,9 +11,9 @@ QA Start — русскоязычная обучающая платформа п
 - Сайт PROD: <https://startqa.ru>
 - GitHub: <https://github.com/AMukhaylov/qastart>
 - Supabase project ref: `bhvbydcddoxjfpcschzw` (`qastart`, регион `eu-west-1`)
-- Последняя проверенная версия PROD: `0.5.9` (`Release QA Start 0.5.9: unblock homework submission`)
-- Последний проверенный релизный коммит: `779cef9`
-- Тег этого релиза: `v0.5.9`
+- Последняя проверенная версия PROD: `0.5.10` (порядок вкладок админ-панели)
+- Последний проверенный релизный коммит: `f9741cb`
+- Тег этого релиза: `v0.5.10`
 - Рабочая GitHub-ветка с актуальным кодом PROD: `codex/final-quiz-bank-admin`
 
 На 2026-10-27 ветка `main` отставала и содержала старую версию (`0.1.1`). Не начинай релиз с `main` и не вливай ветки между собой вслепую: сначала проверь GitHub refs, граф коммитов и `package.json`.
@@ -52,12 +52,13 @@ SSH-ключ, если он доступен на этой Windows-машине:
 3. Для контентной работы над уроками сначала прочитай `docs/LESSON_GUIDELINES.md` и проверь День 1 как эталон — это требование корневого `AGENTS.md`.
 4. Изменяй только файлы, относящиеся к запросу. Для production-релиза обновляй версию в `package.json` и корневой записи `package-lock.json`; веди `CHANGELOG.md`.
 5. Подбирай проверки по риску. Основные команды: `npm run test:unit`, `npm run lint`, `npm run typecheck`, `npm run build`; для production-релиза также `npm run deploy:prod` и его встроенный `npm run smoke:prod`. Для полной проверки Python-автотестов используй `npm run test:autotests`, предварительно выяснив, не выполняют ли выбранные тесты записи во внешние системы.
-6. После изменения версии сверяй номер на PROD (`/var/www/qastart/package.json`), GitHub-коммит и тег. На момент написания актуальны `0.5.5`, `f50f75a`, `v0.5.5`.
+6. После изменения версии сверяй номер на PROD (`/var/www/qastart/package.json`), GitHub-коммит и тег. На момент написания актуальны `0.5.10`, `f9741cb`, `v0.5.10`.
 7. После успешных проверок обнови patch-версию, package-lock и changelog; закоммить, создай version tag, отправь commit/tag в рабочую GitHub-ветку прямым `git push` (не использовать `gh`), затем выложи PROD через `npm run deploy:prod`. Не пушь в устаревший `main`.
 8. После выкладки перепроверь сайт, PM2, smoke-check, Supabase proxy/storage и состояние таймера. Явно сообщи пользователю, что прошло, а что не проверялось.
 
 ## Проверки и известные риски на 2026-10-28
 
+- Релиз `0.5.10` в PROD и GitHub (`f9741cb`, `v0.5.10`). Порядок вкладок админ-панели: Арчи → Аналитика → Обратная связь. Unit: 86 passed; regression: 117 passed, 4 opt-in mutation tests skipped; lint, typecheck, production build и deploy smoke прошли. PM2 `qastart` — `online`.
 - Релиз `0.5.9` в PROD и GitHub. Human homework теперь становится доступным после обязательных блоков перед ним; API серверно валидирует те же блоки и расписание, не требуя полного завершения урока/feedback. Unit: 86 passed; regression: 117 passed, 4 opt-in mutation tests skipped; lint, typecheck, production build и deploy smoke прошли. PM2 `qastart` — `online`.
 - Релиз `0.5.5` выложен на PROD и отправлен в GitHub. Миграция `20261027174226_lesson_feedback_system` применена; 14 уроков настроены на обязательный feedback по умолчанию. Unit: 81 passed; Python regression: 113 passed, 4 mutation tests пропущены по opt-in. Lint, typecheck, production build и smoke-check прошли; PM2 был `online`.
 - На последнем запуске `npm run test:unit` прошло 75 тестов.
