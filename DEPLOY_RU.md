@@ -12,7 +12,7 @@ Cloudflare Workers плохо открывается у части пользо�
 - Cloudflare сейчас не участвует в цепочке `startqa.ru`.
 - Сборка больше не использует Lovable/Cloudflare Vite config: `vite.config.ts` настроен напрямую через TanStack Start, React, Tailwind и `vite-tsconfig-paths`.
 - Вложения к домашним заданиям хранятся в приватном Supabase Storage bucket `homework-attachments`, ссылки выдаются временные.
-- `npm audit` после обновления зависимостей показывает 0 уязвимостей.
+- Последняя проверка `npm audit --omit=dev --audit-level=high` (2026-10-27) обнаружила 8 уязвимостей (6 critical, 2 high); обновление зависимостей требует отдельной проверки и выпуска.
 - RLS-политики Supabase оптимизированы: проверка ролей перенесена в `private.has_role`, клиент больше не вызывает RPC `public.has_role` напрямую.
 - Server functions защищены стандартным TanStack Start CSRF middleware в `src/start.ts`.
 
