@@ -8,6 +8,7 @@ MIGRATION = next((ROOT / "supabase/migrations").glob("*_lesson_feedback_system.s
 SERVER = (ROOT / "src/server/lesson-feedback.functions.ts").read_text(encoding="utf-8")
 LESSON_ACCESS = (ROOT / "src/server/lesson-access.functions.ts").read_text(encoding="utf-8")
 FINAL_QUIZ = (ROOT / "src/server/final-quiz.functions.ts").read_text(encoding="utf-8")
+QUESTION_ANSWERS = (ROOT / "src/server/lesson-question-answers.functions.ts").read_text(encoding="utf-8")
 
 
 def test_feedback_storage_has_rls_unique_pair_and_no_direct_student_insert():
@@ -38,3 +39,10 @@ def test_certificate_issuance_waits_for_required_feedback():
     certificates = (ROOT / "src/server/certificates.server.ts").read_text(encoding="utf-8")
     assert 'from("lesson_feedback")' in certificates
     assert "if (requiredFeedbackMissing) return null" in certificates
+
+
+def test_saved_incorrect_question_answer_can_retry_progress_without_database_update():
+    assert "if (existingAnswer) {" in QUESTION_ANSWERS
+    assert "return { saved: true, isCorrect: answer.isCorrect };" in QUESTION_ANSWERS
+    assert '.from("lesson_question_answers")\n        .update(' not in QUESTION_ANSWERS
+    assert "if (savedAnswer) return { saved: true, isCorrect: answer.isCorrect };" in QUESTION_ANSWERS

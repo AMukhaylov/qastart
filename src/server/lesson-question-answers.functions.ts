@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { buildLessonQuestionAnswer, sameIndexes } from "@/lib/lesson-question-answer";
+import { buildLessonQuestionAnswer } from "@/lib/lesson-question-answer";
 import { getRolesForAccessToken, getUserIdForAccessToken } from "./admin-auth.server";
 import { assertLessonScheduleAccess } from "./course-schedule.server";
 
@@ -57,31 +57,9 @@ export const saveLessonQuestionAnswer = createServerFn({ method: "POST" })
 
     const answer = buildLessonQuestionAnswer(block.content, data.selectedIndexes);
     if (existingAnswer) {
-      const existingIsCorrectForCurrentContent = buildLessonQuestionAnswer(
-        block.content,
-        existingAnswer.selected_indexes,
-      ).isCorrect;
-      if (existingIsCorrectForCurrentContent) {
-        if (!sameIndexes(existingAnswer.selected_indexes, answer.selectedIndexes)) {
-          throw new Error("Верный ответ на этот вопрос уже сохранён");
-        }
-        return { saved: true, isCorrect: true };
-      }
-
-      // An incorrect answer must not lock a required question forever. Keep the
-      // answer record server-owned, but let the learner retry until correct.
-      const { error: retryError } = await supabaseAdmin
-        .from("lesson_question_answers")
-        .update({
-          question_text: answer.questionText,
-          options: answer.options,
-          selected_indexes: answer.selectedIndexes,
-          correct_indexes: answer.correctIndexes,
-          is_correct: answer.isCorrect,
-        })
-        .eq("id", existingAnswer.id)
-        .eq("user_id", userId);
-      if (retryError) throw retryError;
+      // Answers are immutable and the table intentionally grants service_role
+      // only SELECT/INSERT. A previously saved wrong answer still satisfies
+      // question_answered; retrying its progress write must never require UPDATE.
       return { saved: true, isCorrect: answer.isCorrect };
     }
 
@@ -103,10 +81,8 @@ export const saveLessonQuestionAnswer = createServerFn({ method: "POST" })
         .eq("block_id", block.id)
         .maybeSingle();
       if (savedAnswerError) throw savedAnswerError;
-      if (savedAnswer && sameIndexes(savedAnswer.selected_indexes, answer.selectedIndexes)) {
-        return { saved: true, isCorrect: savedAnswer.is_correct };
-      }
-      throw new Error("Ответ на этот вопрос уже сохранён");
+      if (savedAnswer) return { saved: true, isCorrect: answer.isCorrect };
+      throw new Error("Не удалось подтвердить сохранение ответа");
     }
     if (saveError) throw saveError;
     return { saved: true, isCorrect: answer.isCorrect };
