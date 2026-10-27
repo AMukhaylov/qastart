@@ -11,9 +11,9 @@ QA Start — русскоязычная обучающая платформа п
 - Сайт PROD: <https://startqa.ru>
 - GitHub: <https://github.com/AMukhaylov/qastart>
 - Supabase project ref: `bhvbydcddoxjfpcschzw` (`qastart`, регион `eu-west-1`)
-- Последняя проверенная версия PROD: `0.5.8` (`Release QA Start 0.5.8: unblock saved lesson answers`)
-- Последний проверенный релизный коммит: `74c5725`
-- Тег этого релиза: `v0.5.8`
+- Последняя проверенная версия PROD: `0.5.9` (`Release QA Start 0.5.9: unblock homework submission`)
+- Последний проверенный релизный коммит: `779cef9`
+- Тег этого релиза: `v0.5.9`
 - Рабочая GitHub-ветка с актуальным кодом PROD: `codex/final-quiz-bank-admin`
 
 На 2026-10-27 ветка `main` отставала и содержала старую версию (`0.1.1`). Не начинай релиз с `main` и не вливай ветки между собой вслепую: сначала проверь GitHub refs, граф коммитов и `package.json`.
@@ -56,8 +56,9 @@ SSH-ключ, если он доступен на этой Windows-машине:
 7. После успешных проверок обнови patch-версию, package-lock и changelog; закоммить, создай version tag, отправь commit/tag в рабочую GitHub-ветку прямым `git push` (не использовать `gh`), затем выложи PROD через `npm run deploy:prod`. Не пушь в устаревший `main`.
 8. После выкладки перепроверь сайт, PM2, smoke-check, Supabase proxy/storage и состояние таймера. Явно сообщи пользователю, что прошло, а что не проверялось.
 
-## Проверки и известные риски на 2026-10-27
+## Проверки и известные риски на 2026-10-28
 
+- Релиз `0.5.9` в PROD и GitHub. Human homework теперь становится доступным после обязательных блоков перед ним; API серверно валидирует те же блоки и расписание, не требуя полного завершения урока/feedback. Unit: 86 passed; regression: 117 passed, 4 opt-in mutation tests skipped; lint, typecheck, production build и deploy smoke прошли. PM2 `qastart` — `online`.
 - Релиз `0.5.5` выложен на PROD и отправлен в GitHub. Миграция `20261027174226_lesson_feedback_system` применена; 14 уроков настроены на обязательный feedback по умолчанию. Unit: 81 passed; Python regression: 113 passed, 4 mutation tests пропущены по opt-in. Lint, typecheck, production build и smoke-check прошли; PM2 был `online`.
 - На последнем запуске `npm run test:unit` прошло 75 тестов.
 - `npm audit --omit=dev --audit-level=high` на 2026-10-27 обнаружил 8 уязвимостей в зависимостях: 6 critical и 2 high, включая advisories для TanStack Start и DOMPurify. Автоисправление не запускалось; это отдельная задача. Проверь актуальный audit заново и подготовь совместимое обновление с тестированием. Не запускай `npm audit fix --force` без анализа breaking changes и отдельного согласования.
