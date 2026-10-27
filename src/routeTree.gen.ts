@@ -27,6 +27,7 @@ import { Route as AdminMeetingsRouteImport } from './routes/admin.meetings'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminLessonsRouteImport } from './routes/admin.lessons'
 import { Route as AdminHomeworkRouteImport } from './routes/admin.homework'
+import { Route as AdminFeedbackRouteImport } from './routes/admin.feedback'
 import { Route as AdminArchieRouteImport } from './routes/admin.archie'
 import { Route as AdminAnalyticsRouteImport } from './routes/admin.analytics'
 
@@ -120,6 +121,11 @@ const AdminHomeworkRoute = AdminHomeworkRouteImport.update({
   path: '/homework',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminFeedbackRoute = AdminFeedbackRouteImport.update({
+  id: '/feedback',
+  path: '/feedback',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminArchieRoute = AdminArchieRouteImport.update({
   id: '/archie',
   path: '/archie',
@@ -143,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/archie': typeof AdminArchieRoute
+  '/admin/feedback': typeof AdminFeedbackRoute
   '/admin/homework': typeof AdminHomeworkRoute
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -164,6 +171,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/archie': typeof AdminArchieRoute
+  '/admin/feedback': typeof AdminFeedbackRoute
   '/admin/homework': typeof AdminHomeworkRoute
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -187,6 +195,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/archie': typeof AdminArchieRoute
+  '/admin/feedback': typeof AdminFeedbackRoute
   '/admin/homework': typeof AdminHomeworkRoute
   '/admin/lessons': typeof AdminLessonsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -211,6 +220,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/admin/analytics'
     | '/admin/archie'
+    | '/admin/feedback'
     | '/admin/homework'
     | '/admin/lessons'
     | '/admin/login'
@@ -232,6 +242,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/admin/analytics'
     | '/admin/archie'
+    | '/admin/feedback'
     | '/admin/homework'
     | '/admin/lessons'
     | '/admin/login'
@@ -254,6 +265,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/admin/analytics'
     | '/admin/archie'
+    | '/admin/feedback'
     | '/admin/homework'
     | '/admin/lessons'
     | '/admin/login'
@@ -408,6 +420,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminHomeworkRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/feedback': {
+      id: '/admin/feedback'
+      path: '/feedback'
+      fullPath: '/admin/feedback'
+      preLoaderRoute: typeof AdminFeedbackRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/archie': {
       id: '/admin/archie'
       path: '/archie'
@@ -428,6 +447,7 @@ declare module '@tanstack/react-router' {
 interface AdminRouteChildren {
   AdminAnalyticsRoute: typeof AdminAnalyticsRoute
   AdminArchieRoute: typeof AdminArchieRoute
+  AdminFeedbackRoute: typeof AdminFeedbackRoute
   AdminHomeworkRoute: typeof AdminHomeworkRoute
   AdminLessonsRoute: typeof AdminLessonsRoute
   AdminLoginRoute: typeof AdminLoginRoute
@@ -439,6 +459,7 @@ interface AdminRouteChildren {
 const AdminRouteChildren: AdminRouteChildren = {
   AdminAnalyticsRoute: AdminAnalyticsRoute,
   AdminArchieRoute: AdminArchieRoute,
+  AdminFeedbackRoute: AdminFeedbackRoute,
   AdminHomeworkRoute: AdminHomeworkRoute,
   AdminLessonsRoute: AdminLessonsRoute,
   AdminLoginRoute: AdminLoginRoute,

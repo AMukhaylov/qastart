@@ -39,6 +39,42 @@ export const completeLessonForCurrentUser = createServerFn({ method: "POST" })
       return { completed: false, scheduleLocked: true, requirementsIncomplete: false };
     if (!access.isAdmin) {
       const [
+        { data: courseFeedback, error: courseFeedbackError },
+        { data: lessonFeedback, error: lessonFeedbackError },
+        { data: submittedFeedback, error: submittedFeedbackError },
+      ] = await Promise.all([
+        supabaseAdmin
+          .from("lesson_feedback_course_settings")
+          .select("required_by_default")
+          .eq("id", true)
+          .single(),
+        supabaseAdmin
+          .from("lesson_feedback_settings")
+          .select("required_override")
+          .eq("lesson_id", data.lessonId)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("lesson_feedback")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("lesson_id", data.lessonId)
+          .maybeSingle(),
+      ]);
+      for (const error of [courseFeedbackError, lessonFeedbackError, submittedFeedbackError])
+        if (error) throw error;
+      const feedbackRequired =
+        lessonFeedback?.required_override ?? courseFeedback?.required_by_default ?? false;
+      if (feedbackRequired && !submittedFeedback) {
+        return {
+          completed: false,
+          scheduleLocked: false,
+          requirementsIncomplete: false,
+          feedbackRequired: true,
+        };
+      }
+    }
+    if (!access.isAdmin) {
+      const [
         { data: blocks, error: blocksError },
         { data: blockProgress, error: blockProgressError },
         { data: correctAnswers, error: answersError },

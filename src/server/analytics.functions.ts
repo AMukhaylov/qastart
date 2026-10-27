@@ -183,10 +183,47 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       }
     }
 
+    const [
+      { data: feedbackCourseSettings, error: feedbackCourseError },
+      { data: feedbackSettings, error: feedbackSettingsError },
+      submittedFeedback,
+    ] = await Promise.all([
+      supabaseAdmin
+        .from("lesson_feedback_course_settings")
+        .select("required_by_default")
+        .eq("id", true)
+        .single(),
+      supabaseAdmin.from("lesson_feedback_settings").select("lesson_id,required_override"),
+      fetchAllPages((from, to) =>
+        supabaseAdmin
+          .from("lesson_feedback")
+          .select("user_id,lesson_id")
+          .in("user_id", studentIds)
+          .eq("status", "completed")
+          .order("user_id")
+          .order("lesson_id")
+          .range(from, to),
+      ),
+    ]);
+    if (feedbackCourseError) throw feedbackCourseError;
+    if (feedbackSettingsError) throw feedbackSettingsError;
+    const feedbackOverrideByLesson = new Map(
+      (feedbackSettings ?? []).map((setting) => [setting.lesson_id, setting.required_override]),
+    );
+    const submittedFeedbackKey = new Set(
+      submittedFeedback.map((row) => `${row.user_id}:${row.lesson_id}`),
+    );
+    const effectiveProgress = progress.filter((row) => {
+      const required =
+        feedbackOverrideByLesson.get(row.lesson_id) ??
+        Boolean(feedbackCourseSettings?.required_by_default);
+      return !required || submittedFeedbackKey.has(`${row.user_id}:${row.lesson_id}`);
+    });
+
     return buildCourseAnalytics({
       students,
       lessons: lessons ?? [],
-      progress,
+      progress: effectiveProgress,
       blockProgress: blockProgress.map(({ user_id, lesson_id, completed_at }) => ({
         user_id,
         lesson_id,

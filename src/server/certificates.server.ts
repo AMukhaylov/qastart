@@ -65,6 +65,9 @@ export async function maybeIssueCertificate(userId: string) {
     { data: lessons, error: lessonsError },
     { data: progress, error: progressError },
     { data: passedFinalQuizAttempts, error: passedFinalQuizError },
+    { data: feedbackCourseSettings, error: feedbackCourseError },
+    { data: feedbackSettings, error: feedbackSettingsError },
+    { data: feedbackRows, error: feedbackRowsError },
   ] = await Promise.all([
     supabaseAdmin.from("lessons").select("id,day_number"),
     supabaseAdmin
@@ -77,17 +80,43 @@ export async function maybeIssueCertificate(userId: string) {
       .select("lesson_id")
       .eq("user_id", userId)
       .eq("passed", true),
+    supabaseAdmin
+      .from("lesson_feedback_course_settings")
+      .select("required_by_default")
+      .eq("id", true)
+      .single(),
+    supabaseAdmin.from("lesson_feedback_settings").select("lesson_id,required_override"),
+    supabaseAdmin
+      .from("lesson_feedback")
+      .select("lesson_id")
+      .eq("user_id", userId)
+      .eq("status", "completed"),
   ]);
 
   if (lessonsError) throw lessonsError;
   if (progressError) throw progressError;
   if (passedFinalQuizError) throw passedFinalQuizError;
+  if (feedbackCourseError) throw feedbackCourseError;
+  if (feedbackSettingsError) throw feedbackSettingsError;
+  if (feedbackRowsError) throw feedbackRowsError;
 
   const finalLesson = lessons?.find((lesson) => lesson.day_number === 14);
   const hasPassedFinalQuiz = Boolean(
     finalLesson && passedFinalQuizAttempts?.some((attempt) => attempt.lesson_id === finalLesson.id),
   );
   if (!hasPassedFinalQuiz) return null;
+
+  const feedbackOverrideByLesson = new Map(
+    (feedbackSettings ?? []).map((setting) => [setting.lesson_id, setting.required_override]),
+  );
+  const submittedFeedbackLessons = new Set((feedbackRows ?? []).map((row) => row.lesson_id));
+  const requiredFeedbackMissing = (lessons ?? []).some((lesson) => {
+    const required =
+      feedbackOverrideByLesson.get(lesson.id) ??
+      Boolean(feedbackCourseSettings?.required_by_default);
+    return required && !submittedFeedbackLessons.has(lesson.id);
+  });
+  if (requiredFeedbackMissing) return null;
 
   const completedLessonIds = new Set(progress?.map((item) => item.lesson_id) ?? []);
   completedLessonIds.add(finalLesson!.id);

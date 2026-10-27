@@ -712,6 +712,97 @@ export type Database = {
           },
         ];
       };
+      lesson_feedback_course_settings: {
+        Row: { id: boolean; required_by_default: boolean; updated_at: string };
+        Insert: { id?: boolean; required_by_default?: boolean; updated_at?: string };
+        Update: { id?: boolean; required_by_default?: boolean; updated_at?: string };
+        Relationships: [];
+      };
+      lesson_feedback_settings: {
+        Row: {
+          lesson_id: string;
+          required_override: boolean | null;
+          use_common_template: boolean;
+          questions: Json;
+          updated_at: string;
+        };
+        Insert: {
+          lesson_id: string;
+          required_override?: boolean | null;
+          use_common_template?: boolean;
+          questions: Json;
+          updated_at?: string;
+        };
+        Update: {
+          lesson_id?: string;
+          required_override?: boolean | null;
+          use_common_template?: boolean;
+          questions?: Json;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lesson_feedback_settings_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: true;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      lesson_feedback_templates: {
+        Row: { id: boolean; questions: Json; updated_at: string };
+        Insert: { id?: boolean; questions?: Json; updated_at?: string };
+        Update: { id?: boolean; questions?: Json; updated_at?: string };
+        Relationships: [];
+      };
+      lesson_feedback: {
+        Row: {
+          id: string;
+          user_id: string;
+          lesson_id: string;
+          answers: Json;
+          rating: number;
+          difficulty: string;
+          comment: string | null;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          lesson_id: string;
+          answers: Json;
+          rating: number;
+          difficulty: string;
+          comment?: string | null;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          lesson_id?: string;
+          answers?: Json;
+          rating?: number;
+          difficulty?: string;
+          comment?: string | null;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lesson_feedback_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       quiz_attempts: {
         Row: {
           answers: Json;

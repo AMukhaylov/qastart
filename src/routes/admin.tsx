@@ -8,6 +8,7 @@ import {
   CalendarDays,
   ChartNoAxesCombined,
   Bot,
+  MessageSquareText,
 } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ function AdminLayout() {
     { to: "/admin/meetings", label: "Встречи", icon: CalendarDays },
     { to: "/admin/students", label: "Студенты", icon: Users },
     { to: "/admin/analytics", label: "Аналитика", icon: ChartNoAxesCombined },
+    { to: "/admin/feedback", label: "Обратная связь", icon: MessageSquareText },
     { to: "/admin/archie", label: "Арчи", icon: Bot },
   ] as const;
 

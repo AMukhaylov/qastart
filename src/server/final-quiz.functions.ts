@@ -232,16 +232,45 @@ async function finalizeAttempt(attempt: QuizAttempt, timedOut: boolean, disquali
 
   const finished = data as QuizAttempt;
   if (finished.passed) {
-    const { error: progressError } = await supabaseAdmin.from("lesson_progress").upsert(
-      {
-        user_id: finished.user_id,
-        lesson_id: finished.lesson_id,
-        completed: true,
-        completed_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,lesson_id" },
-    );
-    if (progressError) throw progressError;
+    const [
+      { data: courseSettings, error: courseSettingsError },
+      { data: lessonSettings, error: lessonSettingsError },
+      { data: submittedFeedback, error: feedbackError },
+    ] = await Promise.all([
+      supabaseAdmin
+        .from("lesson_feedback_course_settings")
+        .select("required_by_default")
+        .eq("id", true)
+        .single(),
+      supabaseAdmin
+        .from("lesson_feedback_settings")
+        .select("required_override")
+        .eq("lesson_id", finished.lesson_id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("lesson_feedback")
+        .select("id")
+        .eq("user_id", finished.user_id)
+        .eq("lesson_id", finished.lesson_id)
+        .maybeSingle(),
+    ]);
+    for (const error of [courseSettingsError, lessonSettingsError, feedbackError]) {
+      if (error) throw error;
+    }
+    const feedbackRequired =
+      lessonSettings?.required_override ?? courseSettings?.required_by_default ?? false;
+    if (!feedbackRequired || submittedFeedback) {
+      const { error: progressError } = await supabaseAdmin.from("lesson_progress").upsert(
+        {
+          user_id: finished.user_id,
+          lesson_id: finished.lesson_id,
+          completed: true,
+          completed_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,lesson_id" },
+      );
+      if (progressError) throw progressError;
+    }
   }
   return finished;
 }

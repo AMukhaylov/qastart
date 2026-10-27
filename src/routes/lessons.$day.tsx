@@ -44,6 +44,11 @@ import { saveLessonQuestionAnswer } from "@/server/lesson-question-answers.funct
 import { completeLessonForCurrentUser } from "@/server/lesson-access.functions";
 import { markLessonBlocksCompleted } from "@/server/lesson-progress.functions";
 import { submitSqlSandboxAttempt } from "@/server/sql-sandbox-assessment.functions";
+import {
+  getStudentLessonFeedback,
+  submitLessonFeedback,
+  type FeedbackQuestion,
+} from "@/server/lesson-feedback.functions";
 
 export const Route = createFileRoute("/lessons/$day")({
   validateSearch: z.object({ focus: z.literal("homework").optional() }),
@@ -133,6 +138,12 @@ function LessonPage() {
   const [viewedBlockIds, setViewedBlockIds] = useState<string[]>([]);
   const [completingLesson, setCompletingLesson] = useState(false);
   const [submission, setSubmission] = useState<Submission | null>(null);
+  const [feedbackRequired, setFeedbackRequired] = useState(false);
+  const [feedbackAvailable, setFeedbackAvailable] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [feedbackQuestions, setFeedbackQuestions] = useState<FeedbackQuestion[]>([]);
+  const [feedbackAnswers, setFeedbackAnswers] = useState<Record<string, string | number>>({});
+  const [sendingFeedback, setSendingFeedback] = useState(false);
   const [sqlSandboxAttempts, setSqlSandboxAttempts] = useState<SavedSqlSandboxAttempt[]>([]);
   const [messages, setMessages] = useState<HomeworkMessage[]>([]);
   const [hwText, setHwText] = useState("");
@@ -220,6 +231,11 @@ function LessonPage() {
     setBlocks([]);
     setViewedBlockIds([]);
     setSqlSandboxAttempts([]);
+    setFeedbackRequired(false);
+    setFeedbackAvailable(false);
+    setFeedbackSubmitted(false);
+    setFeedbackQuestions([]);
+    setFeedbackAnswers({});
 
     if (!session?.access_token) {
       setLoading(false);
@@ -242,11 +258,24 @@ function LessonPage() {
       return;
     }
     setLesson(l as Lesson);
+    const feedbackState = await getStudentLessonFeedback({
+      data: { accessToken: session.access_token, lessonId: l.id },
+    });
+    if (requestId !== lessonLoadRequestRef.current) return;
+    setFeedbackRequired(feedbackState.required);
+    setFeedbackAvailable(feedbackState.available);
+    setFeedbackSubmitted(feedbackState.submitted);
+    setFeedbackQuestions(feedbackState.questions);
     setCourseStartAt(lessonData.courseStartAt);
     setAvailableDay(isAdmin ? 14 : lessonData.currentDay);
     const hasPassedFinalQuiz = Boolean(lessonData.finalQuizPassed);
     setFinalQuizPassed(hasPassedFinalQuiz);
-    setCompleted(dayNum === 14 ? hasPassedFinalQuiz : !!lessonData.progress?.completed);
+    setCompleted(
+      dayNum === 14
+        ? hasPassedFinalQuiz && (!feedbackState.required || feedbackState.submitted)
+        : Boolean(lessonData.progress?.completed) &&
+            (!feedbackState.required || feedbackState.submitted),
+    );
     setBlocks((lessonData.blocks ?? []) as LessonBlock[]);
     const serverViewedIds = (lessonData.blockProgress ?? []).map((row) => row.block_id);
     const queuedViewedIds =
@@ -292,12 +321,44 @@ function LessonPage() {
       }
       removePendingProgressIds(window.localStorage, key, pendingIds);
       setViewedBlockIds((ids) => Array.from(new Set([...ids, ...pendingIds])));
+      void refreshFeedbackState();
       return true;
     } catch {
       pendingIds.forEach((id) => pendingBlockIdsRef.current.delete(id));
       // Keep the queued ids so a transient network failure can be retried. The
       // server still validates every assessment before persisting them.
       return false;
+    }
+  }
+
+  async function refreshFeedbackState() {
+    if (!lesson || !session?.access_token) return;
+    try {
+      const state = await getStudentLessonFeedback({
+        data: { accessToken: session.access_token, lessonId: lesson.id },
+      });
+      setFeedbackRequired(state.required);
+      setFeedbackAvailable(state.available);
+      setFeedbackSubmitted(state.submitted);
+    } catch {
+      // Completion remains protected by the server if feedback state cannot refresh.
+    }
+  }
+
+  async function sendFeedback() {
+    if (!lesson || !session?.access_token || sendingFeedback) return;
+    setSendingFeedback(true);
+    try {
+      await submitLessonFeedback({
+        data: { accessToken: session.access_token, lessonId: lesson.id, answers: feedbackAnswers },
+      });
+      setFeedbackSubmitted(true);
+      setCompleted(true);
+      toast.success("Спасибо! Отзыв сохранён.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось отправить отзыв");
+    } finally {
+      setSendingFeedback(false);
     }
   }
 
@@ -385,6 +446,8 @@ function LessonPage() {
     if (!result.completed) {
       if (result.requirementsIncomplete) {
         toast.error("Сначала выполни обязательные шаги текущего урока.");
+      } else if (result.feedbackRequired) {
+        toast.info("Чтобы завершить урок, сначала отправь отзыв.");
       } else {
         toast.error("Урок пока не открылся по твоему расписанию.");
       }
@@ -400,6 +463,7 @@ function LessonPage() {
       !user ||
       lesson.day_number === 14 ||
       completed ||
+      (feedbackRequired && !feedbackSubmitted) ||
       completingLesson ||
       blocks.length === 0 ||
       !blocks.filter(isBlockRequired).every((block) => viewedBlockIds.includes(block.id))
@@ -409,7 +473,36 @@ function LessonPage() {
     void completeLesson();
     // completeLesson deliberately reads the current lesson and user from this render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blocks, completed, completingLesson, lesson, user, viewedBlockIds]);
+  }, [
+    blocks,
+    completed,
+    completingLesson,
+    feedbackRequired,
+    feedbackSubmitted,
+    lesson,
+    user,
+    viewedBlockIds,
+  ]);
+
+  useEffect(() => {
+    if (
+      !lesson ||
+      !session?.access_token ||
+      !feedbackRequired ||
+      feedbackSubmitted ||
+      typeof window === "undefined"
+    )
+      return;
+    const refresh = () => void refreshFeedbackState();
+    const interval = window.setInterval(refresh, 15_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+    // refreshFeedbackState uses the current lesson and session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedbackRequired, feedbackSubmitted, lesson, session?.access_token]);
 
   useEffect(() => {
     if (!lesson || loading) return;
@@ -841,9 +934,9 @@ function LessonPage() {
                   exitRequest={finalQuizExitRequest}
                   onActiveChange={setFinalQuizActive}
                   onPassed={() => {
-                    void markBlocksCompleted([block.id]);
+                    void markBlocksCompleted([block.id]).then(() => refreshFeedbackState());
                     setFinalQuizPassed(true);
-                    setCompleted(true);
+                    setCompleted(!feedbackRequired || feedbackSubmitted);
                   }}
                   onExitComplete={() => {
                     const destination = finalQuizExitDestination;
@@ -878,6 +971,103 @@ function LessonPage() {
             />
           ) : null}
 
+          {feedbackRequired && !feedbackSubmitted && feedbackAvailable && !isAdmin && (
+            <section
+              id="lesson-feedback"
+              className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7"
+            >
+              <div className="mb-5">
+                <h2 className="text-xl font-extrabold">Помоги сделать курс лучше</h2>
+                <p className="mt-2 text-muted-foreground">
+                  Расскажи, как тебе этот урок. Это займёт пару минут и поможет нам улучшить
+                  обучение.
+                </p>
+              </div>
+              <div className="space-y-6">
+                {feedbackQuestions.map((question) => (
+                  <fieldset key={question.id} className="space-y-2">
+                    <legend className="text-sm font-semibold">
+                      {question.label}
+                      {question.required ? " *" : ""}
+                    </legend>
+                    {question.type === "rating" ? (
+                      <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
+                        {Array.from({ length: 10 }, (_, index) => index + 1).map((score) => (
+                          <button
+                            key={score}
+                            type="button"
+                            aria-pressed={feedbackAnswers[question.id] === score}
+                            onClick={() =>
+                              setFeedbackAnswers((answers) => ({
+                                ...answers,
+                                [question.id]: score,
+                              }))
+                            }
+                            className={`min-h-11 rounded-xl border text-sm font-semibold transition-colors ${feedbackAnswers[question.id] === score ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:border-primary"}`}
+                          >
+                            {score}
+                          </button>
+                        ))}
+                      </div>
+                    ) : question.type === "radio" ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {(question.options ?? []).map((option) => (
+                          <label
+                            key={option.value}
+                            className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary-soft/30"
+                          >
+                            <input
+                              type="radio"
+                              name={`feedback-${question.id}`}
+                              value={option.value}
+                              checked={feedbackAnswers[question.id] === option.value}
+                              onChange={() =>
+                                setFeedbackAnswers((answers) => ({
+                                  ...answers,
+                                  [question.id]: option.value,
+                                }))
+                              }
+                            />
+                            {option.label}
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <Textarea
+                        rows={3}
+                        maxLength={3000}
+                        value={String(feedbackAnswers[question.id] ?? "")}
+                        onChange={(event) =>
+                          setFeedbackAnswers((answers) => ({
+                            ...answers,
+                            [question.id]: event.target.value,
+                          }))
+                        }
+                        placeholder="Напиши ответ…"
+                      />
+                    )}
+                  </fieldset>
+                ))}
+                <Button size="lg" disabled={sendingFeedback} onClick={() => void sendFeedback()}>
+                  {sendingFeedback ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  Отправить отзыв
+                </Button>
+              </div>
+            </section>
+          )}
+
+          {feedbackRequired && !feedbackSubmitted && !feedbackAvailable && !isAdmin && (
+            <p className="rounded-xl border border-primary/20 bg-primary-soft/20 p-4 text-sm text-muted-foreground">
+              {hasHomework && submission?.status !== "approved"
+                ? "Опрос появится после того, как наставник примет домашнее задание."
+                : "Сначала пройди все обязательные шаги урока, затем появится короткий опрос."}
+            </p>
+          )}
+
           {completionCardVisible && (
             <section
               className={`rounded-2xl p-5 shadow-[var(--shadow-soft)] md:p-7 ${homeworkPending ? "border border-primary/20 bg-primary-soft/30" : "border border-emerald-200 bg-emerald-50"}`}
@@ -898,6 +1088,7 @@ function LessonPage() {
         lesson.day_number === dayNum &&
         lesson.day_number <= availableDay &&
         session?.access_token &&
+        !(feedbackRequired && feedbackAvailable && !feedbackSubmitted) &&
         user?.id && (
           <ArchieChat
             key={`${lesson.id}:${user.id}`}
