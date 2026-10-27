@@ -1,0 +1,11 @@
+[Unit]
+Description=Run QA Start Supabase keep-alive check four times a day
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:00:00
+Persistent=true
+AccuracySec=1min
+Unit=qastart-supabase-keepalive.service
+
+[Install]
+WantedBy=timers.target

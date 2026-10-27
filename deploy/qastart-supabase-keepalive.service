@@ -1,0 +1,16 @@
+[Unit]
+Description=QA Start Supabase read-only keep-alive check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/var/www/qastart
+ExecStart=/usr/bin/node /usr/local/lib/qastart/supabase-keepalive.mjs
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/var/www/qastart/.env /usr/local/lib/qastart/supabase-keepalive.mjs
