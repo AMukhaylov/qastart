@@ -785,6 +785,9 @@ function LessonPage() {
           isBlockRequired(block),
       )
       .every((block) => viewedBlockIds.includes(block.id));
+  const homeworkCanBeSubmitted = homeworkBlock
+    ? homeworkUnlocked
+    : requiredBlocks.every((block) => viewedBlockIds.includes(block.id));
   const showHomework =
     (Boolean(homeworkBlock) && (homeworkUnlocked || Boolean(submission))) || hasLegacyHomework;
   const hasHomework = Boolean(homeworkBlock) || hasLegacyHomework;
@@ -926,7 +929,7 @@ function LessonPage() {
                     }
                     onSubmit={submitHomework}
                     saving={saving}
-                    lessonCompleted={completed}
+                    canSubmit={homeworkCanBeSubmitted}
                   />
                 )
               ) : null
@@ -971,7 +974,7 @@ function LessonPage() {
               }
               onSubmit={submitHomework}
               saving={saving}
-              lessonCompleted={completed}
+              canSubmit={homeworkCanBeSubmitted}
             />
           ) : null}
 
@@ -1167,7 +1170,7 @@ function HomeworkSubmissionCard({
   onRemoveAttachment,
   onSubmit,
   saving,
-  lessonCompleted,
+  canSubmit,
 }: {
   title: string;
   instruction: string;
@@ -1180,7 +1183,7 @@ function HomeworkSubmissionCard({
   onRemoveAttachment: (index: number) => void;
   onSubmit: () => void;
   saving: boolean;
-  lessonCompleted: boolean;
+  canSubmit: boolean;
 }) {
   return (
     <section
@@ -1197,8 +1200,8 @@ function HomeworkSubmissionCard({
         <LessonRichContent content={instruction} />
       </div>
       <p className="mt-4 text-sm text-muted-foreground">
-        {!lessonCompleted
-          ? "Сначала пройдите урок — после этого можно отправить домашнее задание."
+        {!canSubmit
+          ? "Сначала завершите обязательные шаги урока — после этого можно отправить домашнее задание."
           : submission
             ? "Последняя отправка сохранена."
             : "Домашнее задание ещё не отправлено."}
@@ -1244,7 +1247,7 @@ function HomeworkSubmissionCard({
               <Button
                 variant="hero"
                 onClick={onSubmit}
-                disabled={!lessonCompleted || !hwText.trim() || saving}
+                disabled={!canSubmit || !hwText.trim() || saving}
               >
                 {saving ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1273,7 +1276,7 @@ function HomeworkSubmissionCard({
           <Button
             variant="hero"
             onClick={onSubmit}
-            disabled={!lessonCompleted || !hwText.trim() || saving}
+            disabled={!canSubmit || !hwText.trim() || saving}
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Отправить на проверку

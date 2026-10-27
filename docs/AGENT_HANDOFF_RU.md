@@ -11,9 +11,9 @@ QA Start — русскоязычная обучающая платформа п
 - Сайт PROD: <https://startqa.ru>
 - GitHub: <https://github.com/AMukhaylov/qastart>
 - Supabase project ref: `bhvbydcddoxjfpcschzw` (`qastart`, регион `eu-west-1`)
-- Последняя проверенная версия PROD: `0.5.7` (`Release QA Start 0.5.7: remove premature feedback hint`)
-- Последний проверенный релизный коммит: `7f7db9b`
-- Тег этого релиза: `v0.5.7`
+- Последняя проверенная версия PROD: `0.5.8` (`Release QA Start 0.5.8: unblock saved lesson answers`)
+- Последний проверенный релизный коммит: `74c5725`
+- Тег этого релиза: `v0.5.8`
 - Рабочая GitHub-ветка с актуальным кодом PROD: `codex/final-quiz-bank-admin`
 
 На 2026-10-27 ветка `main` отставала и содержала старую версию (`0.1.1`). Не начинай релиз с `main` и не вливай ветки между собой вслепую: сначала проверь GitHub refs, граф коммитов и `package.json`.

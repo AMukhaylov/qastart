@@ -185,6 +185,16 @@ def test_homework_instruction_renders_markdown_in_preview_and_lesson():
     assert '<LessonRichContent content={instruction} />' in lesson
 
 
+def test_human_homework_is_unlocked_by_completed_prerequisites_not_full_lesson_feedback():
+    lesson = LESSON_PAGE.read_text(encoding="utf-8")
+    server = HOMEWORK_FUNCTIONS.read_text(encoding="utf-8")
+
+    assert "canSubmit={homeworkCanBeSubmitted}" in lesson
+    assert "homeworkPrerequisitesComplete(" in server
+    assert 'from("lesson_progress")' not in server
+    assert "Сначала завершите обязательные шаги урока" in server
+
+
 def test_sql_sandbox_attempts_are_owner_scoped_and_user_sql_is_only_saved_as_data():
     migration = SQL_SANDBOX_MIGRATION.read_text(encoding="utf-8")
     lockdown = next((ROOT / "supabase/migrations").glob("*_secure_student_assessment_progress.sql"))

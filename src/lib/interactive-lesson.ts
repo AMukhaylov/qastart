@@ -217,6 +217,32 @@ export function blockCompletionCondition(
   return "viewed";
 }
 
+export function homeworkPrerequisitesComplete(
+  blocks: Array<Pick<LessonBlock, "id" | "block_type" | "content" | "position">>,
+  homeworkBlockId: string | undefined,
+  completedBlockIds: Set<string>,
+  answeredBlockIds: Set<string>,
+  passedSqlBlockIds: Set<string>,
+  passedQuiz: boolean,
+  hasSubmission: boolean,
+) {
+  const homeworkPosition = homeworkBlockId
+    ? (blocks.find((block) => block.id === homeworkBlockId)?.position ?? Number.MAX_SAFE_INTEGER)
+    : Number.MAX_SAFE_INTEGER;
+
+  return blocks
+    .filter((block) => block.position < homeworkPosition && isBlockRequired(block))
+    .every((block) => {
+      if (!completedBlockIds.has(block.id)) return false;
+      const condition = blockCompletionCondition(block);
+      if (condition === "question_answered" && !answeredBlockIds.has(block.id)) return false;
+      if (condition === "all_sql_tasks_passed" && !passedSqlBlockIds.has(block.id)) return false;
+      if (condition === "homework_submitted" && !hasSubmission) return false;
+      if (block.block_type === "final_quiz" && !passedQuiz) return false;
+      return true;
+    });
+}
+
 export function createLessonBlock(type: LessonBlockType): LessonBlockDraft {
   const defaults: Record<LessonBlockType, Record<string, unknown>> = {
     heading: { title: "Новый раздел" },

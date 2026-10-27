@@ -3,8 +3,16 @@ import { assertLessonScheduleAccess } from "./course-schedule.server";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import {
+  blockCompletionCondition,
+  homeworkPrerequisitesComplete,
+  isBlockRequired,
+  type LessonBlock,
+} from "@/lib/interactive-lesson";
+import { isValidLessonQuestionSelection } from "@/lib/lesson-question-answer";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getRolesForAccessToken, getUserIdForAccessToken } from "./admin-auth.server";
+import { hasPassedEverySqlTask } from "./sql-sandbox-assessment.server";
 import {
   notifyAdminsHomeworkSubmitted,
   notifyStudentHomeworkStatus,
@@ -178,24 +186,17 @@ export const submitHomeworkForCurrentUser = createServerFn({ method: "POST" })
   .inputValidator((data) => submitHomeworkInput.parse(data))
   .handler(async ({ data }) => {
     const userId = await getUserIdForAccessToken(data.accessToken);
-    const [lessonResult, progressResult, blockResult, latestResult] = await Promise.all([
+    const [lessonResult, blocksResult, latestResult] = await Promise.all([
       supabaseAdmin
         .from("lessons")
         .select("id,day_number,homework_md")
         .eq("id", data.lessonId)
         .maybeSingle(),
       supabaseAdmin
-        .from("lesson_progress")
-        .select("completed,completed_at")
-        .eq("user_id", userId)
-        .eq("lesson_id", data.lessonId)
-        .maybeSingle(),
-      supabaseAdmin
         .from("lesson_blocks")
-        .select("id")
+        .select("id,block_type,position,content")
         .eq("lesson_id", data.lessonId)
-        .eq("block_type", "homework")
-        .limit(1),
+        .order("position"),
       supabaseAdmin
         .from("homework_submissions")
         .select("id,status")
@@ -205,22 +206,90 @@ export const submitHomeworkForCurrentUser = createServerFn({ method: "POST" })
         .limit(1)
         .maybeSingle(),
     ]);
-    for (const error of [
-      lessonResult.error,
-      progressResult.error,
-      blockResult.error,
-      latestResult.error,
-    ]) {
+    for (const error of [lessonResult.error, blocksResult.error, latestResult.error]) {
       if (error) throw error;
     }
     const lesson = lessonResult.data;
     if (!lesson) throw new Error("Урок не найден");
     await assertLessonScheduleAccess(userId, lesson.day_number);
-    if (!progressResult.data?.completed || !progressResult.data.completed_at) {
-      throw new Error("Сначала завершите урок, затем отправьте домашнее задание");
-    }
-    if (!lesson.homework_md.trim() && !blockResult.data?.length) {
+
+    const blocks = (blocksResult.data ?? []) as LessonBlock[];
+    const homeworkBlock = blocks.find(
+      (block) => block.block_type === "homework" && block.content.visible !== false,
+    );
+    if (!lesson.homework_md.trim() && !homeworkBlock) {
       throw new Error("В этом уроке нет домашнего задания");
+    }
+
+    const [progressResult, answersResult, quizzesResult, attemptsResult] = await Promise.all([
+      supabaseAdmin
+        .from("lesson_block_progress")
+        .select("block_id")
+        .eq("user_id", userId)
+        .eq("lesson_id", data.lessonId),
+      supabaseAdmin
+        .from("lesson_question_answers")
+        .select("block_id,selected_indexes")
+        .eq("user_id", userId)
+        .eq("lesson_id", data.lessonId),
+      supabaseAdmin
+        .from("quiz_attempts")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("lesson_id", data.lessonId)
+        .eq("passed", true)
+        .limit(1),
+      supabaseAdmin
+        .from("sql_sandbox_attempts")
+        .select("block_id,task_id,query_text,passed,passed_at")
+        .eq("user_id", userId)
+        .eq("lesson_id", data.lessonId),
+    ]);
+    for (const error of [
+      progressResult.error,
+      answersResult.error,
+      quizzesResult.error,
+      attemptsResult.error,
+    ]) {
+      if (error) throw error;
+    }
+
+    const completedBlockIds = new Set((progressResult.data ?? []).map((row) => row.block_id));
+    const answeredBlockIds = new Set(
+      (answersResult.data ?? [])
+        .filter((answer) => {
+          const block = blocks.find((candidate) => candidate.id === answer.block_id);
+          return Boolean(
+            block && isValidLessonQuestionSelection(block.content, answer.selected_indexes),
+          );
+        })
+        .map((answer) => answer.block_id),
+    );
+    const passedSqlBlockIds = new Set<string>();
+    const sqlAttempts = attemptsResult.data ?? [];
+    for (const block of blocks.filter(
+      (candidate) =>
+        candidate.block_type === "homework" &&
+        candidate.content.mode === "sql_sandbox" &&
+        isBlockRequired(candidate),
+    )) {
+      if (await hasPassedEverySqlTask(block, sqlAttempts)) passedSqlBlockIds.add(block.id);
+    }
+
+    if (
+      !homeworkPrerequisitesComplete(
+        blocks,
+        homeworkBlock?.id,
+        completedBlockIds,
+        answeredBlockIds,
+        passedSqlBlockIds,
+        (quizzesResult.data?.length ?? 0) > 0,
+        Boolean(latestResult.data),
+      )
+    ) {
+      throw new Error(
+        "Сначала завершите обязательные шаги урока, затем отправьте домашнее задание",
+      );
     }
     if (
       latestResult.data &&
