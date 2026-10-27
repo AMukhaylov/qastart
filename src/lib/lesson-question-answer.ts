@@ -59,6 +59,21 @@ export function buildLessonQuestionAnswer(
   };
 }
 
+export function isValidLessonQuestionSelection(content: unknown, selectedIndexes: unknown) {
+  if (
+    !Array.isArray(selectedIndexes) ||
+    selectedIndexes.some((index) => typeof index !== "number" || !Number.isInteger(index))
+  ) {
+    return false;
+  }
+  try {
+    buildLessonQuestionAnswer(content, selectedIndexes as number[]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function sameIndexes(left: number[], right: number[]) {
   return left.length === right.length && left.every((index, position) => index === right[position]);
 }

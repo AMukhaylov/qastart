@@ -2,7 +2,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MIGRATION = (ROOT / "supabase/migrations/20261027164714_lesson_feedback_system.sql").read_text(encoding="utf-8")
+MIGRATION = next((ROOT / "supabase/migrations").glob("*_lesson_feedback_system.sql")).read_text(
+    encoding="utf-8"
+)
 SERVER = (ROOT / "src/server/lesson-feedback.functions.ts").read_text(encoding="utf-8")
 LESSON_ACCESS = (ROOT / "src/server/lesson-access.functions.ts").read_text(encoding="utf-8")
 FINAL_QUIZ = (ROOT / "src/server/final-quiz.functions.ts").read_text(encoding="utf-8")

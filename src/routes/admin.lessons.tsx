@@ -1907,7 +1907,7 @@ function BlockEditor({
     );
   const defaultCondition =
     block.block_type === "question"
-      ? "question_correct"
+      ? "question_answered"
       : block.block_type === "video"
         ? "video_watched"
         : block.block_type === "homework"
@@ -2028,7 +2028,8 @@ function BlockEditor({
                 onChange={(event) => set("completionCondition", event.target.value)}
               >
                 <option value="viewed">Просмотрен</option>
-                <option value="question_correct">Правильный ответ</option>
+                <option value="question_answered">Ответ выбран и сохранён</option>
+                <option value="question_correct">Правильный ответ (устаревшее)</option>
                 <option value="video_watched">Видео просмотрено</option>
                 <option value="task_completed">Задание выполнено</option>
                 <option value="homework_submitted">Домашнее задание отправлено</option>

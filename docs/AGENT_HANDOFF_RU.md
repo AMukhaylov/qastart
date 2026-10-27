@@ -11,7 +11,7 @@ QA Start — русскоязычная обучающая платформа п
 - Сайт PROD: <https://startqa.ru>
 - GitHub: <https://github.com/AMukhaylov/qastart>
 - Supabase project ref: `bhvbydcddoxjfpcschzw` (`qastart`, регион `eu-west-1`)
-- Последняя проверенная версия PROD: `0.5.5`
+- Последняя проверенная версия PROD: `0.5.5` (релиз `0.5.6` в работе)
 - Последний проверенный релизный коммит: `f50f75a` (`Release QA Start 0.5.5: lesson feedback`)
 - Тег этого релиза: `v0.5.5`
 - Рабочая GitHub-ветка с актуальным кодом PROD: `codex/final-quiz-bank-admin`
@@ -28,7 +28,7 @@ QA Start — русскоязычная обучающая платформа п
 - Скрипт `deploy/deploy-prod.ps1` архивирует исходники, не включая `.env`, и запускает `deploy/remote-deploy.sh`.
 - Remote deploy создаёт rollback snapshot, проверяет Supabase project ref, выполняет `npm ci`, lint, typecheck, build, перезапускает PM2 и запускает `npm run smoke:prod`. При ошибке скрипт пытается восстановить snapshot.
 
-Не выкладывай PROD без явного запроса пользователя. Не обходи rollback-механику ручным удалением файлов. Не публикуй `.env`, ключи или backup snapshots.
+Постоянное указание владельца проекта: завершённые исправления и новые функции выпускать в PROD и GitHub сразу после тестов, с patch bump, changelog, rollback-safe deployment, smoke-check и проверкой релизного тега. Не обходи rollback-механику ручным удалением файлов. Не публикуй `.env`, ключи или backup snapshots.
 
 SSH-ключ, если он доступен на этой Windows-машине: `%USERPROFILE%\.ssh\qastart_reg_ru_ed25519`. Путь — только подсказка: проверяй его наличие и не выводи содержимое ключа. На другой машине используй только авторизованный пользователем SSH-доступ.
 
@@ -53,7 +53,7 @@ SSH-ключ, если он доступен на этой Windows-машине:
 4. Изменяй только файлы, относящиеся к запросу. Для production-релиза обновляй версию в `package.json` и корневой записи `package-lock.json`; веди `CHANGELOG.md`.
 5. Подбирай проверки по риску. Основные команды: `npm run test:unit`, `npm run lint`, `npm run typecheck`, `npm run build`; для production-релиза также `npm run deploy:prod` и его встроенный `npm run smoke:prod`. Для полной проверки Python-автотестов используй `npm run test:autotests`, предварительно выяснив, не выполняют ли выбранные тесты записи во внешние системы.
 6. После изменения версии сверяй номер на PROD (`/var/www/qastart/package.json`), GitHub-коммит и тег. На момент написания актуальны `0.5.5`, `f50f75a`, `v0.5.5`.
-7. Для публикации в GitHub используй прямой `git push` (требование `AGENTS.md`: не использовать `gh`). Push делай только в рабочую ветку, не в устаревший `main`, пока пользователь явно не выбрал стратегию синхронизации.
+7. После успешных проверок обнови patch-версию, package-lock и changelog; закоммить, создай version tag, отправь commit/tag в рабочую GitHub-ветку прямым `git push` (не использовать `gh`), затем выложи PROD через `npm run deploy:prod`. Не пушь в устаревший `main`.
 8. После выкладки перепроверь сайт, PM2, smoke-check, Supabase proxy/storage и состояние таймера. Явно сообщи пользователю, что прошло, а что не проверялось.
 
 ## Проверки и известные риски на 2026-10-27

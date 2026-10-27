@@ -135,6 +135,7 @@ function LessonPage() {
   const [completed, setCompleted] = useState(false);
   const [finalQuizPassed, setFinalQuizPassed] = useState(false);
   const [blocks, setBlocks] = useState<LessonBlock[]>([]);
+  const [savedQuestionAnswers, setSavedQuestionAnswers] = useState<Record<string, number[]>>({});
   const [viewedBlockIds, setViewedBlockIds] = useState<string[]>([]);
   const [completingLesson, setCompletingLesson] = useState(false);
   const [submission, setSubmission] = useState<Submission | null>(null);
@@ -229,6 +230,7 @@ function LessonPage() {
     setCourseStartAt(null);
     setAvailableDay(0);
     setBlocks([]);
+    setSavedQuestionAnswers({});
     setViewedBlockIds([]);
     setSqlSandboxAttempts([]);
     setFeedbackRequired(false);
@@ -277,6 +279,7 @@ function LessonPage() {
             (!feedbackState.required || feedbackState.submitted),
     );
     setBlocks((lessonData.blocks ?? []) as LessonBlock[]);
+    setSavedQuestionAnswers(lessonData.savedQuestionAnswers ?? {});
     const serverViewedIds = (lessonData.blockProgress ?? []).map((row) => row.block_id);
     const queuedViewedIds =
       typeof window === "undefined" || !user?.id
@@ -884,6 +887,7 @@ function LessonPage() {
                 : blocks
             }
             completedBlockIds={new Set(viewedBlockIds)}
+            savedQuestionAnswers={savedQuestionAnswers}
             onBlocksCompleted={markBlocksCompleted}
             onQuestionAnswered={isAdmin ? undefined : saveQuestionAnswer}
             legacyContent={lesson.content_md}

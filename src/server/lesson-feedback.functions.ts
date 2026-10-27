@@ -6,7 +6,7 @@ import {
   isBlockRequired,
   type LessonBlock,
 } from "@/lib/interactive-lesson";
-import { buildLessonQuestionAnswer } from "@/lib/lesson-question-answer";
+import { isValidLessonQuestionSelection } from "@/lib/lesson-question-answer";
 import { getLessonScheduleAccess } from "./course-schedule.server";
 import { getRolesForAccessToken, getUserIdForAccessToken } from "./admin-auth.server";
 import { hasPassedEverySqlTask } from "./sql-sandbox-assessment.server";
@@ -85,8 +85,7 @@ async function validateLessonRequirements(userId: string, lessonId: string, bloc
       .from("lesson_question_answers")
       .select("block_id,selected_indexes")
       .eq("user_id", userId)
-      .eq("lesson_id", lessonId)
-      .eq("is_correct", true),
+      .eq("lesson_id", lessonId),
     supabaseAdmin
       .from("quiz_attempts")
       .select("id")
@@ -103,12 +102,12 @@ async function validateLessonRequirements(userId: string, lessonId: string, bloc
   for (const error of [progressError, answersError, quizzesError, attemptsError])
     if (error) throw error;
   const completedIds = new Set((progress ?? []).map((row) => row.block_id));
-  const correctIds = new Set(
+  const answeredIds = new Set(
     (answers ?? [])
       .filter((answer) => {
         const block = blocks.find((candidate) => candidate.id === answer.block_id);
         return Boolean(
-          block && buildLessonQuestionAnswer(block.content, answer.selected_indexes).isCorrect,
+          block && isValidLessonQuestionSelection(block.content, answer.selected_indexes),
         );
       })
       .map((answer) => answer.block_id),
@@ -117,7 +116,7 @@ async function validateLessonRequirements(userId: string, lessonId: string, bloc
   for (const block of blocks.filter(isBlockRequired)) {
     if (!completedIds.has(block.id)) return false;
     const condition = blockCompletionCondition(block);
-    if (condition === "question_correct" && !correctIds.has(block.id)) return false;
+    if (condition === "question_answered" && !answeredIds.has(block.id)) return false;
     if (block.block_type === "final_quiz" && !passedQuiz) return false;
     if (
       condition === "all_sql_tasks_passed" &&

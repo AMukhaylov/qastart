@@ -628,3 +628,17 @@ test("AI kit contains the specification, Day 1 example slots and a valid ZIP", (
   const zip = createZip(files);
   assert.equal(String.fromCharCode(...zip.slice(0, 4)), "PK\u0003\u0004");
 });
+
+test("question blocks complete after a saved answer regardless of correctness", () => {
+  assert.equal(
+    blockCompletionCondition({ block_type: "question", content: {} }),
+    "question_answered",
+  );
+  assert.equal(
+    blockCompletionCondition({
+      block_type: "question",
+      content: { completionCondition: "question_correct" },
+    }),
+    "question_answered",
+  );
+});

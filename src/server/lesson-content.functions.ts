@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getUserIdForAccessToken } from "./admin-auth.server";
 import { getLessonScheduleAccess } from "./course-schedule.server";
 import { blockCompletionCondition, type LessonBlock } from "@/lib/interactive-lesson";
-import { buildLessonQuestionAnswer } from "@/lib/lesson-question-answer";
+import { isValidLessonQuestionSelection } from "@/lib/lesson-question-answer";
 import {
   hasPassedEverySqlTask,
   hideSqlAnswerKeyFromStudent,
@@ -39,6 +39,7 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
         submission: null,
         blocks: [],
         blockProgress: [],
+        savedQuestionAnswers: {},
         sqlSandboxAttempts: [],
         finalQuizPassed: false,
         courseStartAt: null,
@@ -153,15 +154,25 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       .eq("lesson_id", lesson.id);
     if (savedQuestionAnswersError) throw savedQuestionAnswersError;
     const lessonBlocksById = new Map((blocks ?? []).map((block) => [block.id, block]));
-    const correctQuestionIds = new Set(
+    const answeredQuestionIds = new Set(
       (savedQuestionAnswers ?? [])
         .filter((answer) => {
           const block = lessonBlocksById.get(answer.block_id);
           return Boolean(
-            block && buildLessonQuestionAnswer(block.content, answer.selected_indexes).isCorrect,
+            block && isValidLessonQuestionSelection(block.content, answer.selected_indexes),
           );
         })
         .map((answer) => answer.block_id),
+    );
+    const savedQuestionAnswerByBlockId = Object.fromEntries(
+      (savedQuestionAnswers ?? [])
+        .filter((answer) => {
+          const block = lessonBlocksById.get(answer.block_id);
+          return Boolean(
+            block && isValidLessonQuestionSelection(block.content, answer.selected_indexes),
+          );
+        })
+        .map((answer) => [answer.block_id, answer.selected_indexes as number[]]),
     );
     const finalQuizPassed = (passedFinalQuiz?.length ?? 0) > 0;
     const completedBlockRows = blockProgress ?? [];
@@ -172,7 +183,7 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       const lessonBlock = block as LessonBlock;
       const condition = blockCompletionCondition(lessonBlock);
       let valid = true;
-      if (condition === "question_correct") valid = correctQuestionIds.has(block.id);
+      if (condition === "question_answered") valid = answeredQuestionIds.has(block.id);
       if (condition === "all_sql_tasks_passed") {
         valid = await hasPassedEverySqlTask(lessonBlock, sqlSandboxAttempts ?? []);
       }
@@ -194,6 +205,7 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       submission,
       blocks: (blocks ?? []).map((block) => hideSqlAnswerKeyFromStudent(block)),
       blockProgress: validProgressRows,
+      savedQuestionAnswers: savedQuestionAnswerByBlockId,
       sqlSandboxAttempts: sqlSandboxAttemptsError ? [] : verifiedSqlAttempts,
       finalQuizPassed: (passedFinalQuiz?.length ?? 0) > 0,
       courseStartAt: access.courseStartAt,

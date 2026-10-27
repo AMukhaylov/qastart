@@ -33,6 +33,7 @@ export type LessonBlockDraft = Pick<LessonBlock, "block_type" | "content"> & { i
 
 export type CompletionCondition =
   | "viewed"
+  | "question_answered"
   | "question_correct"
   | "video_watched"
   | "task_completed"
@@ -198,15 +199,18 @@ export function blockCompletionCondition(
   const explicit = block.content.completionCondition;
   if (
     explicit === "viewed" ||
+    explicit === "question_answered" ||
     explicit === "question_correct" ||
     explicit === "video_watched" ||
     explicit === "task_completed" ||
     explicit === "homework_submitted" ||
     explicit === "all_sql_tasks_passed"
   ) {
-    return explicit;
+    // Keep legacy lesson packages compatible, but a submitted answer (not its
+    // correctness) completes the interactive question step.
+    return explicit === "question_correct" ? "question_answered" : explicit;
   }
-  if (block.block_type === "question") return "question_correct";
+  if (block.block_type === "question") return "question_answered";
   if (block.block_type === "video") return "video_watched";
   if (block.block_type === "homework")
     return block.content.mode === "sql_sandbox" ? "all_sql_tasks_passed" : "homework_submitted";

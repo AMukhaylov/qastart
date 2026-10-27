@@ -22,7 +22,6 @@ import { LessonRichContent } from "@/components/lesson-rich-content";
 import { SqlSandboxHomework } from "@/components/sql-sandbox-homework";
 import type { LessonGuideVariant } from "@/lib/lesson-guide";
 import {
-  blockCompletionCondition,
   blocksNext,
   isBlockRequired,
   lessonTableColumns,
@@ -40,6 +39,7 @@ const StateDiagramCanvas = lazy(() =>
 type InteractiveLessonProps = {
   blocks: LessonBlock[];
   completedBlockIds: Set<string>;
+  savedQuestionAnswers?: Record<string, number[]>;
   onBlocksCompleted: (blockIds: string[]) => Promise<boolean> | void;
   onQuestionAnswered?: (
     blockId: string,
@@ -103,6 +103,7 @@ function createSteps(blocks: LessonBlock[]): LessonStep[] {
 export function InteractiveLesson({
   blocks,
   completedBlockIds,
+  savedQuestionAnswers,
   onBlocksCompleted,
   onQuestionAnswered,
   legacyContent,
@@ -194,6 +195,7 @@ export function InteractiveLesson({
                   key={block.id}
                   block={block}
                   completed={completedBlockIds.has(block.id)}
+                  savedQuestionAnswer={savedQuestionAnswers?.[block.id]}
                   onComplete={() => onBlocksCompleted([block.id])}
                   onQuestionAnswered={(selectedIndexes) =>
                     onQuestionAnswered?.(block.id, selectedIndexes)
@@ -274,12 +276,14 @@ export function InteractiveLesson({
 function LessonBlockView({
   block,
   completed,
+  savedQuestionAnswer,
   onComplete,
   onQuestionAnswered,
   previewMode = false,
 }: {
   block: LessonBlock;
   completed: boolean;
+  savedQuestionAnswer?: number[];
   onComplete: () => Promise<boolean> | void;
   onQuestionAnswered?: (
     selectedIndexes: number[],
@@ -472,6 +476,7 @@ function LessonBlockView({
         <QuestionBlock
           content={c}
           completed={completed}
+          savedQuestionAnswer={savedQuestionAnswer}
           onComplete={onComplete}
           onQuestionAnswered={onQuestionAnswered}
         />
@@ -732,11 +737,13 @@ function ExamplePart({ title, text, tone }: { title: string; text: string; tone:
 function QuestionBlock({
   content,
   completed,
+  savedQuestionAnswer,
   onComplete,
   onQuestionAnswered,
 }: {
   content: Record<string, unknown>;
   completed: boolean;
+  savedQuestionAnswer?: number[];
   onComplete: () => Promise<boolean> | void;
   onQuestionAnswered?: (
     selectedIndexes: number[],
@@ -749,13 +756,10 @@ function QuestionBlock({
   const correctAnswers = Array.isArray(content.correctAnswers)
     ? content.correctAnswers.filter((item): item is number => typeof item === "number")
     : [correctIndex];
-  // Completed answers are loaded as progress only, so restore the visible
-  // selection from the correct options when the learner returns to the lesson.
-  const [selected, setSelected] = useState<number[]>(() => (completed ? correctAnswers : []));
+  const [selected, setSelected] = useState<number[]>(() => savedQuestionAnswer ?? []);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
-  const [incorrectAttempt, setIncorrectAttempt] = useState(false);
   const correct =
     submitted &&
     selected.length === correctAnswers.length &&
@@ -775,16 +779,6 @@ function QuestionBlock({
           ? answerResult.isCorrect
           : selectedIndexes.length === correctAnswers.length &&
             selectedIndexes.every((index) => correctAnswers.includes(index));
-      if (
-        !isCorrect &&
-        blockCompletionCondition({ block_type: "question", content }) === "question_correct"
-      ) {
-        setIncorrectAttempt(true);
-        setSubmitted(false);
-        setSelected([]);
-        return;
-      }
-      setIncorrectAttempt(false);
       if ((await onComplete()) === false) setSaveFailed(true);
     } catch {
       setSaveFailed(true);
@@ -819,11 +813,6 @@ function QuestionBlock({
         <p className="mt-3 rounded-lg bg-primary-soft px-4 py-3 text-sm font-semibold text-primary">
           Можно выбрать несколько ответов. Отметь все верные варианты, затем нажми «Проверить
           ответ».
-        </p>
-      )}
-      {incorrectAttempt && !answered && (
-        <p className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950">
-          Пока неверно — попробуй ещё раз. Этот шаг засчитается после правильного ответа.
         </p>
       )}
       <div className="mt-5 space-y-2">
@@ -879,7 +868,7 @@ function QuestionBlock({
         >
           <p className="font-bold">
             {!submitted
-              ? "Вопрос уже пройден. Повтори правильные варианты."
+              ? "Ответ сохранён."
               : correct
                 ? "Верно!"
                 : "Неверно. Посмотри разбор ответа."}

@@ -48,7 +48,21 @@ def test_students_cannot_directly_create_or_update_required_block_progress():
     )
     assert ".from(\"lesson_block_progress\").upsert" not in lesson_route
     assert "hasPassedEverySqlTask(block, storedAttempts)" in completion
-    assert "correct.has(block.id)" in completion
+    assert 'condition === "question_answered"' in completion
+    assert "answered.has(block.id)" in completion
+
+
+def test_incorrect_valid_question_answers_can_complete_lesson_steps():
+    progress = (ROOT / "src/server/lesson-progress.functions.ts").read_text(encoding="utf-8")
+    access = (ROOT / "src/server/lesson-access.functions.ts").read_text(encoding="utf-8")
+    feedback = (ROOT / "src/server/lesson-feedback.functions.ts").read_text(encoding="utf-8")
+    renderer = (ROOT / "src/components/interactive-lesson.tsx").read_text(encoding="utf-8")
+
+    for source in (progress, access, feedback):
+        assert 'condition === "question_answered"' in source
+        assert '.eq("is_correct", true)' not in source
+    assert "if ((await onComplete()) === false) setSaveFailed(true)" in renderer
+    assert "Этот шаг засчитается после правильного ответа" not in renderer
 
 
 def test_student_sql_payload_does_not_expose_answer_key_or_grade_in_browser():

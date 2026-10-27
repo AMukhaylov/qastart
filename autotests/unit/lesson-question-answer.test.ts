@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildLessonQuestionAnswer, sameIndexes } from "../../src/lib/lesson-question-answer.ts";
+import {
+  buildLessonQuestionAnswer,
+  isValidLessonQuestionSelection,
+  sameIndexes,
+} from "../../src/lib/lesson-question-answer.ts";
 
 test("single-choice answers are graded against the lesson block, not client claims", () => {
   const answer = buildLessonQuestionAnswer(
@@ -29,6 +33,18 @@ test("multiple-choice answers require the exact correct option set", () => {
   assert.equal(buildLessonQuestionAnswer(content, [2, 0]).isCorrect, true);
   assert.equal(buildLessonQuestionAnswer(content, [0]).isCorrect, false);
   assert.equal(buildLessonQuestionAnswer(content, [0, 1, 2]).isCorrect, false);
+});
+
+test("a valid but incorrect selection is still a valid saved answer", () => {
+  const content = {
+    question: "Какой вариант правильный?",
+    options: ["А", "Б"],
+    correctIndex: 0,
+  };
+  assert.equal(buildLessonQuestionAnswer(content, [1]).isCorrect, false);
+  assert.equal(isValidLessonQuestionSelection(content, [1]), true);
+  assert.equal(isValidLessonQuestionSelection(content, [2]), false);
+  assert.equal(isValidLessonQuestionSelection(content, []), false);
 });
 
 test("malformed or duplicate indexes are rejected and retries compare normalized indexes", () => {

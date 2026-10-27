@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getRolesForAccessToken, getUserIdForAccessToken } from "./admin-auth.server";
 import { getLessonScheduleAccess } from "./course-schedule.server";
 import { hasPassedEverySqlTask } from "./sql-sandbox-assessment.server";
-import { buildLessonQuestionAnswer } from "@/lib/lesson-question-answer";
+import { isValidLessonQuestionSelection } from "@/lib/lesson-question-answer";
 
 const input = z.object({
   accessToken: z.string().min(20),
@@ -47,7 +47,7 @@ export const markLessonBlocksCompleted = createServerFn({ method: "POST" })
 
     const [
       { data: existingProgress, error: progressError },
-      { data: correctAnswers, error: answersError },
+      { data: questionAnswers, error: answersError },
       { data: passedQuizzes, error: quizError },
       { data: attempts, error: attemptsError },
       { data: submissions, error: submissionsError },
@@ -61,8 +61,7 @@ export const markLessonBlocksCompleted = createServerFn({ method: "POST" })
         .from("lesson_question_answers")
         .select("block_id,selected_indexes")
         .eq("user_id", userId)
-        .eq("lesson_id", lessonId)
-        .eq("is_correct", true),
+        .eq("lesson_id", lessonId),
       supabaseAdmin
         .from("quiz_attempts")
         .select("id")
@@ -88,13 +87,11 @@ export const markLessonBlocksCompleted = createServerFn({ method: "POST" })
 
     const done = new Set((existingProgress ?? []).map((row) => row.block_id));
     const contentByBlockId = new Map(blocks.map((block) => [block.id, block.content]));
-    const correct = new Set(
-      (correctAnswers ?? [])
+    const answered = new Set(
+      (questionAnswers ?? [])
         .filter((row) => {
           const content = contentByBlockId.get(row.block_id);
-          return Boolean(
-            content && buildLessonQuestionAnswer(content, row.selected_indexes).isCorrect,
-          );
+          return Boolean(content && isValidLessonQuestionSelection(content, row.selected_indexes));
         })
         .map((row) => row.block_id),
     );
@@ -108,7 +105,7 @@ export const markLessonBlocksCompleted = createServerFn({ method: "POST" })
       if (!isAdmin && block.content.visible === false) return { saved: false };
       const condition = blockCompletionCondition(block);
       let valid = true;
-      if (!isAdmin && condition === "question_correct") valid = correct.has(block.id);
+      if (!isAdmin && condition === "question_answered") valid = answered.has(block.id);
       if (!isAdmin && condition === "all_sql_tasks_passed") {
         valid = await hasPassedEverySqlTask(block, storedAttempts);
       }

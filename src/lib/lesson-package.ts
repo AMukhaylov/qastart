@@ -168,7 +168,7 @@ const commonFields: BlockField[] = [
   },
   {
     name: "completionCondition",
-    type: "viewed | question_correct | video_watched | task_completed | homework_submitted | all_sql_tasks_passed",
+    type: "viewed | question_answered | question_correct | video_watched | task_completed | homework_submitted | all_sql_tasks_passed",
     description: "Когда блок считается выполненным.",
   },
 ];
@@ -615,6 +615,7 @@ const blockCatalogByType = new Map(lessonBlockCatalog.map((block) => [block.type
 const commonKeys = new Set(["type", "visible", "required", "blocksNext", "completionCondition"]);
 const completionConditions = new Set([
   "viewed",
+  "question_answered",
   "question_correct",
   "video_watched",
   "task_completed",
@@ -1398,11 +1399,12 @@ function jsonType(type: string): LessonJsonSchemaNode {
   if (type === '"manual" | "sql_sandbox"') return { enum: ["manual", "sql_sandbox"] };
   if (
     type ===
-    "viewed | question_correct | video_watched | task_completed | homework_submitted | all_sql_tasks_passed"
+    "viewed | question_answered | question_correct | video_watched | task_completed | homework_submitted | all_sql_tasks_passed"
   )
     return {
       enum: [
         "viewed",
+        "question_answered",
         "question_correct",
         "video_watched",
         "task_completed",
@@ -1744,7 +1746,7 @@ export function buildAiKitReadme() {
 - SQL sandbox: sandbox.tables содержит от 1 до 10 таблиц; имена таблиц и колонок — безопасные SQL-идентификаторы из латинских букв, цифр и _. В таблице 1–20 уникальных колонок и не более 500 строк; каждая строка содержит значение для каждой колонки (строка, конечное число или null).
 - У каждого SQL-задания id должен быть уникальным, состоять из латинских букв, цифр, _ или - и иметь длину не более 80 символов. title и instruction — непустые строки; expectedColumns — непустой массив строк; каждая строка expectedRows должна иметь ту же длину и содержать только строки, конечные числа или null. Количество заданий не фиксировано.
 - allowStatements содержит только уникальные команды SELECT, INSERT, UPDATE и/или DELETE. readOnly: true совместим только с SELECT. На каждую попытку разрешён один запрос; несколько команд, DDL, транзакции и опасные SQLite-функции запрещены. Для INSERT/UPDATE/DELETE без RETURNING задайте verificationQuery — одиночный безопасный SELECT.
-- completionCondition может быть только viewed, question_correct, video_watched, task_completed, homework_submitted или all_sql_tasks_passed. all_sql_tasks_passed используйте только для homework.mode: sql_sandbox.
+- completionCondition может быть только viewed, question_answered, question_correct, video_watched, task_completed, homework_submitted или all_sql_tasks_passed. Для вопросов используется question_answered: сохранённый ответ завершает шаг независимо от правильности; question_correct поддерживается только для совместимости. all_sql_tasks_passed используйте только для homework.mode: sql_sandbox.
 `;
 }
 
