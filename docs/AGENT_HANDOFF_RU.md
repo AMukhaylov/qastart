@@ -11,9 +11,9 @@ QA Start — русскоязычная обучающая платформа п
 - Сайт PROD: <https://startqa.ru>
 - GitHub: <https://github.com/AMukhaylov/qastart>
 - Supabase project ref: `bhvbydcddoxjfpcschzw` (`qastart`, регион `eu-west-1`)
-- Последняя проверенная версия PROD: `0.5.13` (пояснение шкалы звёздного рейтинга feedback)
-- Последний проверенный релизный коммит: `2140ef4`
-- Тег этого релиза: `v0.5.13`
+- Последняя проверенная версия PROD: `0.5.14` (увеличенная шкала звёздного рейтинга feedback)
+- Последний проверенный релизный коммит: `eab5e37`
+- Тег этого релиза: `v0.5.14`
 - Рабочая GitHub-ветка с актуальным кодом PROD: `codex/final-quiz-bank-admin`
 
 На 2026-10-27 ветка `main` отставала и содержала старую версию (`0.1.1`). Не начинай релиз с `main` и не вливай ветки между собой вслепую: сначала проверь GitHub refs, граф коммитов и `package.json`.
@@ -59,6 +59,7 @@ SSH-ключ, если он доступен на этой Windows-машине:
 
 ## Проверки и известные риски на 2026-10-29
 
+- Релиз `0.5.14` в PROD и GitHub (`eab5e37`, `v0.5.14`). Звёзды рейтинга feedback увеличены до 40 px, кнопки — до 64 px, цифры — до 12 px. Unit: 87 passed; feedback security regression: 7 passed; lint, typecheck, production build и production deploy прошли. Production smoke подтвердил основные страницы/Auth/Storage; PM2 `qastart` — `online`.
 - Релиз `0.5.13` в PROD и GitHub (`2140ef4`, `v0.5.13`). Под шкалой звёзд добавлено пояснение: оценка 1 означает, что урок совсем не понравился, 10 — что очень понравился; подпись связана с кнопками для скринридеров. Unit: 87 passed; feedback security regression: 7 passed; lint, typecheck, production build и production deploy прошли; PM2 `qastart` — `online`. Smoke подтвердил основные страницы/Auth/Storage на деплое; повторный локальный smoke пропустил проверку Storage, поскольку локально нет service-role ключа.
 
 - Релиз `0.5.12` в PROD и GitHub (`37cfb0d`, `v0.5.12`). Внутри каждой звезды feedback отображается число 1–10. Unit: 87 passed; Python regression: 7 passed; lint, typecheck, build и production smoke прошли; PM2 `qastart` — `online`.
