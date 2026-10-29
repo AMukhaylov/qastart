@@ -64,18 +64,23 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       };
     });
     if (studentIds.length === 0) {
-      return buildCourseAnalytics({
-        students,
-        lessons: lessons ?? [],
-        progress: [],
-        blockProgress: [],
-        submissions: [],
-        homeworkMessages: [],
-        homeworkBlocks: [],
-        sqlAttempts: [],
-        quizAttempts: [],
-        lessonQuestionAnswers: [],
-      });
+      return {
+        ...buildCourseAnalytics({
+          students,
+          lessons: lessons ?? [],
+          progress: [],
+          blockProgress: [],
+          submissions: [],
+          homeworkMessages: [],
+          homeworkBlocks: [],
+          sqlAttempts: [],
+          quizAttempts: [],
+          lessonQuestionAnswers: [],
+        }),
+        feedbackQuestionsByLesson: {},
+        feedbackResponses: [],
+        feedbackSkips: [],
+      };
     }
 
     const [
@@ -86,6 +91,9 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       sqlAttempts,
       quizAttempts,
       lessonQuestionAnswers,
+      { data: questionSettings, error: questionSettingsError },
+      { data: questionTemplate, error: questionTemplateError },
+      feedbackResponses,
     ] = await Promise.all([
       fetchAllPages((from, to) =>
         supabaseAdmin
@@ -154,8 +162,24 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
           .order("user_id")
           .range(from, to),
       ),
+      supabaseAdmin
+        .from("lesson_feedback_settings")
+        .select("lesson_id,use_common_template,questions"),
+      supabaseAdmin.from("lesson_feedback_templates").select("questions").eq("id", true).single(),
+      fetchAllPages((from, to) =>
+        supabaseAdmin
+          .from("lesson_feedback")
+          .select("user_id,lesson_id,answers,rating,difficulty,comment,created_at,updated_at")
+          .in("user_id", studentIds)
+          .eq("status", "completed")
+          .order("lesson_id")
+          .order("created_at")
+          .range(from, to),
+      ),
     ]);
     if (homeworkBlockError) throw homeworkBlockError;
+    if (questionSettingsError) throw questionSettingsError;
+    if (questionTemplateError) throw questionTemplateError;
 
     const submissionById = new Map(submissions.map((submission) => [submission.id, submission]));
     const submissionIds = [...submissionById.keys()];
@@ -187,7 +211,7 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       { data: feedbackCourseSettings, error: feedbackCourseError },
       { data: feedbackSettings, error: feedbackSettingsError },
       submittedFeedback,
-      skippedFeedback,
+      feedbackSkips,
     ] = await Promise.all([
       supabaseAdmin
         .from("lesson_feedback_course_settings")
@@ -208,7 +232,7 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       fetchAllPages((from, to) =>
         supabaseAdmin
           .from("lesson_feedback_skips")
-          .select("user_id,lesson_id")
+          .select("user_id,lesson_id,created_at")
           .in("user_id", studentIds)
           .order("user_id")
           .order("lesson_id")
@@ -224,7 +248,7 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       submittedFeedback.map((row) => `${row.user_id}:${row.lesson_id}`),
     );
     const skippedFeedbackKey = new Set(
-      skippedFeedback.map((row) => `${row.user_id}:${row.lesson_id}`),
+      feedbackSkips.map((row) => `${row.user_id}:${row.lesson_id}`),
     );
     const effectiveProgress = progress.filter((row) => {
       const required =
@@ -234,29 +258,52 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       return !required || submittedFeedbackKey.has(key) || skippedFeedbackKey.has(key);
     });
 
-    return buildCourseAnalytics({
-      students,
-      lessons: lessons ?? [],
-      progress: effectiveProgress,
-      blockProgress: blockProgress.map(({ user_id, lesson_id, completed_at }) => ({
-        user_id,
-        lesson_id,
-        completed_at,
-      })),
-      submissions,
-      homeworkMessages,
-      homeworkBlocks: (homeworkBlocks ?? []).map((block) => ({
-        id: block.id,
-        lesson_id: block.lesson_id,
-        content:
-          typeof block.content === "object" &&
-          block.content !== null &&
-          !Array.isArray(block.content)
-            ? (block.content as Record<string, unknown>)
-            : {},
-      })),
-      sqlAttempts,
-      quizAttempts,
-      lessonQuestionAnswers,
-    });
+    const feedbackSettingsByLesson = new Map(
+      (questionSettings ?? []).map((setting) => [setting.lesson_id, setting]),
+    );
+    const commonFeedbackQuestions = Array.isArray(questionTemplate?.questions)
+      ? questionTemplate.questions
+      : [];
+    const feedbackQuestionsByLesson = Object.fromEntries(
+      (lessons ?? []).map((lesson) => {
+        const setting = feedbackSettingsByLesson.get(lesson.id);
+        const questions = setting?.use_common_template
+          ? commonFeedbackQuestions
+          : Array.isArray(setting?.questions)
+            ? setting.questions
+            : [];
+        return [lesson.id, questions];
+      }),
+    );
+
+    return {
+      ...buildCourseAnalytics({
+        students,
+        lessons: lessons ?? [],
+        progress: effectiveProgress,
+        blockProgress: blockProgress.map(({ user_id, lesson_id, completed_at }) => ({
+          user_id,
+          lesson_id,
+          completed_at,
+        })),
+        submissions,
+        homeworkMessages,
+        homeworkBlocks: (homeworkBlocks ?? []).map((block) => ({
+          id: block.id,
+          lesson_id: block.lesson_id,
+          content:
+            typeof block.content === "object" &&
+            block.content !== null &&
+            !Array.isArray(block.content)
+              ? (block.content as Record<string, unknown>)
+              : {},
+        })),
+        sqlAttempts,
+        quizAttempts,
+        lessonQuestionAnswers,
+      }),
+      feedbackQuestionsByLesson,
+      feedbackResponses,
+      feedbackSkips,
+    };
   });

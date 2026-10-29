@@ -5,6 +5,7 @@ import {
   BookOpen,
   CheckCircle2,
   Clock3,
+  Download,
   Eye,
   EyeOff,
   GraduationCap,
@@ -17,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { getAdminCourseAnalytics } from "@/server/analytics.functions";
+import { buildAnalyticsExport } from "@/lib/analytics-export";
 import { COURSE_TIME_ZONE, formatCourseDateTime } from "@/lib/course-schedule";
 import { toast } from "sonner";
 
@@ -186,6 +188,21 @@ function AdminAnalytics() {
     );
   }, [analytics, search]);
 
+  const downloadAnalytics = () => {
+    if (!analytics) return;
+    const payload = buildAnalyticsExport(analytics);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `qa-start-analytics-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    toast.success("Выгрузка аналитики скачана");
+  };
+
   if (loading && !analytics) {
     return (
       <div className="flex min-h-64 items-center justify-center gap-3 text-muted-foreground">
@@ -218,10 +235,20 @@ function AdminAnalytics() {
             Обновлено {new Date(analytics.generatedAt).toLocaleString("ru-RU")}
           </p>
         </div>
-        <Button variant="outline" onClick={() => void load()} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Обновить
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={downloadAnalytics}>
+            <Download className="h-4 w-4" /> Скачать JSON
+          </Button>
+          <Button variant="outline" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Обновить
+          </Button>
+        </div>
       </div>
+      <p className="-mt-4 text-xs text-muted-foreground">
+        JSON включает сводную и индивидуальную статистику, а также ответы на опросы. Имена и логины
+        учеников заменяются кодами; свободные текстовые ответы могут содержать личные данные —
+        проверь их перед передачей ИИ.
+      </p>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard

@@ -12,6 +12,7 @@ QUESTION_ANSWERS = (ROOT / "src/server/lesson-question-answers.functions.ts").re
 SKIP_MIGRATION = next((ROOT / "supabase/migrations").glob("*_feedback_group_skip.sql")).read_text(
     encoding="utf-8"
 )
+ANALYTICS_SERVER = (ROOT / "src/server/analytics.functions.ts").read_text(encoding="utf-8")
 
 
 def test_feedback_storage_has_rls_unique_pair_and_no_direct_student_insert():
@@ -72,6 +73,16 @@ def test_student_feedback_page_uses_star_rating_and_only_shows_configured_skip_a
     assert "Звёздочка (*) рядом с вопросом означает, что ответ обязателен." in page
     assert "feedbackSkipAllowed &&" in page
     assert "Пропустить опрос" in page
+
+
+def test_admin_analytics_export_is_admin_only_and_includes_feedback_details():
+    assert 'if (!roles.includes("admin")) throw new Error("Недостаточно прав")' in ANALYTICS_SERVER
+    assert 'from("lesson_feedback")' in ANALYTICS_SERVER
+    assert '"user_id,lesson_id,answers,rating,difficulty,comment,created_at,updated_at"' in ANALYTICS_SERVER
+    assert 'from("lesson_feedback_skips")' in ANALYTICS_SERVER
+    page = (ROOT / "src/routes/admin.analytics.tsx").read_text(encoding="utf-8")
+    assert "buildAnalyticsExport(analytics)" in page
+    assert "Скачать JSON" in page
 
 
 def test_saved_incorrect_question_answer_can_retry_progress_without_database_update():
