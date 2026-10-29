@@ -11,9 +11,9 @@ QA Start — русскоязычная обучающая платформа п
 - Сайт PROD: <https://startqa.ru>
 - GitHub: <https://github.com/AMukhaylov/qastart>
 - Supabase project ref: `bhvbydcddoxjfpcschzw` (`qastart`, регион `eu-west-1`)
-- Последняя проверенная версия PROD: `0.5.10` (порядок вкладок админ-панели)
-- Последний проверенный релизный коммит: `f9741cb`
-- Тег этого релиза: `v0.5.10`
+- Последняя проверенная версия PROD: `0.5.11` (звёздный рейтинг feedback и пропуск по группам)
+- Последний проверенный релизный коммит: `b88cf08`
+- Тег этого релиза: `v0.5.11`
 - Рабочая GitHub-ветка с актуальным кодом PROD: `codex/final-quiz-bank-admin`
 
 На 2026-10-27 ветка `main` отставала и содержала старую версию (`0.1.1`). Не начинай релиз с `main` и не вливай ветки между собой вслепую: сначала проверь GitHub refs, граф коммитов и `package.json`.
@@ -41,7 +41,8 @@ SSH-ключ, если он доступен на этой Windows-машине:
 - Исходники этой настройки находятся в `deploy/supabase-keepalive.mjs`, `deploy/qastart-supabase-keepalive.service` и `deploy/qastart-supabase-keepalive.timer`. Скрипт читает серверный `.env`, не печатает ключ и не меняет данные.
 - Проверка таймера: `systemctl status qastart-supabase-keepalive.timer`; журнал: `journalctl -u qastart-supabase-keepalive.service`.
 - В Codex была создана heartbeat-автоматизация `qa-start-supabase`, которая проверяет статус проекта и пытается восстановить его, если статус явно `INACTIVE`. Перед тем как полагаться на неё, проверь в Codex, что автоматизация включена и имеет доступ к Supabase tools. В другом агенте это расписание автоматически не переносится.
-- На 2026-10-27 Supabase показывал `ACTIVE_HEALTHY`. Free-проекты могут приостанавливаться при низкой активности в течение 7-дневного окна; несколько запросов — снижение риска, а не гарантия. Keep-alive не сможет разбудить уже приостановленный проект, поэтому при `INACTIVE` нужно использовать авторизованный Supabase restore action и дождаться `ACTIVE_HEALTHY`.
+- На 2026-10-29 проверена схема Supabase; миграция `20261029123304_feedback_group_skip` добавила `student_groups.allow_feedback_skip` и закрытую RLS-таблицу `lesson_feedback_skips`. Роль `authenticated` не имеет прямых SELECT/INSERT привилегий; пропуск записывается сервером.
+- Free-проекты могут приостанавливаться при низкой активности в течение 7-дневного окна; несколько запросов — снижение риска, а не гарантия. Keep-alive не сможет разбудить уже приостановленный проект, поэтому при `INACTIVE` нужно использовать авторизованный Supabase restore action и дождаться `ACTIVE_HEALTHY`.
 
 Для любых Supabase-задач сначала прочитай актуальный Supabase skill и проверь текущую официальную документацию. Перед SQL-запросами/изменениями схемы изучи существующую структуру. Не запускай миграции или destructive SQL без конкретной необходимости и подтверждённого скоупа.
 
@@ -56,7 +57,9 @@ SSH-ключ, если он доступен на этой Windows-машине:
 7. После успешных проверок обнови patch-версию, package-lock и changelog; закоммить, создай version tag, отправь commit/tag в рабочую GitHub-ветку прямым `git push` (не использовать `gh`), затем выложи PROD через `npm run deploy:prod`. Не пушь в устаревший `main`.
 8. После выкладки перепроверь сайт, PM2, smoke-check, Supabase proxy/storage и состояние таймера. Явно сообщи пользователю, что прошло, а что не проверялось.
 
-## Проверки и известные риски на 2026-10-28
+## Проверки и известные риски на 2026-10-29
+
+- Релиз `0.5.11` в PROD и GitHub (`b88cf08`, `v0.5.11`). Feedback-рейтинг — десять звёзд. Пропуск опроса настраивается для конкретных групп; по умолчанию выключен, доступен после обязательных шагов и принятия ДЗ. Пропуск записывается сервером и учитывается в прогрессе, аналитике и сертификатах. Unit: 87 passed; Python unit: 76 passed; публичный UI: 5 passed; lint, typecheck, build, deploy и smoke прошли. Общий `autotests` прогон: 118 passed, 4 opt-in mutation tests skipped, 1 live-admin UI setup error — `test_admin_can_open_meeting_settings_without_saving` не дождался состояния после входа на `/admin/login`; публичные сценарии и относящиеся к изменению тесты прошли. PM2 `qastart` — `online`.
 
 - Релиз `0.5.10` в PROD и GitHub (`f9741cb`, `v0.5.10`). Порядок вкладок админ-панели: Арчи → Аналитика → Обратная связь. Unit: 86 passed; regression: 117 passed, 4 opt-in mutation tests skipped; lint, typecheck, production build и deploy smoke прошли. PM2 `qastart` — `online`.
 - Релиз `0.5.9` в PROD и GitHub. Human homework теперь становится доступным после обязательных блоков перед ним; API серверно валидирует те же блоки и расписание, не требуя полного завершения урока/feedback. Unit: 86 passed; regression: 117 passed, 4 opt-in mutation tests skipped; lint, typecheck, production build и deploy smoke прошли. PM2 `qastart` — `online`.
