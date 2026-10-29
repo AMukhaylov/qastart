@@ -11,9 +11,9 @@ QA Start — русскоязычная обучающая платформа п
 - Сайт PROD: <https://startqa.ru>
 - GitHub: <https://github.com/AMukhaylov/qastart>
 - Supabase project ref: `bhvbydcddoxjfpcschzw` (`qastart`, регион `eu-west-1`)
-- Последняя проверенная версия PROD: `0.5.11` (звёздный рейтинг feedback и пропуск по группам)
-- Последний проверенный релизный коммит: `b88cf08`
-- Тег этого релиза: `v0.5.11`
+- Последняя проверенная версия PROD: `0.5.12` (нумерация звёздного рейтинга feedback)
+- Последний проверенный релизный коммит: `37cfb0d`
+- Тег этого релиза: `v0.5.12`
 - Рабочая GitHub-ветка с актуальным кодом PROD: `codex/final-quiz-bank-admin`
 
 На 2026-10-27 ветка `main` отставала и содержала старую версию (`0.1.1`). Не начинай релиз с `main` и не вливай ветки между собой вслепую: сначала проверь GitHub refs, граф коммитов и `package.json`.
@@ -58,6 +58,8 @@ SSH-ключ, если он доступен на этой Windows-машине:
 8. После выкладки перепроверь сайт, PM2, smoke-check, Supabase proxy/storage и состояние таймера. Явно сообщи пользователю, что прошло, а что не проверялось.
 
 ## Проверки и известные риски на 2026-10-29
+
+- Релиз `0.5.12` в PROD и GitHub (`37cfb0d`, `v0.5.12`). Внутри каждой звезды feedback отображается число 1–10. Unit: 87 passed; Python regression: 7 passed; lint, typecheck, build и production smoke прошли; PM2 `qastart` — `online`.
 
 - Релиз `0.5.11` в PROD и GitHub (`b88cf08`, `v0.5.11`). Feedback-рейтинг — десять звёзд. Пропуск опроса настраивается для конкретных групп; по умолчанию выключен, доступен после обязательных шагов и принятия ДЗ. Пропуск записывается сервером и учитывается в прогрессе, аналитике и сертификатах. Unit: 87 passed; Python unit: 76 passed; публичный UI: 5 passed; lint, typecheck, build, deploy и smoke прошли. Общий `autotests` прогон: 118 passed, 4 opt-in mutation tests skipped, 1 live-admin UI setup error — `test_admin_can_open_meeting_settings_without_saving` не дождался состояния после входа на `/admin/login`; публичные сценарии и относящиеся к изменению тесты прошли. PM2 `qastart` — `online`.
 
