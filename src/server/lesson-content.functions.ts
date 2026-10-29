@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getUserIdForAccessToken } from "./admin-auth.server";
 import { getLessonScheduleAccess } from "./course-schedule.server";
+import { getStudentSequenceLock } from "./lesson-feedback-policy.server";
 import { blockCompletionCondition, type LessonBlock } from "@/lib/interactive-lesson";
 import { isValidLessonQuestionSelection } from "@/lib/lesson-question-answer";
 import {
@@ -101,6 +102,29 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
         submission: null,
         blocks: [],
         blockProgress: [],
+        sqlSandboxAttempts: [],
+        finalQuizPassed: false,
+        courseStartAt: access.courseStartAt,
+        currentDay: access.currentDay,
+      };
+    }
+    const sequenceLock = access.isAdmin
+      ? null
+      : await getStudentSequenceLock(userId, lesson.day_number);
+    if (sequenceLock) {
+      return {
+        lesson: null,
+        lock: {
+          courseStartAt: access.courseStartAt,
+          opensAt: access.opensAt,
+          sequenceLocked: true,
+          previousLessonDay: sequenceLock.previousLessonDay,
+        },
+        progress: null,
+        submission: null,
+        blocks: [],
+        blockProgress: [],
+        savedQuestionAnswers: {},
         sqlSandboxAttempts: [],
         finalQuizPassed: false,
         courseStartAt: access.courseStartAt,

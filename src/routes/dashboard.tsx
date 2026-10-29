@@ -149,7 +149,7 @@ function Dashboard() {
         if (cancelled) return;
         setLessons(loadedLessons);
         setCourseStartAt(dashboardData.courseStartAt);
-        setAvailableDay(isAdmin ? 14 : dashboardData.currentDay);
+        setAvailableDay(isAdmin ? 14 : (dashboardData.availableDay ?? dashboardData.currentDay));
         setHomeworkSnapshots(dashboardData.homeworkSnapshots);
         setHomeworkCounts(dashboardData.homeworkCounts);
         setCompletedIds(loadedCompleted);

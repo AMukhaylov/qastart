@@ -6,6 +6,10 @@ export type FeedbackValidationQuestion = {
   options?: { label: string; value: string }[];
 };
 
+export function getFeedbackCohortPolicy(enabled: boolean, isInOptionalGroup: boolean) {
+  return { enabled, required: enabled && !isInOptionalGroup };
+}
+
 export function validateFeedbackAnswers(
   questions: FeedbackValidationQuestion[],
   answers: Record<string, string | number>,
@@ -72,14 +76,14 @@ export function validateFeedbackAnswers(
 }
 
 export function canSubmitLessonFeedback(input: {
-  required: boolean;
+  enabled: boolean;
   requiredBlocksComplete: boolean;
   homeworkExists: boolean;
   homeworkAccepted: boolean;
   alreadySubmitted: boolean;
 }) {
   return (
-    input.required &&
+    input.enabled &&
     input.requiredBlocksComplete &&
     (!input.homeworkExists || input.homeworkAccepted) &&
     !input.alreadySubmitted
@@ -87,6 +91,7 @@ export function canSubmitLessonFeedback(input: {
 }
 
 export function canSkipLessonFeedback(input: {
+  enabled: boolean;
   required: boolean;
   groupAllowsSkip: boolean;
   requiredBlocksComplete: boolean;
@@ -96,7 +101,7 @@ export function canSkipLessonFeedback(input: {
   alreadySkipped: boolean;
 }) {
   return (
-    input.required &&
+    input.enabled &&
     input.groupAllowsSkip &&
     input.requiredBlocksComplete &&
     (!input.homeworkExists || input.homeworkAccepted) &&

@@ -13,6 +13,7 @@ import { hasPassedEverySqlTask } from "./sql-sandbox-assessment.server";
 import {
   canSkipLessonFeedback,
   canSubmitLessonFeedback,
+  getFeedbackCohortPolicy,
   validateFeedbackAnswers,
 } from "@/lib/lesson-feedback-validation";
 
@@ -37,20 +38,23 @@ export type FeedbackQuestion = z.infer<typeof questionSchema>;
 const answerSchema = z.record(z.string(), z.union([z.string(), z.number()]));
 const adminInput = z.object({ accessToken: access });
 
-async function canGroupSkipFeedback(userId: string) {
+async function getStudentFeedbackGroupPolicy(userId: string) {
   const { data: memberships, error: membershipsError } = await supabaseAdmin
     .from("group_students")
     .select("group_id")
     .eq("student_id", userId);
   if (membershipsError) throw membershipsError;
   const groupIds = [...new Set((memberships ?? []).map((row) => row.group_id))];
-  if (!groupIds.length) return false;
+  if (!groupIds.length) return { isInGroup: false, allowSkip: false };
   const { data: groups, error: groupsError } = await supabaseAdmin
     .from("student_groups")
     .select("allow_feedback_skip")
     .in("id", groupIds);
   if (groupsError) throw groupsError;
-  return (groups ?? []).some((group) => group.allow_feedback_skip === true);
+  return {
+    isInGroup: groupIds.length > 0,
+    allowSkip: (groups ?? []).some((group) => group.allow_feedback_skip === true),
+  };
 }
 
 async function requireAdmin(token: string) {
@@ -58,11 +62,12 @@ async function requireAdmin(token: string) {
   if (!roles.includes("admin")) throw new Error("Недостаточно прав");
 }
 
-async function getFeedbackConfig(lessonId: string) {
+async function getFeedbackConfig(lessonId: string, userId: string) {
   const [
     { data: global, error: globalError },
     { data: local, error: localError },
     { data: template, error: templateError },
+    groupPolicy,
   ] = await Promise.all([
     supabaseAdmin
       .from("lesson_feedback_course_settings")
@@ -75,12 +80,15 @@ async function getFeedbackConfig(lessonId: string) {
       .eq("lesson_id", lessonId)
       .maybeSingle(),
     supabaseAdmin.from("lesson_feedback_templates").select("questions").eq("id", true).single(),
+    getStudentFeedbackGroupPolicy(userId),
   ]);
   if (globalError) throw globalError;
   if (localError) throw localError;
   if (templateError) throw templateError;
+  const enabled = local?.required_override ?? global?.required_by_default ?? false;
   return {
-    required: local?.required_override ?? global?.required_by_default ?? false,
+    ...getFeedbackCohortPolicy(enabled, groupPolicy.isInGroup),
+    allowSkip: groupPolicy.allowSkip,
     questions: local?.use_common_template
       ? ((template?.questions as FeedbackQuestion[] | undefined) ?? [])
       : Array.isArray(local?.questions)
@@ -186,14 +194,13 @@ export const getStudentLessonFeedback = createServerFn({ method: "POST" })
       config,
       { data: existing, error: existingError },
       { data: skipRow, error: skipError },
-      groupAllowsSkip,
     ] = await Promise.all([
       supabaseAdmin
         .from("lessons")
         .select("id,day_number,homework_md")
         .eq("id", data.lessonId)
         .maybeSingle(),
-      getFeedbackConfig(data.lessonId),
+      getFeedbackConfig(data.lessonId, userId),
       supabaseAdmin
         .from("lesson_feedback")
         .select("id,status,created_at")
@@ -206,7 +213,6 @@ export const getStudentLessonFeedback = createServerFn({ method: "POST" })
         .eq("user_id", userId)
         .eq("lesson_id", data.lessonId)
         .maybeSingle(),
-      canGroupSkipFeedback(userId),
     ]);
     if (lessonError) throw lessonError;
     if (existingError) throw existingError;
@@ -215,6 +221,7 @@ export const getStudentLessonFeedback = createServerFn({ method: "POST" })
     const schedule = await getLessonScheduleAccess(userId, lesson.day_number);
     if (!schedule.allowed)
       return {
+        enabled: false,
         required: false,
         available: false,
         submitted: false,
@@ -239,10 +246,12 @@ export const getStudentLessonFeedback = createServerFn({ method: "POST" })
       lessonBlocks,
     );
     const requirementsComplete = await validateLessonRequirements(userId, lesson.id, lessonBlocks);
+    const feedbackRequired = config.required && lesson.day_number < 14;
     return {
       ...config,
+      required: feedbackRequired,
       available: canSubmitLessonFeedback({
-        required: config.required,
+        enabled: config.enabled,
         requiredBlocksComplete: requirementsComplete,
         homeworkExists: hasHomework,
         homeworkAccepted,
@@ -250,7 +259,7 @@ export const getStudentLessonFeedback = createServerFn({ method: "POST" })
       }),
       submitted: Boolean(existing),
       skipped: Boolean(skipRow),
-      allowSkip: groupAllowsSkip,
+      allowSkip: config.allowSkip || (lesson.day_number === 14 && config.enabled),
       submittedAt: existing?.created_at ?? null,
     };
   });
@@ -274,8 +283,8 @@ export const submitLessonFeedback = createServerFn({ method: "POST" })
     const schedule = await getLessonScheduleAccess(userId, lesson.day_number);
     if (!schedule.allowed || schedule.isAdmin)
       throw new Error("Урок недоступен для отправки отзыва");
-    const config = await getFeedbackConfig(lesson.id);
-    if (!config.required) throw new Error("Опрос для этого урока отключён");
+    const config = await getFeedbackConfig(lesson.id, userId);
+    if (!config.enabled) throw new Error("Опрос для этого урока отключён");
     const { data: blocks, error: blocksError } = await supabaseAdmin
       .from("lesson_blocks")
       .select("id,block_type,content")
@@ -334,32 +343,28 @@ export const skipLessonFeedback = createServerFn({ method: "POST" })
     if (!schedule.allowed || schedule.isAdmin)
       throw new Error("Урок недоступен для пропуска опроса");
 
-    const [
-      config,
-      groupAllowsSkip,
-      { data: feedback, error: feedbackError },
-      { data: skipped, error: skipError },
-    ] = await Promise.all([
-      getFeedbackConfig(lesson.id),
-      canGroupSkipFeedback(userId),
-      supabaseAdmin
-        .from("lesson_feedback")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("lesson_id", lesson.id)
-        .maybeSingle(),
-      supabaseAdmin
-        .from("lesson_feedback_skips")
-        .select("user_id")
-        .eq("user_id", userId)
-        .eq("lesson_id", lesson.id)
-        .maybeSingle(),
-    ]);
+    const [config, { data: feedback, error: feedbackError }, { data: skipped, error: skipError }] =
+      await Promise.all([
+        getFeedbackConfig(lesson.id, userId),
+        supabaseAdmin
+          .from("lesson_feedback")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("lesson_id", lesson.id)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("lesson_feedback_skips")
+          .select("user_id")
+          .eq("user_id", userId)
+          .eq("lesson_id", lesson.id)
+          .maybeSingle(),
+      ]);
     if (feedbackError) throw feedbackError;
     if (skipError) throw skipError;
     if (feedback) throw new Error("Отзыв уже отправлен");
-    if (!skipped && !config.required) throw new Error("Опрос для этого урока отключён");
-    if (!skipped && !groupAllowsSkip) throw new Error("Для твоей группы пропуск опроса не включён");
+    if (!skipped && !config.enabled) throw new Error("Опрос для этого урока отключён");
+    if (!skipped && !config.allowSkip)
+      throw new Error("Для твоей группы пропуск опроса не включён");
 
     const { data: blocks, error: blocksError } = await supabaseAdmin
       .from("lesson_blocks")
@@ -380,8 +385,9 @@ export const skipLessonFeedback = createServerFn({ method: "POST" })
     );
     if (
       !canSkipLessonFeedback({
+        enabled: config.enabled,
         required: config.required,
-        groupAllowsSkip,
+        groupAllowsSkip: config.allowSkip,
         requiredBlocksComplete: requirementsComplete,
         homeworkExists: hasHomework,
         homeworkAccepted,

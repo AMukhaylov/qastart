@@ -145,6 +145,7 @@ function LessonPage() {
   const [viewedBlockIds, setViewedBlockIds] = useState<string[]>([]);
   const [completingLesson, setCompletingLesson] = useState(false);
   const [submission, setSubmission] = useState<Submission | null>(null);
+  const [feedbackEnabled, setFeedbackEnabled] = useState(false);
   const [feedbackRequired, setFeedbackRequired] = useState(false);
   const [feedbackAvailable, setFeedbackAvailable] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
@@ -159,6 +160,8 @@ function LessonPage() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [locked, setLocked] = useState(false);
+  const [sequenceLocked, setSequenceLocked] = useState(false);
+  const [previousLessonDay, setPreviousLessonDay] = useState<number | null>(null);
   const [lessonOpensAt, setLessonOpensAt] = useState<string | null>(null);
   const [courseStartAt, setCourseStartAt] = useState<string | null>(null);
   const [availableDay, setAvailableDay] = useState(0);
@@ -234,6 +237,8 @@ function LessonPage() {
     setMessages([]);
     setAttachments([]);
     setLocked(false);
+    setSequenceLocked(false);
+    setPreviousLessonDay(null);
     setLessonOpensAt(null);
     setCourseStartAt(null);
     setAvailableDay(0);
@@ -241,6 +246,7 @@ function LessonPage() {
     setSavedQuestionAnswers({});
     setViewedBlockIds([]);
     setSqlSandboxAttempts([]);
+    setFeedbackEnabled(false);
     setFeedbackRequired(false);
     setFeedbackAvailable(false);
     setFeedbackSubmitted(false);
@@ -261,6 +267,8 @@ function LessonPage() {
       setLesson(null);
       setCompleted(false);
       setLocked(Boolean(lessonData.lock));
+      setSequenceLocked(Boolean(lessonData.lock?.sequenceLocked));
+      setPreviousLessonDay(lessonData.lock?.previousLessonDay ?? null);
       setLessonOpensAt(lessonData.lock?.opensAt ?? null);
       setCourseStartAt(lessonData.lock?.courseStartAt ?? null);
       setAvailableDay(lessonData.currentDay);
@@ -273,6 +281,7 @@ function LessonPage() {
       data: { accessToken: session.access_token, lessonId: l.id },
     });
     if (requestId !== lessonLoadRequestRef.current) return;
+    setFeedbackEnabled(feedbackState.enabled);
     setFeedbackRequired(feedbackState.required);
     setFeedbackAvailable(feedbackState.available);
     setFeedbackSubmitted(feedbackState.submitted || feedbackState.skipped);
@@ -345,6 +354,7 @@ function LessonPage() {
       const state = await getStudentLessonFeedback({
         data: { accessToken: session.access_token, lessonId: lesson.id },
       });
+      setFeedbackEnabled(state.enabled);
       setFeedbackRequired(state.required);
       setFeedbackAvailable(state.available);
       setFeedbackSubmitted(state.submitted || state.skipped);
@@ -363,6 +373,7 @@ function LessonPage() {
       });
       setFeedbackSubmitted(true);
       toast.success("Спасибо! Отзыв сохранён.");
+      if (feedbackRequired && !completed) await completeLesson();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось отправить отзыв");
     } finally {
@@ -473,6 +484,8 @@ function LessonPage() {
         toast.error("Сначала выполни обязательные шаги текущего урока.");
       } else if (result.homeworkPending) {
         // A human-reviewed assignment must be accepted before lesson completion.
+      } else if (result.feedbackPending) {
+        // The zero cohort submits feedback before progression is recorded.
       } else {
         toast.error("Урок пока не открылся по твоему расписанию.");
       }
@@ -793,11 +806,13 @@ function LessonPage() {
             <p className="mt-2 text-muted-foreground">
               {!courseStartAt
                 ? "Дата начала обучения пока не назначена. Уточни её у администратора."
-                : lessonOpensAt && new Date(lessonOpensAt).getTime() > Date.now()
-                  ? dayNum === 1
-                    ? `Ваше обучение ещё не началось. Первый урок откроется ${formatCourseDate(lessonOpensAt)}.`
-                    : `Урок откроется ${formatCourseDate(lessonOpensAt)}.`
-                  : "Урок пока недоступен. Попробуйте обновить страницу."}
+                : sequenceLocked
+                  ? `Сначала заверши День ${previousLessonDay ?? dayNum - 1}. Для нулевого потока отзыв обязателен перед переходом дальше.`
+                  : lessonOpensAt && new Date(lessonOpensAt).getTime() > Date.now()
+                    ? dayNum === 1
+                      ? `Ваше обучение ещё не началось. Первый урок откроется ${formatCourseDate(lessonOpensAt)}.`
+                      : `Урок откроется ${formatCourseDate(lessonOpensAt)}.`
+                    : "Урок пока недоступен. Попробуйте обновить страницу."}
             </p>
             <Button asChild variant="soft" className="mt-6">
               <Link to="/dashboard">Вернуться к урокам</Link>
@@ -870,17 +885,22 @@ function LessonPage() {
   const completionVisible = homeworkBlock?.content.completionVisible !== false;
   const homeworkPending = submission?.status === "pending";
   const completionCardVisible =
-    completed && lesson.day_number !== 14 && completionVisible && submission?.status !== "rejected";
+    (completed || (feedbackRequired && feedbackAvailable)) &&
+    lesson.day_number !== 14 &&
+    completionVisible &&
+    submission?.status !== "rejected";
   const displayedCompletionTitle = homeworkPending
     ? `День ${lesson.day_number} пройден`
     : completionTitle;
   const displayedCompletionText = homeworkPending
     ? "Урок завершён, домашнее задание ждёт проверки. Следующий урок откроется по расписанию."
-    : submission && submission.status !== "approved"
-      ? completionText
-      : lesson.day_number === 1
-        ? "Первый день готов. Ты разобрался, зачем нужно тестирование, чем ожидаемый результат отличается от фактического и какую роль QA играет в команде. В следующем уроке посмотрим, кто ещё работает над продуктом и как специалисты взаимодействуют друг с другом."
-        : `Ты завершил урок «${lesson.title}». Все обязательные шаги сохранены, а следующий урок откроется по расписанию.`;
+    : feedbackRequired && !feedbackSubmitted
+      ? "Все обязательные шаги пройдены. Оставь отзыв ниже, чтобы завершить урок и перейти дальше."
+      : submission && submission.status !== "approved"
+        ? completionText
+        : lesson.day_number === 1
+          ? "Первый день готов. Ты разобрался, зачем нужно тестирование, чем ожидаемый результат отличается от фактического и какую роль QA играет в команде. В следующем уроке посмотрим, кто ещё работает над продуктом и как специалисты взаимодействуют друг с другом."
+          : `Ты завершил урок «${lesson.title}». Все обязательные шаги сохранены, а следующий урок откроется по расписанию.`;
   const displayedCompletionVariant = homeworkPending ? "pending" : completionVariant;
 
   return (
@@ -1044,134 +1064,143 @@ function LessonPage() {
             </section>
           )}
 
-          {feedbackRequired && !feedbackSubmitted && feedbackAvailable && completed && !isAdmin && (
-            <section
-              id="lesson-feedback"
-              className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7"
-            >
-              <div className="mb-5">
-                <h2 className="text-xl font-extrabold">Помоги сделать курс лучше</h2>
-                <p className="mt-2 text-muted-foreground">
-                  Расскажи, как тебе этот урок. Это займёт пару минут и поможет нам улучшить
-                  обучение.
-                </p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Звёздочка (*) рядом с вопросом означает, что ответ обязателен.
-                </p>
-              </div>
-              <div className="space-y-6">
-                {feedbackQuestions.map((question) => (
-                  <fieldset key={question.id} className="space-y-2">
-                    <legend className="text-sm font-semibold">
-                      {question.label}
-                      {question.required ? " *" : ""}
-                    </legend>
-                    {question.type === "rating" ? (
-                      <>
-                        <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
-                          {Array.from({ length: 10 }, (_, index) => index + 1).map((score) => (
-                            <button
-                              key={score}
-                              type="button"
-                              aria-label={`${score} из 10`}
-                              aria-describedby={`feedback-rating-help-${question.id}`}
-                              aria-pressed={feedbackAnswers[question.id] === score}
-                              onClick={() =>
-                                setFeedbackAnswers((answers) => ({
-                                  ...answers,
-                                  [question.id]: score,
-                                }))
-                              }
-                              className={`relative flex min-h-16 items-center justify-center rounded-xl border transition-colors ${feedbackAnswers[question.id] === score ? "border-amber-400 bg-amber-50 text-amber-600" : "border-border bg-background text-muted-foreground hover:border-amber-300 hover:text-amber-500"}`}
-                            >
-                              <Star
-                                className={`h-10 w-10 ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "fill-current" : ""}`}
-                                aria-hidden="true"
-                              />
-                              <span
-                                className={`absolute text-xs font-bold leading-none ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "text-white" : "text-current"}`}
-                                aria-hidden="true"
-                              >
-                                {score}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                        <p
-                          id={`feedback-rating-help-${question.id}`}
-                          className="text-xs text-muted-foreground"
-                        >
-                          Оцени урок по шкале от 1 до 10. 1 означает «совсем не понравилось», 10
-                          означает «очень понравилось».
-                        </p>
-                      </>
-                    ) : question.type === "radio" ? (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {(question.options ?? []).map((option) => (
-                          <label
-                            key={option.value}
-                            className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary-soft/30"
-                          >
-                            <input
-                              type="radio"
-                              name={`feedback-${question.id}`}
-                              value={option.value}
-                              checked={feedbackAnswers[question.id] === option.value}
-                              onChange={() =>
-                                setFeedbackAnswers((answers) => ({
-                                  ...answers,
-                                  [question.id]: option.value,
-                                }))
-                              }
-                            />
-                            {option.label}
-                          </label>
-                        ))}
-                      </div>
-                    ) : (
-                      <Textarea
-                        rows={3}
-                        maxLength={3000}
-                        value={String(feedbackAnswers[question.id] ?? "")}
-                        onChange={(event) =>
-                          setFeedbackAnswers((answers) => ({
-                            ...answers,
-                            [question.id]: event.target.value,
-                          }))
-                        }
-                        placeholder="Напиши ответ…"
-                      />
-                    )}
-                  </fieldset>
-                ))}
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    size="lg"
-                    disabled={sendingFeedback || skippingFeedback}
-                    onClick={() => void sendFeedback()}
-                  >
-                    {sendingFeedback ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                    Отправить отзыв
-                  </Button>
-                  {feedbackSkipAllowed && (
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      disabled={sendingFeedback || skippingFeedback}
-                      onClick={() => void skipFeedback()}
-                    >
-                      {skippingFeedback && <Loader2 className="h-4 w-4 animate-spin" />}
-                      Пропустить опрос
-                    </Button>
+          {feedbackEnabled &&
+            !feedbackSubmitted &&
+            feedbackAvailable &&
+            (completed || feedbackRequired) &&
+            !isAdmin && (
+              <section
+                id="lesson-feedback"
+                className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7"
+              >
+                <div className="mb-5">
+                  <h2 className="text-xl font-extrabold">Помоги сделать курс лучше</h2>
+                  <p className="mt-2 text-muted-foreground">
+                    Расскажи, как тебе этот урок. Это займёт пару минут и поможет нам улучшить
+                    обучение.
+                  </p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Звёздочка (*) рядом с вопросом означает, что ответ обязателен.
+                  </p>
+                  {!feedbackRequired && (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Опрос необязателен и не влияет на переход к следующим урокам.
+                    </p>
                   )}
                 </div>
-              </div>
-            </section>
-          )}
+                <div className="space-y-6">
+                  {feedbackQuestions.map((question) => (
+                    <fieldset key={question.id} className="space-y-2">
+                      <legend className="text-sm font-semibold">
+                        {question.label}
+                        {question.required ? " *" : ""}
+                      </legend>
+                      {question.type === "rating" ? (
+                        <>
+                          <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
+                            {Array.from({ length: 10 }, (_, index) => index + 1).map((score) => (
+                              <button
+                                key={score}
+                                type="button"
+                                aria-label={`${score} из 10`}
+                                aria-describedby={`feedback-rating-help-${question.id}`}
+                                aria-pressed={feedbackAnswers[question.id] === score}
+                                onClick={() =>
+                                  setFeedbackAnswers((answers) => ({
+                                    ...answers,
+                                    [question.id]: score,
+                                  }))
+                                }
+                                className={`relative flex min-h-16 items-center justify-center rounded-xl border transition-colors ${feedbackAnswers[question.id] === score ? "border-amber-400 bg-amber-50 text-amber-600" : "border-border bg-background text-muted-foreground hover:border-amber-300 hover:text-amber-500"}`}
+                              >
+                                <Star
+                                  className={`h-10 w-10 ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "fill-current" : ""}`}
+                                  aria-hidden="true"
+                                />
+                                <span
+                                  className={`absolute text-xs font-bold leading-none ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "text-white" : "text-current"}`}
+                                  aria-hidden="true"
+                                >
+                                  {score}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                          <p
+                            id={`feedback-rating-help-${question.id}`}
+                            className="text-xs text-muted-foreground"
+                          >
+                            Оцени урок по шкале от 1 до 10. 1 означает «совсем не понравилось», 10
+                            означает «очень понравилось».
+                          </p>
+                        </>
+                      ) : question.type === "radio" ? (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {(question.options ?? []).map((option) => (
+                            <label
+                              key={option.value}
+                              className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary-soft/30"
+                            >
+                              <input
+                                type="radio"
+                                name={`feedback-${question.id}`}
+                                value={option.value}
+                                checked={feedbackAnswers[question.id] === option.value}
+                                onChange={() =>
+                                  setFeedbackAnswers((answers) => ({
+                                    ...answers,
+                                    [question.id]: option.value,
+                                  }))
+                                }
+                              />
+                              {option.label}
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <Textarea
+                          rows={3}
+                          maxLength={3000}
+                          value={String(feedbackAnswers[question.id] ?? "")}
+                          onChange={(event) =>
+                            setFeedbackAnswers((answers) => ({
+                              ...answers,
+                              [question.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="Напиши ответ…"
+                        />
+                      )}
+                    </fieldset>
+                  ))}
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      size="lg"
+                      disabled={sendingFeedback || skippingFeedback}
+                      onClick={() => void sendFeedback()}
+                    >
+                      {sendingFeedback ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                      Отправить отзыв
+                    </Button>
+                    {feedbackSkipAllowed && (
+                      <Button
+                        size="lg"
+                        variant="outline"
+                        disabled={sendingFeedback || skippingFeedback}
+                        onClick={() => void skipFeedback()}
+                      >
+                        {skippingFeedback && <Loader2 className="h-4 w-4 animate-spin" />}
+                        Пропустить опрос
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
         </div>
       </main>
 

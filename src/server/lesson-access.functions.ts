@@ -10,6 +10,7 @@ import {
 } from "@/lib/interactive-lesson";
 import { hasPassedEverySqlTask } from "./sql-sandbox-assessment.server";
 import { isValidLessonQuestionSelection } from "@/lib/lesson-question-answer";
+import { isFeedbackRequiredForStudent } from "./lesson-feedback-policy.server";
 
 const accessInput = z.object({
   accessToken: z.string().min(20),
@@ -175,6 +176,34 @@ export const completeLessonForCurrentUser = createServerFn({ method: "POST" })
             scheduleLocked: false,
             requirementsIncomplete: false,
             homeworkPending: true,
+          };
+        }
+      }
+
+      if (lesson.day_number < 14 && (await isFeedbackRequiredForStudent(userId, lesson.id))) {
+        const [{ data: feedback, error: feedbackError }, { data: skipped, error: skippedError }] =
+          await Promise.all([
+            supabaseAdmin
+              .from("lesson_feedback")
+              .select("id")
+              .eq("user_id", userId)
+              .eq("lesson_id", lesson.id)
+              .maybeSingle(),
+            supabaseAdmin
+              .from("lesson_feedback_skips")
+              .select("user_id")
+              .eq("user_id", userId)
+              .eq("lesson_id", lesson.id)
+              .maybeSingle(),
+          ]);
+        if (feedbackError) throw feedbackError;
+        if (skippedError) throw skippedError;
+        if (!feedback && !skipped) {
+          return {
+            completed: false,
+            scheduleLocked: false,
+            requirementsIncomplete: false,
+            feedbackPending: true,
           };
         }
       }

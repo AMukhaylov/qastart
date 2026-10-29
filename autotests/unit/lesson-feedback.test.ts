@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   canSkipLessonFeedback,
   canSubmitLessonFeedback,
+  getFeedbackCohortPolicy,
   validateFeedbackAnswers,
 } from "../../src/lib/lesson-feedback-validation.ts";
 
@@ -37,7 +38,7 @@ const completeAnswers = {
 test("feedback unlocks after required blocks when a lesson has no homework", () => {
   assert.equal(
     canSubmitLessonFeedback({
-      required: true,
+      enabled: true,
       requiredBlocksComplete: true,
       homeworkExists: false,
       homeworkAccepted: false,
@@ -47,7 +48,7 @@ test("feedback unlocks after required blocks when a lesson has no homework", () 
   );
   assert.equal(
     canSubmitLessonFeedback({
-      required: true,
+      enabled: true,
       requiredBlocksComplete: false,
       homeworkExists: false,
       homeworkAccepted: false,
@@ -57,8 +58,15 @@ test("feedback unlocks after required blocks when a lesson has no homework", () 
   );
 });
 
+test("zero cohort feedback is mandatory while students in later groups may skip it", () => {
+  assert.deepEqual(getFeedbackCohortPolicy(true, false), { enabled: true, required: true });
+  assert.deepEqual(getFeedbackCohortPolicy(true, true), { enabled: true, required: false });
+  assert.deepEqual(getFeedbackCohortPolicy(false, false), { enabled: false, required: false });
+});
+
 test("homework lesson keeps survey locked until mentor approval", () => {
   const shared = {
+    enabled: true,
     required: true,
     requiredBlocksComplete: true,
     homeworkExists: true,
@@ -71,7 +79,7 @@ test("homework lesson keeps survey locked until mentor approval", () => {
 test("disabled feedback leaves previous lesson completion behavior intact", () => {
   assert.equal(
     canSubmitLessonFeedback({
-      required: false,
+      enabled: false,
       requiredBlocksComplete: true,
       homeworkExists: false,
       homeworkAccepted: false,
@@ -81,8 +89,9 @@ test("disabled feedback leaves previous lesson completion behavior intact", () =
   );
 });
 
-test("feedback skipping requires an enabled student group and all lesson prerequisites", () => {
+test("feedback skipping requires the group setting and all lesson prerequisites", () => {
   const shared = {
+    enabled: true,
     required: true,
     groupAllowsSkip: true,
     requiredBlocksComplete: true,
@@ -100,6 +109,12 @@ test("feedback skipping requires an enabled student group and all lesson prerequ
   );
   assert.equal(canSkipLessonFeedback({ ...shared, alreadySubmitted: true }), false);
   assert.equal(canSkipLessonFeedback({ ...shared, alreadySkipped: true }), false);
+  assert.equal(canSkipLessonFeedback({ ...shared, required: false }), true);
+  assert.equal(
+    canSkipLessonFeedback({ ...shared, required: false, groupAllowsSkip: false }),
+    false,
+  );
+  assert.equal(canSkipLessonFeedback({ ...shared, enabled: false, required: false }), false);
 });
 
 test("required text rejects whitespace and too-short values, but optional comment can be empty", () => {

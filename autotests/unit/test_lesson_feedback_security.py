@@ -7,11 +7,13 @@ MIGRATION = next((ROOT / "supabase/migrations").glob("*_lesson_feedback_system.s
 )
 SERVER = (ROOT / "src/server/lesson-feedback.functions.ts").read_text(encoding="utf-8")
 LESSON_ACCESS = (ROOT / "src/server/lesson-access.functions.ts").read_text(encoding="utf-8")
+LESSON_CONTENT = (ROOT / "src/server/lesson-content.functions.ts").read_text(encoding="utf-8")
 FINAL_QUIZ = (ROOT / "src/server/final-quiz.functions.ts").read_text(encoding="utf-8")
 CERTIFICATES = (ROOT / "src/server/certificates.server.ts").read_text(encoding="utf-8")
 HOMEWORK = (ROOT / "src/server/homework.functions.ts").read_text(encoding="utf-8")
 LESSON_PAGE = (ROOT / "src/routes/lessons.$day.tsx").read_text(encoding="utf-8")
 ANALYTICS = (ROOT / "src/server/analytics.functions.ts").read_text(encoding="utf-8")
+FEEDBACK_POLICY = (ROOT / "src/server/lesson-feedback-policy.server.ts").read_text(encoding="utf-8")
 STUDENT_DASHBOARD = (ROOT / "src/server/dashboard.functions.ts").read_text(encoding="utf-8")
 QUESTION_ANSWERS = (ROOT / "src/server/lesson-question-answers.functions.ts").read_text(encoding="utf-8")
 SKIP_MIGRATION = next((ROOT / "supabase/migrations").glob("*_feedback_group_skip.sql")).read_text(
@@ -37,14 +39,19 @@ def test_submission_uses_verified_token_identity_and_server_checks_lesson_prereq
     assert '.order("created_at", { ascending: false })' in SERVER
 
 
-def test_feedback_does_not_gate_lesson_completion_and_human_homework_still_does():
-    assert 'from("lesson_feedback")' not in LESSON_ACCESS
+def test_feedback_gates_zero_cohort_completion_and_human_homework_still_does():
+    assert 'from("lesson_feedback")' in LESSON_ACCESS
+    assert "feedbackPending: true" in LESSON_ACCESS
+    assert "isFeedbackRequiredForStudent(userId, lesson.id)" in LESSON_ACCESS
     assert 'from("lesson_feedback")' not in FINAL_QUIZ
     assert 'from("lesson_feedback")' not in CERTIFICATES
     assert "homeworkPending: true" in LESSON_ACCESS
     assert 'eq("status", "approved")' not in LESSON_ACCESS
     assert "latestSubmission?.status !== \"approved\"" in LESSON_ACCESS
     assert ".from(\"lesson_progress\").upsert(" in FINAL_QUIZ
+    assert "getStudentSequenceLock(userId, lesson.day_number)" in LESSON_CONTENT
+    assert "availableDay" in STUDENT_DASHBOARD
+    assert "!isOptionalCohort" in FEEDBACK_POLICY
 
 
 def test_homework_status_refresh_is_scoped_to_authenticated_student_and_lesson():
@@ -73,12 +80,13 @@ def test_feedback_submission_and_skip_do_not_write_course_progress():
 
 def test_student_sees_completion_before_feedback_and_archie_remains_available():
     completion = LESSON_PAGE.index("{completionCardVisible && (")
-    feedback = LESSON_PAGE.index("{feedbackRequired &&", completion)
+    feedback = LESSON_PAGE.index("{feedbackEnabled &&", completion)
     assert completion < feedback
-    assert "feedbackAvailable && completed" in LESSON_PAGE
+    assert "feedbackAvailable &&" in LESSON_PAGE
+    assert "completed || feedbackRequired" in LESSON_PAGE
     assert "getStudentHomeworkStatus" in LESSON_PAGE
     assert "!(feedbackRequired && feedbackAvailable && !feedbackSubmitted)" not in LESSON_PAGE
-    assert "if (!completed) await completeLesson();" in LESSON_PAGE
+    assert "if (feedbackRequired && !completed) await completeLesson();" in LESSON_PAGE
 
 
 def test_certificate_issuance_does_not_wait_for_feedback():
