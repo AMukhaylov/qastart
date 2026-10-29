@@ -1015,6 +1015,9 @@ function LessonPage() {
                   Расскажи, как тебе этот урок. Это займёт пару минут и поможет нам улучшить
                   обучение.
                 </p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Звёздочка (*) рядом с вопросом означает, что ответ обязателен.
+                </p>
               </div>
               <div className="space-y-6">
                 {feedbackQuestions.map((question) => (

@@ -69,6 +69,7 @@ def test_student_feedback_page_uses_star_rating_and_only_shows_configured_skip_a
     assert "text-xs font-bold leading-none" in page
     assert "1 означает «совсем не понравилось»" in page
     assert "10" in page and "означает «очень понравилось»" in page
+    assert "Звёздочка (*) рядом с вопросом означает, что ответ обязателен." in page
     assert "feedbackSkipAllowed &&" in page
     assert "Пропустить опрос" in page
 
