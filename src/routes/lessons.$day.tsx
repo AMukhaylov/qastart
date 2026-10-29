@@ -1024,34 +1024,44 @@ function LessonPage() {
                       {question.required ? " *" : ""}
                     </legend>
                     {question.type === "rating" ? (
-                      <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
-                        {Array.from({ length: 10 }, (_, index) => index + 1).map((score) => (
-                          <button
-                            key={score}
-                            type="button"
-                            aria-label={`${score} из 10`}
-                            aria-pressed={feedbackAnswers[question.id] === score}
-                            onClick={() =>
-                              setFeedbackAnswers((answers) => ({
-                                ...answers,
-                                [question.id]: score,
-                              }))
-                            }
-                            className={`relative flex min-h-11 items-center justify-center rounded-xl border transition-colors ${feedbackAnswers[question.id] === score ? "border-amber-400 bg-amber-50 text-amber-600" : "border-border bg-background text-muted-foreground hover:border-amber-300 hover:text-amber-500"}`}
-                          >
-                            <Star
-                              className={`h-6 w-6 ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "fill-current" : ""}`}
-                              aria-hidden="true"
-                            />
-                            <span
-                              className={`absolute text-[10px] font-bold leading-none ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "text-white" : "text-current"}`}
-                              aria-hidden="true"
+                      <>
+                        <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
+                          {Array.from({ length: 10 }, (_, index) => index + 1).map((score) => (
+                            <button
+                              key={score}
+                              type="button"
+                              aria-label={`${score} из 10`}
+                              aria-describedby={`feedback-rating-help-${question.id}`}
+                              aria-pressed={feedbackAnswers[question.id] === score}
+                              onClick={() =>
+                                setFeedbackAnswers((answers) => ({
+                                  ...answers,
+                                  [question.id]: score,
+                                }))
+                              }
+                              className={`relative flex min-h-11 items-center justify-center rounded-xl border transition-colors ${feedbackAnswers[question.id] === score ? "border-amber-400 bg-amber-50 text-amber-600" : "border-border bg-background text-muted-foreground hover:border-amber-300 hover:text-amber-500"}`}
                             >
-                              {score}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
+                              <Star
+                                className={`h-6 w-6 ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "fill-current" : ""}`}
+                                aria-hidden="true"
+                              />
+                              <span
+                                className={`absolute text-[10px] font-bold leading-none ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "text-white" : "text-current"}`}
+                                aria-hidden="true"
+                              >
+                                {score}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                        <p
+                          id={`feedback-rating-help-${question.id}`}
+                          className="text-xs text-muted-foreground"
+                        >
+                          Оцени урок по шкале от 1 до 10. 1 означает «совсем не понравилось», 10
+                          означает «очень понравилось».
+                        </p>
+                      </>
                     ) : question.type === "radio" ? (
                       <div className="grid gap-2 sm:grid-cols-2">
                         {(question.options ?? []).map((option) => (
