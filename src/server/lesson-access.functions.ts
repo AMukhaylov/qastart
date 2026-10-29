@@ -42,6 +42,7 @@ export const completeLessonForCurrentUser = createServerFn({ method: "POST" })
         { data: courseFeedback, error: courseFeedbackError },
         { data: lessonFeedback, error: lessonFeedbackError },
         { data: submittedFeedback, error: submittedFeedbackError },
+        { data: skippedFeedback, error: skippedFeedbackError },
       ] = await Promise.all([
         supabaseAdmin
           .from("lesson_feedback_course_settings")
@@ -59,12 +60,23 @@ export const completeLessonForCurrentUser = createServerFn({ method: "POST" })
           .eq("user_id", userId)
           .eq("lesson_id", data.lessonId)
           .maybeSingle(),
+        supabaseAdmin
+          .from("lesson_feedback_skips")
+          .select("user_id")
+          .eq("user_id", userId)
+          .eq("lesson_id", data.lessonId)
+          .maybeSingle(),
       ]);
-      for (const error of [courseFeedbackError, lessonFeedbackError, submittedFeedbackError])
+      for (const error of [
+        courseFeedbackError,
+        lessonFeedbackError,
+        submittedFeedbackError,
+        skippedFeedbackError,
+      ])
         if (error) throw error;
       const feedbackRequired =
         lessonFeedback?.required_override ?? courseFeedback?.required_by_default ?? false;
-      if (feedbackRequired && !submittedFeedback) {
+      if (feedbackRequired && !submittedFeedback && !skippedFeedback) {
         return {
           completed: false,
           scheduleLocked: false,

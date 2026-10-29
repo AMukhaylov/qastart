@@ -244,6 +244,7 @@ export type Database = {
       };
       student_groups: {
         Row: {
+          allow_feedback_skip: boolean;
           id: string;
           name: string;
           description: string;
@@ -251,6 +252,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          allow_feedback_skip?: boolean;
           id?: string;
           name: string;
           description?: string;
@@ -258,6 +260,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          allow_feedback_skip?: boolean;
           id?: string;
           name?: string;
           description?: string;
@@ -796,6 +799,20 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "lesson_feedback_lesson_id_fkey";
+            columns: ["lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "lessons";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      lesson_feedback_skips: {
+        Row: { user_id: string; lesson_id: string; created_at: string };
+        Insert: { user_id: string; lesson_id: string; created_at?: string };
+        Update: { user_id?: string; lesson_id?: string; created_at?: string };
+        Relationships: [
+          {
+            foreignKeyName: "lesson_feedback_skips_lesson_id_fkey";
             columns: ["lesson_id"];
             isOneToOne: false;
             referencedRelation: "lessons";

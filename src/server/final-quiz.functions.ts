@@ -236,6 +236,7 @@ async function finalizeAttempt(attempt: QuizAttempt, timedOut: boolean, disquali
       { data: courseSettings, error: courseSettingsError },
       { data: lessonSettings, error: lessonSettingsError },
       { data: submittedFeedback, error: feedbackError },
+      { data: skippedFeedback, error: skippedFeedbackError },
     ] = await Promise.all([
       supabaseAdmin
         .from("lesson_feedback_course_settings")
@@ -253,13 +254,24 @@ async function finalizeAttempt(attempt: QuizAttempt, timedOut: boolean, disquali
         .eq("user_id", finished.user_id)
         .eq("lesson_id", finished.lesson_id)
         .maybeSingle(),
+      supabaseAdmin
+        .from("lesson_feedback_skips")
+        .select("user_id")
+        .eq("user_id", finished.user_id)
+        .eq("lesson_id", finished.lesson_id)
+        .maybeSingle(),
     ]);
-    for (const error of [courseSettingsError, lessonSettingsError, feedbackError]) {
+    for (const error of [
+      courseSettingsError,
+      lessonSettingsError,
+      feedbackError,
+      skippedFeedbackError,
+    ]) {
       if (error) throw error;
     }
     const feedbackRequired =
       lessonSettings?.required_override ?? courseSettings?.required_by_default ?? false;
-    if (!feedbackRequired || submittedFeedback) {
+    if (!feedbackRequired || submittedFeedback || skippedFeedback) {
       const { error: progressError } = await supabaseAdmin.from("lesson_progress").upsert(
         {
           user_id: finished.user_id,

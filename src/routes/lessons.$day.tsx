@@ -11,6 +11,7 @@ import {
   Loader2,
   Paperclip,
   Send,
+  Star,
   X,
 } from "lucide-react";
 import { Button, type ButtonProps } from "@/components/ui/button";
@@ -46,6 +47,7 @@ import { markLessonBlocksCompleted } from "@/server/lesson-progress.functions";
 import { submitSqlSandboxAttempt } from "@/server/sql-sandbox-assessment.functions";
 import {
   getStudentLessonFeedback,
+  skipLessonFeedback,
   submitLessonFeedback,
   type FeedbackQuestion,
 } from "@/server/lesson-feedback.functions";
@@ -142,9 +144,11 @@ function LessonPage() {
   const [feedbackRequired, setFeedbackRequired] = useState(false);
   const [feedbackAvailable, setFeedbackAvailable] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [feedbackSkipAllowed, setFeedbackSkipAllowed] = useState(false);
   const [feedbackQuestions, setFeedbackQuestions] = useState<FeedbackQuestion[]>([]);
   const [feedbackAnswers, setFeedbackAnswers] = useState<Record<string, string | number>>({});
   const [sendingFeedback, setSendingFeedback] = useState(false);
+  const [skippingFeedback, setSkippingFeedback] = useState(false);
   const [sqlSandboxAttempts, setSqlSandboxAttempts] = useState<SavedSqlSandboxAttempt[]>([]);
   const [messages, setMessages] = useState<HomeworkMessage[]>([]);
   const [hwText, setHwText] = useState("");
@@ -236,6 +240,7 @@ function LessonPage() {
     setFeedbackRequired(false);
     setFeedbackAvailable(false);
     setFeedbackSubmitted(false);
+    setFeedbackSkipAllowed(false);
     setFeedbackQuestions([]);
     setFeedbackAnswers({});
 
@@ -266,7 +271,8 @@ function LessonPage() {
     if (requestId !== lessonLoadRequestRef.current) return;
     setFeedbackRequired(feedbackState.required);
     setFeedbackAvailable(feedbackState.available);
-    setFeedbackSubmitted(feedbackState.submitted);
+    setFeedbackSubmitted(feedbackState.submitted || feedbackState.skipped);
+    setFeedbackSkipAllowed(feedbackState.allowSkip);
     setFeedbackQuestions(feedbackState.questions);
     setCourseStartAt(lessonData.courseStartAt);
     setAvailableDay(isAdmin ? 14 : lessonData.currentDay);
@@ -274,9 +280,10 @@ function LessonPage() {
     setFinalQuizPassed(hasPassedFinalQuiz);
     setCompleted(
       dayNum === 14
-        ? hasPassedFinalQuiz && (!feedbackState.required || feedbackState.submitted)
+        ? hasPassedFinalQuiz &&
+            (!feedbackState.required || feedbackState.submitted || feedbackState.skipped)
         : Boolean(lessonData.progress?.completed) &&
-            (!feedbackState.required || feedbackState.submitted),
+            (!feedbackState.required || feedbackState.submitted || feedbackState.skipped),
     );
     setBlocks((lessonData.blocks ?? []) as LessonBlock[]);
     setSavedQuestionAnswers(lessonData.savedQuestionAnswers ?? {});
@@ -342,7 +349,8 @@ function LessonPage() {
       });
       setFeedbackRequired(state.required);
       setFeedbackAvailable(state.available);
-      setFeedbackSubmitted(state.submitted);
+      setFeedbackSubmitted(state.submitted || state.skipped);
+      setFeedbackSkipAllowed(state.allowSkip);
     } catch {
       // Completion remains protected by the server if feedback state cannot refresh.
     }
@@ -362,6 +370,24 @@ function LessonPage() {
       toast.error(error instanceof Error ? error.message : "Не удалось отправить отзыв");
     } finally {
       setSendingFeedback(false);
+    }
+  }
+
+  async function skipFeedback() {
+    if (!lesson || !session?.access_token || skippingFeedback || sendingFeedback) return;
+    setSkippingFeedback(true);
+    try {
+      await skipLessonFeedback({
+        data: { accessToken: session.access_token, lessonId: lesson.id },
+      });
+      setFeedbackSubmitted(true);
+      setFeedbackAvailable(false);
+      setCompleted(true);
+      toast.success("Опрос пропущен. Урок завершён.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось пропустить опрос");
+    } finally {
+      setSkippingFeedback(false);
     }
   }
 
@@ -1003,6 +1029,7 @@ function LessonPage() {
                           <button
                             key={score}
                             type="button"
+                            aria-label={`${score} из 10`}
                             aria-pressed={feedbackAnswers[question.id] === score}
                             onClick={() =>
                               setFeedbackAnswers((answers) => ({
@@ -1010,9 +1037,12 @@ function LessonPage() {
                                 [question.id]: score,
                               }))
                             }
-                            className={`min-h-11 rounded-xl border text-sm font-semibold transition-colors ${feedbackAnswers[question.id] === score ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:border-primary"}`}
+                            className={`flex min-h-11 items-center justify-center rounded-xl border transition-colors ${feedbackAnswers[question.id] === score ? "border-amber-400 bg-amber-50 text-amber-600" : "border-border bg-background text-muted-foreground hover:border-amber-300 hover:text-amber-500"}`}
                           >
-                            {score}
+                            <Star
+                              className={`h-6 w-6 ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "fill-current" : ""}`}
+                              aria-hidden="true"
+                            />
                           </button>
                         ))}
                       </div>
@@ -1055,14 +1085,31 @@ function LessonPage() {
                     )}
                   </fieldset>
                 ))}
-                <Button size="lg" disabled={sendingFeedback} onClick={() => void sendFeedback()}>
-                  {sendingFeedback ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    size="lg"
+                    disabled={sendingFeedback || skippingFeedback}
+                    onClick={() => void sendFeedback()}
+                  >
+                    {sendingFeedback ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    Отправить отзыв
+                  </Button>
+                  {feedbackSkipAllowed && (
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      disabled={sendingFeedback || skippingFeedback}
+                      onClick={() => void skipFeedback()}
+                    >
+                      {skippingFeedback && <Loader2 className="h-4 w-4 animate-spin" />}
+                      Пропустить опрос
+                    </Button>
                   )}
-                  Отправить отзыв
-                </Button>
+                </div>
               </div>
             </section>
           )}

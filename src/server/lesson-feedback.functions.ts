@@ -10,7 +10,11 @@ import { isValidLessonQuestionSelection } from "@/lib/lesson-question-answer";
 import { getLessonScheduleAccess } from "./course-schedule.server";
 import { getRolesForAccessToken, getUserIdForAccessToken } from "./admin-auth.server";
 import { hasPassedEverySqlTask } from "./sql-sandbox-assessment.server";
-import { canSubmitLessonFeedback, validateFeedbackAnswers } from "@/lib/lesson-feedback-validation";
+import {
+  canSkipLessonFeedback,
+  canSubmitLessonFeedback,
+  validateFeedbackAnswers,
+} from "@/lib/lesson-feedback-validation";
 
 const access = z.string().min(20);
 const questionSchema = z.object({
@@ -32,6 +36,22 @@ export type FeedbackQuestion = z.infer<typeof questionSchema>;
 
 const answerSchema = z.record(z.string(), z.union([z.string(), z.number()]));
 const adminInput = z.object({ accessToken: access });
+
+async function canGroupSkipFeedback(userId: string) {
+  const { data: memberships, error: membershipsError } = await supabaseAdmin
+    .from("group_students")
+    .select("group_id")
+    .eq("student_id", userId);
+  if (membershipsError) throw membershipsError;
+  const groupIds = [...new Set((memberships ?? []).map((row) => row.group_id))];
+  if (!groupIds.length) return false;
+  const { data: groups, error: groupsError } = await supabaseAdmin
+    .from("student_groups")
+    .select("allow_feedback_skip")
+    .in("id", groupIds);
+  if (groupsError) throw groupsError;
+  return (groups ?? []).some((group) => group.allow_feedback_skip === true);
+}
 
 async function requireAdmin(token: string) {
   const roles = await getRolesForAccessToken(token);
@@ -161,27 +181,47 @@ export const getStudentLessonFeedback = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const userId = await getUserIdForAccessToken(data.accessToken);
-    const [{ data: lesson, error: lessonError }, config, { data: existing, error: existingError }] =
-      await Promise.all([
-        supabaseAdmin
-          .from("lessons")
-          .select("id,day_number,homework_md")
-          .eq("id", data.lessonId)
-          .maybeSingle(),
-        getFeedbackConfig(data.lessonId),
-        supabaseAdmin
-          .from("lesson_feedback")
-          .select("id,status,created_at")
-          .eq("user_id", userId)
-          .eq("lesson_id", data.lessonId)
-          .maybeSingle(),
-      ]);
+    const [
+      { data: lesson, error: lessonError },
+      config,
+      { data: existing, error: existingError },
+      { data: skipRow, error: skipError },
+      groupAllowsSkip,
+    ] = await Promise.all([
+      supabaseAdmin
+        .from("lessons")
+        .select("id,day_number,homework_md")
+        .eq("id", data.lessonId)
+        .maybeSingle(),
+      getFeedbackConfig(data.lessonId),
+      supabaseAdmin
+        .from("lesson_feedback")
+        .select("id,status,created_at")
+        .eq("user_id", userId)
+        .eq("lesson_id", data.lessonId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("lesson_feedback_skips")
+        .select("created_at")
+        .eq("user_id", userId)
+        .eq("lesson_id", data.lessonId)
+        .maybeSingle(),
+      canGroupSkipFeedback(userId),
+    ]);
     if (lessonError) throw lessonError;
     if (existingError) throw existingError;
+    if (skipError) throw skipError;
     if (!lesson) throw new Error("Урок не найден");
     const schedule = await getLessonScheduleAccess(userId, lesson.day_number);
     if (!schedule.allowed)
-      return { required: false, available: false, submitted: false, questions: [] };
+      return {
+        required: false,
+        available: false,
+        submitted: false,
+        skipped: false,
+        allowSkip: false,
+        questions: [],
+      };
     const { data: blocks, error: blocksError } = await supabaseAdmin
       .from("lesson_blocks")
       .select("id,block_type,content")
@@ -206,9 +246,11 @@ export const getStudentLessonFeedback = createServerFn({ method: "POST" })
         requiredBlocksComplete: requirementsComplete,
         homeworkExists: hasHomework,
         homeworkAccepted,
-        alreadySubmitted: Boolean(existing),
+        alreadySubmitted: Boolean(existing || skipRow),
       }),
       submitted: Boolean(existing),
+      skipped: Boolean(skipRow),
+      allowSkip: groupAllowsSkip,
       submittedAt: existing?.created_at ?? null,
     };
   });
@@ -248,6 +290,14 @@ export const submitLessonFeedback = createServerFn({ method: "POST" })
       Boolean(lesson.homework_md?.trim());
     if (!(await isMentorHomeworkAccepted(userId, lesson.id, hasHomework, lessonBlocks)))
       throw new Error("Опрос откроется после принятия домашнего задания наставником");
+    const { data: skipRow, error: skipError } = await supabaseAdmin
+      .from("lesson_feedback_skips")
+      .select("user_id")
+      .eq("user_id", userId)
+      .eq("lesson_id", lesson.id)
+      .maybeSingle();
+    if (skipError) throw skipError;
+    if (skipRow) throw new Error("Опрос уже был пропущен");
     for (const question of config.questions)
       if (!questionSchema.safeParse(question).success)
         throw new Error("В настройках опроса есть некорректный вопрос");
@@ -273,11 +323,107 @@ export const submitLessonFeedback = createServerFn({ method: "POST" })
     return { submitted: true, alreadySubmitted: Boolean(error?.code === "23505") };
   });
 
+export const skipLessonFeedback = createServerFn({ method: "POST" })
+  .inputValidator((data) =>
+    z.object({ accessToken: access, lessonId: z.string().uuid() }).parse(data),
+  )
+  .handler(async ({ data }) => {
+    const userId = await getUserIdForAccessToken(data.accessToken);
+    const { data: lesson, error: lessonError } = await supabaseAdmin
+      .from("lessons")
+      .select("id,day_number,homework_md")
+      .eq("id", data.lessonId)
+      .maybeSingle();
+    if (lessonError) throw lessonError;
+    if (!lesson || lesson.day_number < 1 || lesson.day_number > 14)
+      throw new Error("Урок недоступен");
+    const schedule = await getLessonScheduleAccess(userId, lesson.day_number);
+    if (!schedule.allowed || schedule.isAdmin)
+      throw new Error("Урок недоступен для пропуска опроса");
+
+    const [
+      config,
+      groupAllowsSkip,
+      { data: feedback, error: feedbackError },
+      { data: skipped, error: skipError },
+    ] = await Promise.all([
+      getFeedbackConfig(lesson.id),
+      canGroupSkipFeedback(userId),
+      supabaseAdmin
+        .from("lesson_feedback")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("lesson_id", lesson.id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("lesson_feedback_skips")
+        .select("user_id")
+        .eq("user_id", userId)
+        .eq("lesson_id", lesson.id)
+        .maybeSingle(),
+    ]);
+    if (feedbackError) throw feedbackError;
+    if (skipError) throw skipError;
+    if (feedback) throw new Error("Отзыв уже отправлен");
+    if (!skipped && !config.required) throw new Error("Опрос для этого урока отключён");
+    if (!skipped && !groupAllowsSkip) throw new Error("Для твоей группы пропуск опроса не включён");
+
+    const { data: blocks, error: blocksError } = await supabaseAdmin
+      .from("lesson_blocks")
+      .select("id,block_type,content")
+      .eq("lesson_id", lesson.id)
+      .order("position");
+    if (blocksError) throw blocksError;
+    const lessonBlocks = (blocks ?? []) as LessonBlock[];
+    const requirementsComplete = await validateLessonRequirements(userId, lesson.id, lessonBlocks);
+    const hasHomework =
+      lessonBlocks.some((block) => block.block_type === "homework") ||
+      Boolean(lesson.homework_md?.trim());
+    const homeworkAccepted = await isMentorHomeworkAccepted(
+      userId,
+      lesson.id,
+      hasHomework,
+      lessonBlocks,
+    );
+    if (
+      !canSkipLessonFeedback({
+        required: config.required,
+        groupAllowsSkip,
+        requiredBlocksComplete: requirementsComplete,
+        homeworkExists: hasHomework,
+        homeworkAccepted,
+        alreadySubmitted: false,
+        alreadySkipped: Boolean(skipped),
+      }) &&
+      !skipped
+    ) {
+      if (!requirementsComplete) throw new Error("Сначала пройди обязательные шаги урока");
+      if (hasHomework && !homeworkAccepted)
+        throw new Error("Пропустить опрос можно после принятия домашнего задания наставником");
+      throw new Error("Пропуск опроса для этой группы недоступен");
+    }
+
+    if (!skipped) {
+      const { error: insertError } = await supabaseAdmin
+        .from("lesson_feedback_skips")
+        .insert({ user_id: userId, lesson_id: lesson.id });
+      if (insertError && insertError.code !== "23505") throw insertError;
+    }
+    const { error: progressError } = await supabaseAdmin
+      .from("lesson_progress")
+      .upsert(
+        { user_id: userId, lesson_id: lesson.id, completed: true },
+        { onConflict: "user_id,lesson_id" },
+      );
+    if (progressError) throw progressError;
+    return { skipped: true, alreadySkipped: Boolean(skipped) };
+  });
+
 export const getAdminFeedbackData = createServerFn({ method: "POST" })
   .inputValidator((data) => adminInput.parse(data))
   .handler(async ({ data }) => {
     await requireAdmin(data.accessToken);
-    const [lessons, courseSettings, settings, template, feedback, profiles, studentRoles] =
+    const [lessons, courseSettings, settings, template, feedback, profiles, studentRoles, groups] =
       await Promise.all([
         supabaseAdmin.from("lessons").select("id,day_number,title").order("day_number"),
         supabaseAdmin
@@ -298,6 +444,7 @@ export const getAdminFeedbackData = createServerFn({ method: "POST" })
           .limit(5000),
         supabaseAdmin.from("profiles").select("id,full_name,login"),
         supabaseAdmin.from("user_roles").select("user_id").eq("role", "student"),
+        supabaseAdmin.from("student_groups").select("id,name,allow_feedback_skip").order("name"),
       ]);
     for (const response of [
       lessons,
@@ -307,6 +454,7 @@ export const getAdminFeedbackData = createServerFn({ method: "POST" })
       feedback,
       profiles,
       studentRoles,
+      groups,
     ])
       if (response.error) throw response.error;
     return {
@@ -317,7 +465,24 @@ export const getAdminFeedbackData = createServerFn({ method: "POST" })
       feedback: feedback.data ?? [],
       profiles: profiles.data ?? [],
       studentCount: new Set((studentRoles.data ?? []).map((row) => row.user_id)).size,
+      groups: groups.data ?? [],
     };
+  });
+
+export const saveAdminFeedbackGroupSkipSetting = createServerFn({ method: "POST" })
+  .inputValidator((data) =>
+    z
+      .object({ accessToken: access, groupId: z.string().uuid(), allowSkip: z.boolean() })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin(data.accessToken);
+    const { error } = await supabaseAdmin
+      .from("student_groups")
+      .update({ allow_feedback_skip: data.allowSkip })
+      .eq("id", data.groupId);
+    if (error) throw error;
+    return { saved: true };
   });
 
 export const saveAdminFeedbackSettings = createServerFn({ method: "POST" })

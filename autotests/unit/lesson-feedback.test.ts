@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canSkipLessonFeedback,
   canSubmitLessonFeedback,
   validateFeedbackAnswers,
 } from "../../src/lib/lesson-feedback-validation.ts";
@@ -78,6 +79,27 @@ test("disabled feedback leaves previous lesson completion behavior intact", () =
     }),
     false,
   );
+});
+
+test("feedback skipping requires an enabled student group and all lesson prerequisites", () => {
+  const shared = {
+    required: true,
+    groupAllowsSkip: true,
+    requiredBlocksComplete: true,
+    homeworkExists: false,
+    homeworkAccepted: false,
+    alreadySubmitted: false,
+    alreadySkipped: false,
+  };
+  assert.equal(canSkipLessonFeedback(shared), true);
+  assert.equal(canSkipLessonFeedback({ ...shared, groupAllowsSkip: false }), false);
+  assert.equal(canSkipLessonFeedback({ ...shared, requiredBlocksComplete: false }), false);
+  assert.equal(
+    canSkipLessonFeedback({ ...shared, homeworkExists: true, homeworkAccepted: false }),
+    false,
+  );
+  assert.equal(canSkipLessonFeedback({ ...shared, alreadySubmitted: true }), false);
+  assert.equal(canSkipLessonFeedback({ ...shared, alreadySkipped: true }), false);
 });
 
 test("required text rejects whitespace and too-short values, but optional comment can be empty", () => {

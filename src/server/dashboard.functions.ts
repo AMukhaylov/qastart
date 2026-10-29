@@ -24,6 +24,7 @@ export const getStudentDashboardData = createServerFn({ method: "POST" })
       { data: feedbackCourseSettings, error: feedbackCourseError },
       { data: feedbackSettings, error: feedbackSettingsError },
       { data: feedbackRows, error: feedbackRowsError },
+      { data: feedbackSkips, error: feedbackSkipsError },
     ] = await Promise.all([
       supabaseAdmin
         .from("lessons")
@@ -73,6 +74,7 @@ export const getStudentDashboardData = createServerFn({ method: "POST" })
         .select("lesson_id")
         .eq("user_id", userId)
         .eq("status", "completed"),
+      supabaseAdmin.from("lesson_feedback_skips").select("lesson_id").eq("user_id", userId),
     ]);
     for (const error of [
       lessonsError,
@@ -86,6 +88,7 @@ export const getStudentDashboardData = createServerFn({ method: "POST" })
       feedbackCourseError,
       feedbackSettingsError,
       feedbackRowsError,
+      feedbackSkipsError,
     ]) {
       if (error) throw error;
     }
@@ -94,11 +97,16 @@ export const getStudentDashboardData = createServerFn({ method: "POST" })
       (feedbackSettings ?? []).map((setting) => [setting.lesson_id, setting.required_override]),
     );
     const submittedFeedbackLessons = new Set((feedbackRows ?? []).map((row) => row.lesson_id));
+    const skippedFeedbackLessons = new Set((feedbackSkips ?? []).map((row) => row.lesson_id));
     const effectiveProgress = (progress ?? []).filter((row) => {
       const required =
         feedbackOverrideByLesson.get(row.lesson_id) ??
         Boolean(feedbackCourseSettings?.required_by_default);
-      return !required || submittedFeedbackLessons.has(row.lesson_id);
+      return (
+        !required ||
+        submittedFeedbackLessons.has(row.lesson_id) ||
+        skippedFeedbackLessons.has(row.lesson_id)
+      );
     });
     const homeworkSnapshots = buildHomeworkSnapshots({
       lessons: lessons ?? [],

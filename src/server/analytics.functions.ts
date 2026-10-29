@@ -187,6 +187,7 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       { data: feedbackCourseSettings, error: feedbackCourseError },
       { data: feedbackSettings, error: feedbackSettingsError },
       submittedFeedback,
+      skippedFeedback,
     ] = await Promise.all([
       supabaseAdmin
         .from("lesson_feedback_course_settings")
@@ -204,6 +205,15 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
           .order("lesson_id")
           .range(from, to),
       ),
+      fetchAllPages((from, to) =>
+        supabaseAdmin
+          .from("lesson_feedback_skips")
+          .select("user_id,lesson_id")
+          .in("user_id", studentIds)
+          .order("user_id")
+          .order("lesson_id")
+          .range(from, to),
+      ),
     ]);
     if (feedbackCourseError) throw feedbackCourseError;
     if (feedbackSettingsError) throw feedbackSettingsError;
@@ -213,11 +223,15 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
     const submittedFeedbackKey = new Set(
       submittedFeedback.map((row) => `${row.user_id}:${row.lesson_id}`),
     );
+    const skippedFeedbackKey = new Set(
+      skippedFeedback.map((row) => `${row.user_id}:${row.lesson_id}`),
+    );
     const effectiveProgress = progress.filter((row) => {
       const required =
         feedbackOverrideByLesson.get(row.lesson_id) ??
         Boolean(feedbackCourseSettings?.required_by_default);
-      return !required || submittedFeedbackKey.has(`${row.user_id}:${row.lesson_id}`);
+      const key = `${row.user_id}:${row.lesson_id}`;
+      return !required || submittedFeedbackKey.has(key) || skippedFeedbackKey.has(key);
     });
 
     return buildCourseAnalytics({

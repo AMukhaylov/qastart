@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import {
   getAdminFeedbackData,
+  saveAdminFeedbackGroupSkipSetting,
   saveAdminFeedbackSettings,
   type FeedbackQuestion,
 } from "@/server/lesson-feedback.functions";
@@ -26,6 +27,7 @@ type FeedbackItem = {
 };
 type LessonItem = { id: string; day_number: number; title: string };
 type ProfileItem = { id: string; full_name: string | null; login: string | null };
+type FeedbackGroup = { id: string; name: string; allow_feedback_skip: boolean };
 const emptyQuestions: FeedbackQuestion[] = [];
 
 function AdminFeedback() {
@@ -34,6 +36,8 @@ function AdminFeedback() {
   const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
   const [profiles, setProfiles] = useState<ProfileItem[]>([]);
   const [studentCount, setStudentCount] = useState(0);
+  const [groups, setGroups] = useState<FeedbackGroup[]>([]);
+  const [savingGroupId, setSavingGroupId] = useState<string | null>(null);
   const [feedbackSettings, setFeedbackSettings] = useState<
     {
       lesson_id: string;
@@ -64,6 +68,7 @@ function AdminFeedback() {
         setFeedback(data.feedback as FeedbackItem[]);
         setProfiles(data.profiles as ProfileItem[]);
         setStudentCount(data.studentCount);
+        setGroups(data.groups as unknown as FeedbackGroup[]);
         setFeedbackSettings(data.settings as typeof feedbackSettings);
         setCommonTemplate(data.commonTemplate as FeedbackQuestion[]);
         setGlobalRequired(Boolean(data.courseSettings?.required_by_default));
@@ -244,6 +249,30 @@ function AdminFeedback() {
       setSaving(false);
     }
   }
+  async function toggleGroupSkip(group: FeedbackGroup, allowSkip: boolean) {
+    if (!session?.access_token || savingGroupId) return;
+    setSavingGroupId(group.id);
+    setGroups((current) =>
+      current.map((item) =>
+        item.id === group.id ? { ...item, allow_feedback_skip: allowSkip } : item,
+      ),
+    );
+    try {
+      await saveAdminFeedbackGroupSkipSetting({
+        data: { accessToken: session.access_token, groupId: group.id, allowSkip },
+      });
+      toast.success(`Настройка группы «${group.name}» сохранена`);
+    } catch (error) {
+      setGroups((current) =>
+        current.map((item) =>
+          item.id === group.id ? { ...item, allow_feedback_skip: group.allow_feedback_skip } : item,
+        ),
+      );
+      toast.error(error instanceof Error ? error.message : "Не удалось сохранить настройку группы");
+    } finally {
+      setSavingGroupId(null);
+    }
+  }
   function exportCsv() {
     const escape = (value: unknown) => {
       const raw = String(value ?? "");
@@ -323,6 +352,43 @@ function AdminFeedback() {
           />
           Обязательный feedback после уроков для нулевого потока
         </label>
+        <div className="space-y-3 rounded-xl border border-border p-4">
+          <div>
+            <h3 className="font-semibold">Пропуск опроса по группам</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Участники выбранных групп смогут по желанию пропустить опрос после выполнения шагов
+              урока и принятия домашнего задания. Для остальных групп опрос остаётся обязательным.
+            </p>
+          </div>
+          {groups.length ? (
+            <div className="space-y-2">
+              {groups.map((group) => (
+                <label
+                  key={group.id}
+                  className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"
+                >
+                  <span>{group.name}</span>
+                  <span className="flex items-center gap-2">
+                    {savingGroupId === group.id && (
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    )}
+                    <input
+                      type="checkbox"
+                      checked={group.allow_feedback_skip}
+                      disabled={Boolean(savingGroupId)}
+                      onChange={(event) => void toggleGroupSkip(group, event.currentTarget.checked)}
+                      aria-label={`Разрешить пропуск опроса группе ${group.name}`}
+                    />
+                  </span>
+                </label>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Пока нет учебных групп. Создай группу в разделе «Студенты», чтобы настроить пропуск.
+            </p>
+          )}
+        </div>
         <div className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)]">
           <label className="text-sm">
             Урок

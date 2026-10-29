@@ -9,6 +9,9 @@ SERVER = (ROOT / "src/server/lesson-feedback.functions.ts").read_text(encoding="
 LESSON_ACCESS = (ROOT / "src/server/lesson-access.functions.ts").read_text(encoding="utf-8")
 FINAL_QUIZ = (ROOT / "src/server/final-quiz.functions.ts").read_text(encoding="utf-8")
 QUESTION_ANSWERS = (ROOT / "src/server/lesson-question-answers.functions.ts").read_text(encoding="utf-8")
+SKIP_MIGRATION = next((ROOT / "supabase/migrations").glob("*_feedback_group_skip.sql")).read_text(
+    encoding="utf-8"
+)
 
 
 def test_feedback_storage_has_rls_unique_pair_and_no_direct_student_insert():
@@ -32,13 +35,36 @@ def test_completion_endpoints_gate_regular_and_final_lesson_on_feedback():
     assert 'from("lesson_feedback")' in LESSON_ACCESS
     assert "feedbackRequired && !submittedFeedback" in LESSON_ACCESS
     assert 'from("lesson_feedback")' in FINAL_QUIZ
-    assert "if (!feedbackRequired || submittedFeedback)" in FINAL_QUIZ
+    assert "if (!feedbackRequired || submittedFeedback || skippedFeedback)" in FINAL_QUIZ
 
 
 def test_certificate_issuance_waits_for_required_feedback():
     certificates = (ROOT / "src/server/certificates.server.ts").read_text(encoding="utf-8")
     assert 'from("lesson_feedback")' in certificates
+    assert 'from("lesson_feedback_skips")' in certificates
     assert "if (requiredFeedbackMissing) return null" in certificates
+
+
+def test_feedback_skip_is_opt_in_by_group_and_not_writable_from_student_client():
+    assert "allow_feedback_skip boolean not null default false" in SKIP_MIGRATION
+    assert "alter table public.lesson_feedback_skips enable row level security" in SKIP_MIGRATION
+    assert "revoke all on public.lesson_feedback_skips from public, anon, authenticated" in SKIP_MIGRATION
+    assert 'from("group_students")' in SERVER
+    assert 'from("student_groups")' in SERVER
+    assert "group.allow_feedback_skip === true" in SERVER
+    assert 'from("lesson_feedback_skips")' in SERVER
+    assert "validateLessonRequirements(userId, lesson.id, lessonBlocks)" in SERVER
+    assert 'data?.status === "approved"' in SERVER
+    admin_page = (ROOT / "src/routes/admin.feedback.tsx").read_text(encoding="utf-8")
+    assert "Пропуск опроса по группам" in admin_page
+    assert "Разрешить пропуск опроса группе" in admin_page
+
+
+def test_student_feedback_page_uses_star_rating_and_only_shows_configured_skip_action():
+    page = (ROOT / "src/routes/lessons.$day.tsx").read_text(encoding="utf-8")
+    assert "<Star" in page
+    assert "feedbackSkipAllowed &&" in page
+    assert "Пропустить опрос" in page
 
 
 def test_saved_incorrect_question_answer_can_retry_progress_without_database_update():

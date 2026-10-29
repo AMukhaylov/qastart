@@ -85,3 +85,22 @@ export function canSubmitLessonFeedback(input: {
     !input.alreadySubmitted
   );
 }
+
+export function canSkipLessonFeedback(input: {
+  required: boolean;
+  groupAllowsSkip: boolean;
+  requiredBlocksComplete: boolean;
+  homeworkExists: boolean;
+  homeworkAccepted: boolean;
+  alreadySubmitted: boolean;
+  alreadySkipped: boolean;
+}) {
+  return (
+    input.required &&
+    input.groupAllowsSkip &&
+    input.requiredBlocksComplete &&
+    (!input.homeworkExists || input.homeworkAccepted) &&
+    !input.alreadySubmitted &&
+    !input.alreadySkipped
+  );
+}

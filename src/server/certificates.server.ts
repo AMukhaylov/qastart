@@ -68,6 +68,7 @@ export async function maybeIssueCertificate(userId: string) {
     { data: feedbackCourseSettings, error: feedbackCourseError },
     { data: feedbackSettings, error: feedbackSettingsError },
     { data: feedbackRows, error: feedbackRowsError },
+    { data: feedbackSkips, error: feedbackSkipsError },
   ] = await Promise.all([
     supabaseAdmin.from("lessons").select("id,day_number"),
     supabaseAdmin
@@ -91,6 +92,7 @@ export async function maybeIssueCertificate(userId: string) {
       .select("lesson_id")
       .eq("user_id", userId)
       .eq("status", "completed"),
+    supabaseAdmin.from("lesson_feedback_skips").select("lesson_id").eq("user_id", userId),
   ]);
 
   if (lessonsError) throw lessonsError;
@@ -99,6 +101,7 @@ export async function maybeIssueCertificate(userId: string) {
   if (feedbackCourseError) throw feedbackCourseError;
   if (feedbackSettingsError) throw feedbackSettingsError;
   if (feedbackRowsError) throw feedbackRowsError;
+  if (feedbackSkipsError) throw feedbackSkipsError;
 
   const finalLesson = lessons?.find((lesson) => lesson.day_number === 14);
   const hasPassedFinalQuiz = Boolean(
@@ -110,11 +113,14 @@ export async function maybeIssueCertificate(userId: string) {
     (feedbackSettings ?? []).map((setting) => [setting.lesson_id, setting.required_override]),
   );
   const submittedFeedbackLessons = new Set((feedbackRows ?? []).map((row) => row.lesson_id));
+  const skippedFeedbackLessons = new Set((feedbackSkips ?? []).map((row) => row.lesson_id));
   const requiredFeedbackMissing = (lessons ?? []).some((lesson) => {
     const required =
       feedbackOverrideByLesson.get(lesson.id) ??
       Boolean(feedbackCourseSettings?.required_by_default);
-    return required && !submittedFeedbackLessons.has(lesson.id);
+    return (
+      required && !submittedFeedbackLessons.has(lesson.id) && !skippedFeedbackLessons.has(lesson.id)
+    );
   });
   if (requiredFeedbackMissing) return null;
 
