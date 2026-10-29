@@ -63,6 +63,7 @@ def test_feedback_skip_is_opt_in_by_group_and_not_writable_from_student_client()
 def test_student_feedback_page_uses_star_rating_and_only_shows_configured_skip_action():
     page = (ROOT / "src/routes/lessons.$day.tsx").read_text(encoding="utf-8")
     assert "<Star" in page
+    assert "{score}" in page
     assert "feedbackSkipAllowed &&" in page
     assert "Пропустить опрос" in page
 
