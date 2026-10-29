@@ -80,7 +80,7 @@ def test_feedback_is_not_announced_before_its_form_becomes_available():
 
     assert "Опрос появится после того" not in page
     assert "Сначала пройди все обязательные шаги урока" not in page
-    assert "feedbackAvailable && !isAdmin" in page
+    assert "feedbackAvailable && completed && !isAdmin" in page
 
 
 def test_state_diagram_editor_and_canvas_are_loaded_on_demand():

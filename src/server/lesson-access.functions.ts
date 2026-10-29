@@ -22,7 +22,7 @@ export const completeLessonForCurrentUser = createServerFn({ method: "POST" })
     const userId = await getUserIdForAccessToken(data.accessToken);
     const { data: lesson, error: lessonError } = await supabaseAdmin
       .from("lessons")
-      .select("id,day_number")
+      .select("id,day_number,homework_md")
       .eq("id", data.lessonId)
       .maybeSingle();
     if (lessonError) throw lessonError;
@@ -37,54 +37,6 @@ export const completeLessonForCurrentUser = createServerFn({ method: "POST" })
     const access = await getLessonScheduleAccess(userId, lesson.day_number);
     if (!access.allowed)
       return { completed: false, scheduleLocked: true, requirementsIncomplete: false };
-    if (!access.isAdmin) {
-      const [
-        { data: courseFeedback, error: courseFeedbackError },
-        { data: lessonFeedback, error: lessonFeedbackError },
-        { data: submittedFeedback, error: submittedFeedbackError },
-        { data: skippedFeedback, error: skippedFeedbackError },
-      ] = await Promise.all([
-        supabaseAdmin
-          .from("lesson_feedback_course_settings")
-          .select("required_by_default")
-          .eq("id", true)
-          .single(),
-        supabaseAdmin
-          .from("lesson_feedback_settings")
-          .select("required_override")
-          .eq("lesson_id", data.lessonId)
-          .maybeSingle(),
-        supabaseAdmin
-          .from("lesson_feedback")
-          .select("id")
-          .eq("user_id", userId)
-          .eq("lesson_id", data.lessonId)
-          .maybeSingle(),
-        supabaseAdmin
-          .from("lesson_feedback_skips")
-          .select("user_id")
-          .eq("user_id", userId)
-          .eq("lesson_id", data.lessonId)
-          .maybeSingle(),
-      ]);
-      for (const error of [
-        courseFeedbackError,
-        lessonFeedbackError,
-        submittedFeedbackError,
-        skippedFeedbackError,
-      ])
-        if (error) throw error;
-      const feedbackRequired =
-        lessonFeedback?.required_override ?? courseFeedback?.required_by_default ?? false;
-      if (feedbackRequired && !submittedFeedback && !skippedFeedback) {
-        return {
-          completed: false,
-          scheduleLocked: false,
-          requirementsIncomplete: false,
-          feedbackRequired: true,
-        };
-      }
-    }
     if (!access.isAdmin) {
       const [
         { data: blocks, error: blocksError },
@@ -192,6 +144,39 @@ export const completeLessonForCurrentUser = createServerFn({ method: "POST" })
           scheduleLocked: false,
           requirementsIncomplete: true,
         };
+      }
+
+      const hasHumanHomework = Boolean(
+        ((blocks ?? []).length === 0 && lesson.homework_md?.trim()) ||
+        (blocks ?? []).some(
+          (block) =>
+            block.block_type === "homework" &&
+            !(
+              typeof block.content === "object" &&
+              block.content !== null &&
+              !Array.isArray(block.content) &&
+              block.content.mode === "sql_sandbox"
+            ),
+        ),
+      );
+      if (hasHumanHomework) {
+        const { data: latestSubmission, error: submissionError } = await supabaseAdmin
+          .from("homework_submissions")
+          .select("status")
+          .eq("user_id", userId)
+          .eq("lesson_id", data.lessonId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (submissionError) throw submissionError;
+        if (latestSubmission?.status !== "approved") {
+          return {
+            completed: false,
+            scheduleLocked: false,
+            requirementsIncomplete: false,
+            homeworkPending: true,
+          };
+        }
       }
     }
 

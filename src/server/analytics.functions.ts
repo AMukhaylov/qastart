@@ -207,56 +207,15 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       }
     }
 
-    const [
-      { data: feedbackCourseSettings, error: feedbackCourseError },
-      { data: feedbackSettings, error: feedbackSettingsError },
-      submittedFeedback,
-      feedbackSkips,
-    ] = await Promise.all([
+    const feedbackSkips = await fetchAllPages((from, to) =>
       supabaseAdmin
-        .from("lesson_feedback_course_settings")
-        .select("required_by_default")
-        .eq("id", true)
-        .single(),
-      supabaseAdmin.from("lesson_feedback_settings").select("lesson_id,required_override"),
-      fetchAllPages((from, to) =>
-        supabaseAdmin
-          .from("lesson_feedback")
-          .select("user_id,lesson_id")
-          .in("user_id", studentIds)
-          .eq("status", "completed")
-          .order("user_id")
-          .order("lesson_id")
-          .range(from, to),
-      ),
-      fetchAllPages((from, to) =>
-        supabaseAdmin
-          .from("lesson_feedback_skips")
-          .select("user_id,lesson_id,created_at")
-          .in("user_id", studentIds)
-          .order("user_id")
-          .order("lesson_id")
-          .range(from, to),
-      ),
-    ]);
-    if (feedbackCourseError) throw feedbackCourseError;
-    if (feedbackSettingsError) throw feedbackSettingsError;
-    const feedbackOverrideByLesson = new Map(
-      (feedbackSettings ?? []).map((setting) => [setting.lesson_id, setting.required_override]),
+        .from("lesson_feedback_skips")
+        .select("user_id,lesson_id,created_at")
+        .in("user_id", studentIds)
+        .order("user_id")
+        .order("lesson_id")
+        .range(from, to),
     );
-    const submittedFeedbackKey = new Set(
-      submittedFeedback.map((row) => `${row.user_id}:${row.lesson_id}`),
-    );
-    const skippedFeedbackKey = new Set(
-      feedbackSkips.map((row) => `${row.user_id}:${row.lesson_id}`),
-    );
-    const effectiveProgress = progress.filter((row) => {
-      const required =
-        feedbackOverrideByLesson.get(row.lesson_id) ??
-        Boolean(feedbackCourseSettings?.required_by_default);
-      const key = `${row.user_id}:${row.lesson_id}`;
-      return !required || submittedFeedbackKey.has(key) || skippedFeedbackKey.has(key);
-    });
 
     const feedbackSettingsByLesson = new Map(
       (questionSettings ?? []).map((setting) => [setting.lesson_id, setting]),
@@ -280,7 +239,7 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
       ...buildCourseAnalytics({
         students,
         lessons: lessons ?? [],
-        progress: effectiveProgress,
+        progress,
         blockProgress: blockProgress.map(({ user_id, lesson_id, completed_at }) => ({
           user_id,
           lesson_id,

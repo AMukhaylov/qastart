@@ -8,6 +8,11 @@ MIGRATION = next((ROOT / "supabase/migrations").glob("*_lesson_feedback_system.s
 SERVER = (ROOT / "src/server/lesson-feedback.functions.ts").read_text(encoding="utf-8")
 LESSON_ACCESS = (ROOT / "src/server/lesson-access.functions.ts").read_text(encoding="utf-8")
 FINAL_QUIZ = (ROOT / "src/server/final-quiz.functions.ts").read_text(encoding="utf-8")
+CERTIFICATES = (ROOT / "src/server/certificates.server.ts").read_text(encoding="utf-8")
+HOMEWORK = (ROOT / "src/server/homework.functions.ts").read_text(encoding="utf-8")
+LESSON_PAGE = (ROOT / "src/routes/lessons.$day.tsx").read_text(encoding="utf-8")
+ANALYTICS = (ROOT / "src/server/analytics.functions.ts").read_text(encoding="utf-8")
+STUDENT_DASHBOARD = (ROOT / "src/server/dashboard.functions.ts").read_text(encoding="utf-8")
 QUESTION_ANSWERS = (ROOT / "src/server/lesson-question-answers.functions.ts").read_text(encoding="utf-8")
 SKIP_MIGRATION = next((ROOT / "supabase/migrations").glob("*_feedback_group_skip.sql")).read_text(
     encoding="utf-8"
@@ -32,18 +37,53 @@ def test_submission_uses_verified_token_identity_and_server_checks_lesson_prereq
     assert '.order("created_at", { ascending: false })' in SERVER
 
 
-def test_completion_endpoints_gate_regular_and_final_lesson_on_feedback():
-    assert 'from("lesson_feedback")' in LESSON_ACCESS
-    assert "feedbackRequired && !submittedFeedback" in LESSON_ACCESS
-    assert 'from("lesson_feedback")' in FINAL_QUIZ
-    assert "if (!feedbackRequired || submittedFeedback || skippedFeedback)" in FINAL_QUIZ
+def test_feedback_does_not_gate_lesson_completion_and_human_homework_still_does():
+    assert 'from("lesson_feedback")' not in LESSON_ACCESS
+    assert 'from("lesson_feedback")' not in FINAL_QUIZ
+    assert 'from("lesson_feedback")' not in CERTIFICATES
+    assert "homeworkPending: true" in LESSON_ACCESS
+    assert 'eq("status", "approved")' not in LESSON_ACCESS
+    assert "latestSubmission?.status !== \"approved\"" in LESSON_ACCESS
+    assert ".from(\"lesson_progress\").upsert(" in FINAL_QUIZ
 
 
-def test_certificate_issuance_waits_for_required_feedback():
-    certificates = (ROOT / "src/server/certificates.server.ts").read_text(encoding="utf-8")
-    assert 'from("lesson_feedback")' in certificates
-    assert 'from("lesson_feedback_skips")' in certificates
-    assert "if (requiredFeedbackMissing) return null" in certificates
+def test_homework_status_refresh_is_scoped_to_authenticated_student_and_lesson():
+    status_handler = HOMEWORK.split("export const getStudentHomeworkStatus", 1)[1].split(
+        "export const listHomeworkMessages", 1
+    )[0]
+    assert "getUserIdForAccessToken(data.accessToken)" in status_handler
+    assert 'eq("user_id", userId)' in status_handler
+    assert 'eq("lesson_id", data.lessonId)' in status_handler
+    assert "assertLessonScheduleAccess(userId, lesson.day_number)" in status_handler
+
+
+def test_feedback_submission_and_skip_do_not_write_course_progress():
+    submit_handler = SERVER.split("export const submitLessonFeedback", 1)[1].split(
+        "export const skipLessonFeedback", 1
+    )[0]
+    skip_handler = SERVER.split("export const skipLessonFeedback", 1)[1].split(
+        "export const getAdminFeedbackData", 1
+    )[0]
+    assert 'from("lesson_progress")' not in submit_handler
+    assert 'from("lesson_progress")' not in skip_handler
+    assert "progress: progress ?? []" in STUDENT_DASHBOARD
+    assert "effectiveProgress" not in ANALYTICS
+    assert "progress,\n        blockProgress:" in ANALYTICS
+
+
+def test_student_sees_completion_before_feedback_and_archie_remains_available():
+    completion = LESSON_PAGE.index("{completionCardVisible && (")
+    feedback = LESSON_PAGE.index("{feedbackRequired &&", completion)
+    assert completion < feedback
+    assert "feedbackAvailable && completed" in LESSON_PAGE
+    assert "getStudentHomeworkStatus" in LESSON_PAGE
+    assert "!(feedbackRequired && feedbackAvailable && !feedbackSubmitted)" not in LESSON_PAGE
+    assert "if (!completed) await completeLesson();" in LESSON_PAGE
+
+
+def test_certificate_issuance_does_not_wait_for_feedback():
+    assert 'from("lesson_feedback")' not in CERTIFICATES
+    assert 'from("lesson_feedback_skips")' not in CERTIFICATES
 
 
 def test_feedback_skip_is_opt_in_by_group_and_not_writable_from_student_client():

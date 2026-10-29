@@ -37,6 +37,11 @@ const submitHomeworkInput = z.object({
   attachments: z.array(attachmentSchema).max(3).default([]),
 });
 
+const studentHomeworkStatusInput = z.object({
+  accessToken: z.string().min(20),
+  lessonId: z.string().uuid(),
+});
+
 const listMessagesInput = z.object({
   accessToken: z.string().min(20),
   submissionId: z.string().uuid(),
@@ -350,6 +355,30 @@ export const submitHomeworkForCurrentUser = createServerFn({ method: "POST" })
       Boolean(data.submissionId),
     );
 
+    return submission;
+  });
+
+export const getStudentHomeworkStatus = createServerFn({ method: "POST" })
+  .inputValidator((data) => studentHomeworkStatusInput.parse(data))
+  .handler(async ({ data }) => {
+    const userId = await getUserIdForAccessToken(data.accessToken);
+    const { data: lesson, error: lessonError } = await supabaseAdmin
+      .from("lessons")
+      .select("id,day_number")
+      .eq("id", data.lessonId)
+      .maybeSingle();
+    if (lessonError) throw lessonError;
+    if (!lesson) throw new Error("Урок не найден");
+    await assertLessonScheduleAccess(userId, lesson.day_number);
+    const { data: submission, error } = await supabaseAdmin
+      .from("homework_submissions")
+      .select("id,user_id,content,status,feedback,created_at,reviewed_at,reviewed_by,lesson_id")
+      .eq("user_id", userId)
+      .eq("lesson_id", data.lessonId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
     return submission;
   });
 

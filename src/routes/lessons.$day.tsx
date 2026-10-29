@@ -39,7 +39,11 @@ import {
   readPendingProgressIds,
   removePendingProgressIds,
 } from "@/lib/lesson-progress";
-import { listHomeworkMessages, submitHomeworkForCurrentUser } from "@/server/homework.functions";
+import {
+  getStudentHomeworkStatus,
+  listHomeworkMessages,
+  submitHomeworkForCurrentUser,
+} from "@/server/homework.functions";
 import { getStudentLessonData } from "@/server/lesson-content.functions";
 import { saveLessonQuestionAnswer } from "@/server/lesson-question-answers.functions";
 import { completeLessonForCurrentUser } from "@/server/lesson-access.functions";
@@ -278,13 +282,7 @@ function LessonPage() {
     setAvailableDay(isAdmin ? 14 : lessonData.currentDay);
     const hasPassedFinalQuiz = Boolean(lessonData.finalQuizPassed);
     setFinalQuizPassed(hasPassedFinalQuiz);
-    setCompleted(
-      dayNum === 14
-        ? hasPassedFinalQuiz &&
-            (!feedbackState.required || feedbackState.submitted || feedbackState.skipped)
-        : Boolean(lessonData.progress?.completed) &&
-            (!feedbackState.required || feedbackState.submitted || feedbackState.skipped),
-    );
+    setCompleted(dayNum === 14 ? hasPassedFinalQuiz : Boolean(lessonData.progress?.completed));
     setBlocks((lessonData.blocks ?? []) as LessonBlock[]);
     setSavedQuestionAnswers(lessonData.savedQuestionAnswers ?? {});
     const serverViewedIds = (lessonData.blockProgress ?? []).map((row) => row.block_id);
@@ -352,7 +350,7 @@ function LessonPage() {
       setFeedbackSubmitted(state.submitted || state.skipped);
       setFeedbackSkipAllowed(state.allowSkip);
     } catch {
-      // Completion remains protected by the server if feedback state cannot refresh.
+      // Survey visibility can retry later and never changes lesson progress.
     }
   }
 
@@ -364,7 +362,6 @@ function LessonPage() {
         data: { accessToken: session.access_token, lessonId: lesson.id, answers: feedbackAnswers },
       });
       setFeedbackSubmitted(true);
-      setCompleted(true);
       toast.success("Спасибо! Отзыв сохранён.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось отправить отзыв");
@@ -382,8 +379,7 @@ function LessonPage() {
       });
       setFeedbackSubmitted(true);
       setFeedbackAvailable(false);
-      setCompleted(true);
-      toast.success("Опрос пропущен. Урок завершён.");
+      toast.success("Опрос пропущен.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось пропустить опрос");
     } finally {
@@ -475,8 +471,8 @@ function LessonPage() {
     if (!result.completed) {
       if (result.requirementsIncomplete) {
         toast.error("Сначала выполни обязательные шаги текущего урока.");
-      } else if (result.feedbackRequired) {
-        toast.info("Чтобы завершить урок, сначала отправь отзыв.");
+      } else if (result.homeworkPending) {
+        // A human-reviewed assignment must be accepted before lesson completion.
       } else {
         toast.error("Урок пока не открылся по твоему расписанию.");
       }
@@ -492,7 +488,6 @@ function LessonPage() {
       !user ||
       lesson.day_number === 14 ||
       completed ||
-      (feedbackRequired && !feedbackSubmitted) ||
       completingLesson ||
       blocks.length === 0 ||
       !blocks.filter(isBlockRequired).every((block) => viewedBlockIds.includes(block.id))
@@ -502,16 +497,7 @@ function LessonPage() {
     void completeLesson();
     // completeLesson deliberately reads the current lesson and user from this render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    blocks,
-    completed,
-    completingLesson,
-    feedbackRequired,
-    feedbackSubmitted,
-    lesson,
-    user,
-    viewedBlockIds,
-  ]);
+  }, [blocks, completed, lesson, user, viewedBlockIds]);
 
   useEffect(() => {
     if (
@@ -532,6 +518,48 @@ function LessonPage() {
     // refreshFeedbackState uses the current lesson and session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedbackRequired, feedbackSubmitted, lesson, session?.access_token]);
+
+  useEffect(() => {
+    if (
+      !lesson ||
+      !session?.access_token ||
+      !submission ||
+      (submission.status !== "pending" && submission.status !== "awaiting_mentor") ||
+      typeof window === "undefined"
+    )
+      return;
+    let disposed = false;
+    let inFlight = false;
+    const refreshSubmission = async () => {
+      if (disposed || inFlight) return;
+      inFlight = true;
+      try {
+        const latest = await getStudentHomeworkStatus({
+          data: { accessToken: session.access_token, lessonId: lesson.id },
+        });
+        if (disposed || !latest) return;
+        const updated = latest as Submission;
+        setSubmission(updated);
+        if (updated.status === "approved" && submission.status !== "approved") {
+          await refreshFeedbackState();
+          if (!completed) await completeLesson();
+        }
+      } catch {
+        // Keep the submitted assignment visible; the next poll can retry.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const intervalId = window.setInterval(() => void refreshSubmission(), 10_000);
+    window.addEventListener("focus", refreshSubmission);
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshSubmission);
+    };
+    // Poll while the currently visible submission awaits mentor review.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completed, lesson, session?.access_token, submission]);
 
   useEffect(() => {
     if (!lesson || loading) return;
@@ -969,7 +997,7 @@ function LessonPage() {
                   onPassed={() => {
                     void markBlocksCompleted([block.id]).then(() => refreshFeedbackState());
                     setFinalQuizPassed(true);
-                    setCompleted(!feedbackRequired || feedbackSubmitted);
+                    setCompleted(true);
                   }}
                   onExitComplete={() => {
                     const destination = finalQuizExitDestination;
@@ -1004,7 +1032,19 @@ function LessonPage() {
             />
           ) : null}
 
-          {feedbackRequired && !feedbackSubmitted && feedbackAvailable && !isAdmin && (
+          {completionCardVisible && (
+            <section
+              className={`rounded-2xl p-5 shadow-[var(--shadow-soft)] md:p-7 ${homeworkPending ? "border border-primary/20 bg-primary-soft/30" : "border border-emerald-200 bg-emerald-50"}`}
+            >
+              <LessonGuide
+                variant={displayedCompletionVariant}
+                title={displayedCompletionTitle}
+                text={displayedCompletionText}
+              />
+            </section>
+          )}
+
+          {feedbackRequired && !feedbackSubmitted && feedbackAvailable && completed && !isAdmin && (
             <section
               id="lesson-feedback"
               className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7"
@@ -1132,18 +1172,6 @@ function LessonPage() {
               </div>
             </section>
           )}
-
-          {completionCardVisible && (
-            <section
-              className={`rounded-2xl p-5 shadow-[var(--shadow-soft)] md:p-7 ${homeworkPending ? "border border-primary/20 bg-primary-soft/30" : "border border-emerald-200 bg-emerald-50"}`}
-            >
-              <LessonGuide
-                variant={displayedCompletionVariant}
-                title={displayedCompletionTitle}
-                text={displayedCompletionText}
-              />
-            </section>
-          )}
         </div>
       </main>
 
@@ -1153,7 +1181,6 @@ function LessonPage() {
         lesson.day_number === dayNum &&
         lesson.day_number <= availableDay &&
         session?.access_token &&
-        !(feedbackRequired && feedbackAvailable && !feedbackSubmitted) &&
         user?.id && (
           <ArchieChat
             key={`${lesson.id}:${user.id}`}

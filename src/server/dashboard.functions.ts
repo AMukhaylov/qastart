@@ -21,10 +21,6 @@ export const getStudentDashboardData = createServerFn({ method: "POST" })
       { data: certificate, error: certificateError },
       { data: profile, error: profileError },
       { data: passedFinalQuizAttempts, error: passedFinalQuizError },
-      { data: feedbackCourseSettings, error: feedbackCourseError },
-      { data: feedbackSettings, error: feedbackSettingsError },
-      { data: feedbackRows, error: feedbackRowsError },
-      { data: feedbackSkips, error: feedbackSkipsError },
     ] = await Promise.all([
       supabaseAdmin
         .from("lessons")
@@ -63,18 +59,6 @@ export const getStudentDashboardData = createServerFn({ method: "POST" })
         .select("lesson_id")
         .eq("user_id", userId)
         .eq("passed", true),
-      supabaseAdmin
-        .from("lesson_feedback_course_settings")
-        .select("required_by_default")
-        .eq("id", true)
-        .single(),
-      supabaseAdmin.from("lesson_feedback_settings").select("lesson_id,required_override"),
-      supabaseAdmin
-        .from("lesson_feedback")
-        .select("lesson_id")
-        .eq("user_id", userId)
-        .eq("status", "completed"),
-      supabaseAdmin.from("lesson_feedback_skips").select("lesson_id").eq("user_id", userId),
     ]);
     for (const error of [
       lessonsError,
@@ -85,33 +69,14 @@ export const getStudentDashboardData = createServerFn({ method: "POST" })
       certificateError,
       profileError,
       passedFinalQuizError,
-      feedbackCourseError,
-      feedbackSettingsError,
-      feedbackRowsError,
-      feedbackSkipsError,
     ]) {
       if (error) throw error;
     }
     const schedule = await schedulePromise;
-    const feedbackOverrideByLesson = new Map(
-      (feedbackSettings ?? []).map((setting) => [setting.lesson_id, setting.required_override]),
-    );
-    const submittedFeedbackLessons = new Set((feedbackRows ?? []).map((row) => row.lesson_id));
-    const skippedFeedbackLessons = new Set((feedbackSkips ?? []).map((row) => row.lesson_id));
-    const effectiveProgress = (progress ?? []).filter((row) => {
-      const required =
-        feedbackOverrideByLesson.get(row.lesson_id) ??
-        Boolean(feedbackCourseSettings?.required_by_default);
-      return (
-        !required ||
-        submittedFeedbackLessons.has(row.lesson_id) ||
-        skippedFeedbackLessons.has(row.lesson_id)
-      );
-    });
     const homeworkSnapshots = buildHomeworkSnapshots({
       lessons: lessons ?? [],
       courseStartAt: schedule.courseStartAt,
-      progress: effectiveProgress,
+      progress: progress ?? [],
       submissions: (homework ?? []).map((submission) => ({
         ...submission,
         id: submission.id,

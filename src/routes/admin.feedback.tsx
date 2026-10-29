@@ -339,7 +339,7 @@ function AdminFeedback() {
       <header>
         <h1 className="text-3xl font-extrabold">Обратная связь по урокам</h1>
         <p className="mt-2 text-muted-foreground">
-          Настраивай обязательные опросы и анализируй ответы учеников.
+          Настраивай, где показывать опросы, и анализируй ответы учеников.
         </p>
       </header>
       <section className="rounded-2xl border border-border bg-card p-5 space-y-4">
@@ -350,14 +350,15 @@ function AdminFeedback() {
             checked={globalRequired}
             onChange={(event) => setGlobalRequired(event.target.checked)}
           />
-          Обязательный feedback после уроков для нулевого потока
+          Показывать опросы после уроков для нулевого потока
         </label>
         <div className="space-y-3 rounded-xl border border-border p-4">
           <div>
             <h3 className="font-semibold">Пропуск опроса по группам</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Участники выбранных групп смогут по желанию пропустить опрос после выполнения шагов
-              урока и принятия домашнего задания. Для остальных групп опрос остаётся обязательным.
+              Участники выбранных групп смогут убрать опрос после выполнения шагов урока и принятия
+              домашнего задания. Ответы не влияют на прогресс; для остальных групп опрос просто
+              останется на странице до отправки или ухода с урока.
             </p>
           </div>
           {groups.length ? (
@@ -405,15 +406,15 @@ function AdminFeedback() {
             </select>
           </label>
           <label className="text-sm">
-            Обязательность
+            Показывать опрос
             <select
               className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3"
               value={override}
               onChange={(event) => setOverride(event.target.value as typeof override)}
             >
-              <option value="inherit">Использовать общий переключатель</option>
-              <option value="on">Включить для этого урока</option>
-              <option value="off">Выключить для этого урока</option>
+              <option value="inherit">Как задано общим переключателем</option>
+              <option value="on">Показывать для этого урока</option>
+              <option value="off">Не показывать для этого урока</option>
             </select>
           </label>
         </div>

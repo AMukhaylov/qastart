@@ -313,13 +313,6 @@ export const submitLessonFeedback = createServerFn({ method: "POST" })
       status: "completed",
     });
     if (error && error.code !== "23505") throw error;
-    const { error: progressError } = await supabaseAdmin
-      .from("lesson_progress")
-      .upsert(
-        { user_id: userId, lesson_id: lesson.id, completed: true },
-        { onConflict: "user_id,lesson_id" },
-      );
-    if (progressError) throw progressError;
     return { submitted: true, alreadySubmitted: Boolean(error?.code === "23505") };
   });
 
@@ -409,13 +402,6 @@ export const skipLessonFeedback = createServerFn({ method: "POST" })
         .insert({ user_id: userId, lesson_id: lesson.id });
       if (insertError && insertError.code !== "23505") throw insertError;
     }
-    const { error: progressError } = await supabaseAdmin
-      .from("lesson_progress")
-      .upsert(
-        { user_id: userId, lesson_id: lesson.id, completed: true },
-        { onConflict: "user_id,lesson_id" },
-      );
-    if (progressError) throw progressError;
     return { skipped: true, alreadySkipped: Boolean(skipped) };
   });
 
