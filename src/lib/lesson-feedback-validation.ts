@@ -6,16 +6,21 @@ export type FeedbackValidationQuestion = {
   options?: { label: string; value: string }[];
 };
 
-export function getFeedbackCohortPolicy(enabled: boolean, isInOptionalGroup: boolean) {
-  return { enabled, required: enabled && !isInOptionalGroup };
+export function resolveLessonFeedbackRequirement(input: {
+  isInGroup: boolean;
+  cohortRequired: boolean;
+  lessonOverride: boolean | null | undefined;
+}) {
+  // Group policy is authoritative: a lesson-level toggle may exempt a lesson
+  // from a mandatory stream, but it must not make an optional stream mandatory.
+  if (input.isInGroup) return input.cohortRequired && input.lessonOverride !== false;
+  return input.lessonOverride ?? input.cohortRequired;
 }
 
-export function validateFeedbackAnswers(
+export function validateQuestionAnswers(
   questions: FeedbackValidationQuestion[],
   answers: Record<string, string | number>,
-):
-  | { valid: true; rating: number; difficulty: string; comment: string | null }
-  | { valid: false; error: string } {
+): { valid: true } | { valid: false; error: string } {
   const ids = new Set<string>();
   for (const question of questions) {
     if (!question.id || ids.has(question.id))
@@ -33,26 +38,32 @@ export function validateFeedbackAnswers(
     if (empty) continue;
     if (
       question.type === "rating" &&
-      (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 10)
-    ) {
+      (!Number.isInteger(value) || Number(value) < 1 || Number(value) > 10)
+    )
       return { valid: false, error: "Оценка должна быть от 1 до 10" };
-    }
-    if (question.type === "textarea" && typeof value !== "string") {
+    if (question.type === "textarea" && typeof value !== "string")
       return { valid: false, error: `Ответ «${question.label}» должен быть текстом` };
-    }
-    if (question.type === "textarea" && question.required && String(value).trim().length < 3) {
+    if (question.type === "textarea" && question.required && String(value).trim().length < 3)
       return {
         valid: false,
         error: `Ответ «${question.label}» должен содержать хотя бы 3 символа`,
       };
-    }
-    if (question.type === "radio" && !question.options?.some((option) => option.value === value)) {
+    if (question.type === "radio" && !question.options?.some((option) => option.value === value))
       return { valid: false, error: `Выбери допустимый ответ: ${question.label}` };
-    }
   }
-  if (Object.keys(answers).some((id) => !ids.has(id))) {
+  if (Object.keys(answers).some((id) => !ids.has(id)))
     return { valid: false, error: "В ответе есть неизвестные поля" };
-  }
+  return { valid: true };
+}
+
+export function validateFeedbackAnswers(
+  questions: FeedbackValidationQuestion[],
+  answers: Record<string, string | number>,
+):
+  | { valid: true; rating: number; difficulty: string; comment: string | null }
+  | { valid: false; error: string } {
+  const commonValidation = validateQuestionAnswers(questions, answers);
+  if (!commonValidation.valid) return commonValidation;
   const ratingQuestion = questions.find((question) => question.type === "rating");
   const difficultyQuestion =
     questions.find(

@@ -8,10 +8,16 @@ import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import {
   getAdminFeedbackData,
+  saveAdminFeedbackDefaults,
+  saveAdminFeedbackGroupPolicy,
   saveAdminFeedbackGroupSkipSetting,
   saveAdminFeedbackSettings,
   type FeedbackQuestion,
 } from "@/server/lesson-feedback.functions";
+import {
+  saveAdminCourseFeedbackQuestions,
+  type CourseFeedbackQuestion,
+} from "@/server/course-feedback.functions";
 
 export const Route = createFileRoute("/admin/feedback")({ component: AdminFeedback });
 
@@ -27,7 +33,19 @@ type FeedbackItem = {
 };
 type LessonItem = { id: string; day_number: number; title: string };
 type ProfileItem = { id: string; full_name: string | null; login: string | null };
-type FeedbackGroup = { id: string; name: string; allow_feedback_skip: boolean };
+type FeedbackGroup = {
+  id: string;
+  name: string;
+  allow_feedback_skip: boolean;
+  lesson_feedback_required: boolean;
+  course_feedback_required: boolean;
+};
+type CourseFeedbackItem = {
+  id: string;
+  user_id: string;
+  answers: Record<string, unknown>;
+  created_at: string;
+};
 const emptyQuestions: FeedbackQuestion[] = [];
 
 function AdminFeedback() {
@@ -37,6 +55,7 @@ function AdminFeedback() {
   const [profiles, setProfiles] = useState<ProfileItem[]>([]);
   const [studentCount, setStudentCount] = useState(0);
   const [groups, setGroups] = useState<FeedbackGroup[]>([]);
+  const [courseFeedback, setCourseFeedback] = useState<CourseFeedbackItem[]>([]);
   const [savingGroupId, setSavingGroupId] = useState<string | null>(null);
   const [feedbackSettings, setFeedbackSettings] = useState<
     {
@@ -47,13 +66,19 @@ function AdminFeedback() {
     }[]
   >([]);
   const [commonTemplate, setCommonTemplate] = useState<FeedbackQuestion[]>([]);
+  const [courseQuestions, setCourseQuestions] = useState<CourseFeedbackQuestion[]>([]);
+  const [courseQuestionsSaved, setCourseQuestionsSaved] = useState<CourseFeedbackQuestion[]>([]);
   const [useCommonTemplate, setUseCommonTemplate] = useState(true);
   const [lessonId, setLessonId] = useState("");
   const [globalRequired, setGlobalRequired] = useState(false);
+  const [globalEnabled, setGlobalEnabled] = useState(true);
+  const [globalCourseRequired, setGlobalCourseRequired] = useState(false);
   const [override, setOverride] = useState<"inherit" | "on" | "off">("inherit");
   const [questions, setQuestions] = useState<FeedbackQuestion[]>(emptyQuestions);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingDefaults, setSavingDefaults] = useState(false);
+  const [savingCourseQuestions, setSavingCourseQuestions] = useState(false);
   const [studentFilter, setStudentFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -69,9 +94,14 @@ function AdminFeedback() {
         setProfiles(data.profiles as ProfileItem[]);
         setStudentCount(data.studentCount);
         setGroups(data.groups as unknown as FeedbackGroup[]);
+        setCourseFeedback(data.courseFeedback as CourseFeedbackItem[]);
+        setCourseQuestions(data.courseFeedbackQuestions as CourseFeedbackQuestion[]);
+        setCourseQuestionsSaved(data.courseFeedbackQuestions as CourseFeedbackQuestion[]);
         setFeedbackSettings(data.settings as typeof feedbackSettings);
         setCommonTemplate(data.commonTemplate as FeedbackQuestion[]);
         setGlobalRequired(Boolean(data.courseSettings?.required_by_default));
+        setGlobalEnabled(Boolean(data.courseSettings?.enabled_by_default));
+        setGlobalCourseRequired(Boolean(data.courseSettings?.course_feedback_required_by_default));
         const firstLesson = (data.lessons as LessonItem[])[0];
         if (firstLesson) setLessonId(firstLesson.id);
       })
@@ -215,6 +245,33 @@ function AdminFeedback() {
       return next;
     });
   }
+  function updateCourseQuestion(index: number, changes: Partial<CourseFeedbackQuestion>) {
+    setCourseQuestions((current) =>
+      current.map((question, questionIndex) =>
+        questionIndex === index ? { ...question, ...changes } : question,
+      ),
+    );
+  }
+  function addCourseQuestion() {
+    setCourseQuestions((current) => [
+      ...current,
+      {
+        id: `course_question_${Date.now()}`,
+        type: "textarea",
+        label: "Новый вопрос об итогах курса",
+        required: true,
+      },
+    ]);
+  }
+  function moveCourseQuestion(index: number, direction: number) {
+    setCourseQuestions((current) => {
+      const next = [...current];
+      const target = index + direction;
+      if (target < 0 || target >= next.length) return current;
+      [next[index], next[target]] = [next[target]!, next[index]!];
+      return next;
+    });
+  }
   async function save() {
     if (!session?.access_token || !lessonId) return;
     setSaving(true);
@@ -222,7 +279,6 @@ function AdminFeedback() {
       await saveAdminFeedbackSettings({
         data: {
           accessToken: session.access_token,
-          globalRequired,
           lessonId,
           requiredOverride: override === "inherit" ? null : override === "on",
           useCommonTemplate,
@@ -249,6 +305,38 @@ function AdminFeedback() {
       setSaving(false);
     }
   }
+  async function toggleGroupPolicy(
+    group: FeedbackGroup,
+    field: "lesson_feedback_required" | "course_feedback_required",
+    required: boolean,
+  ) {
+    if (!session?.access_token || savingGroupId) return;
+    const previous = group[field];
+    setSavingGroupId(group.id);
+    setGroups((current) =>
+      current.map((item) => (item.id === group.id ? { ...item, [field]: required } : item)),
+    );
+    try {
+      await saveAdminFeedbackGroupPolicy({
+        data: {
+          accessToken: session.access_token,
+          groupId: group.id,
+          lessonRequired:
+            field === "lesson_feedback_required" ? required : group.lesson_feedback_required,
+          courseRequired:
+            field === "course_feedback_required" ? required : group.course_feedback_required,
+        },
+      });
+      toast.success(`Настройка потока «${group.name}» сохранена`);
+    } catch (error) {
+      setGroups((current) =>
+        current.map((item) => (item.id === group.id ? { ...item, [field]: previous } : item)),
+      );
+      toast.error(error instanceof Error ? error.message : "Не удалось сохранить настройку потока");
+    } finally {
+      setSavingGroupId(null);
+    }
+  }
   async function toggleGroupSkip(group: FeedbackGroup, allowSkip: boolean) {
     if (!session?.access_token || savingGroupId) return;
     setSavingGroupId(group.id);
@@ -271,6 +359,40 @@ function AdminFeedback() {
       toast.error(error instanceof Error ? error.message : "Не удалось сохранить настройку группы");
     } finally {
       setSavingGroupId(null);
+    }
+  }
+  async function saveDefaults() {
+    if (!session?.access_token || savingDefaults) return;
+    setSavingDefaults(true);
+    try {
+      await saveAdminFeedbackDefaults({
+        data: {
+          accessToken: session.access_token,
+          globalRequired,
+          globalEnabled,
+          globalCourseRequired,
+        },
+      });
+      toast.success("Политика потока без группы сохранена");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось сохранить политику потока");
+    } finally {
+      setSavingDefaults(false);
+    }
+  }
+  async function saveCourseQuestions() {
+    if (!session?.access_token || savingCourseQuestions) return;
+    setSavingCourseQuestions(true);
+    try {
+      await saveAdminCourseFeedbackQuestions({
+        data: { accessToken: session.access_token, questions: courseQuestions },
+      });
+      setCourseQuestionsSaved(courseQuestions);
+      toast.success("Итоговый опрос сохранён");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось сохранить итоговый опрос");
+    } finally {
+      setSavingCourseQuestions(false);
     }
   }
   function exportCsv() {
@@ -337,46 +459,111 @@ function AdminFeedback() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-3xl font-extrabold">Обратная связь по урокам</h1>
+        <h1 className="text-3xl font-extrabold">Обратная связь курса</h1>
         <p className="mt-2 text-muted-foreground">
-          Настраивай, где показывать опросы, и анализируй ответы учеников.
+          Настраивай обязательность отдельно для потоков, редактируй опросы и анализируй ответы.
         </p>
       </header>
-      <section className="rounded-2xl border border-border bg-card p-5 space-y-4">
-        <h2 className="text-xl font-bold">Настройки опросов</h2>
-        <label className="flex items-center gap-3 text-sm font-medium">
-          <input
-            type="checkbox"
-            checked={globalRequired}
-            onChange={(event) => setGlobalRequired(event.target.checked)}
-          />
-          Показывать опросы после уроков для нулевого потока
-        </label>
-        <p className="text-sm text-muted-foreground">
-          Ученики без группы считаются нулевым потоком: для них опрос обязателен перед переходом к
-          следующему уроку. Участники созданных групп увидят тот же опрос как необязательный.
-        </p>
+      <section className="space-y-5 rounded-2xl border border-border bg-card p-5">
+        <div>
+          <h2 className="text-xl font-bold">Обязательность по потокам</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Новые потоки по умолчанию опциональны. Отдельно включай обязательность отзывов по урокам
+            и итогового опроса после Дня 14.
+          </p>
+        </div>
+        <div className="space-y-3 rounded-xl border border-border p-4">
+          <h3 className="font-semibold">Ученики без группы — текущий нулевой поток</h3>
+          <label className="flex items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={globalEnabled}
+              onChange={(event) => setGlobalEnabled(event.target.checked)}
+            />
+            Показывать отзывы после уроков
+          </label>
+          <label className="flex items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={globalRequired}
+              onChange={(event) => setGlobalRequired(event.target.checked)}
+            />
+            Требовать отзывы по урокам перед переходом дальше
+          </label>
+          <label className="flex items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={globalCourseRequired}
+              onChange={(event) => setGlobalCourseRequired(event.target.checked)}
+            />
+            Требовать итоговый отзыв о курсе после Дня 14
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Эти настройки применяются только к ученикам, которые не добавлены ни в одну группу.
+            Сейчас в PROD учебные группы ещё не созданы.
+          </p>
+          <Button onClick={() => void saveDefaults()} disabled={savingDefaults}>
+            {savingDefaults ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            Сохранить настройки нулевого потока
+          </Button>
+        </div>
         <div className="space-y-3 rounded-xl border border-border p-4">
           <div>
-            <h3 className="font-semibold">Пропуск опроса по группам</h3>
+            <h3 className="font-semibold">Настройки созданных потоков</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Для необязательного опроса участники группы могут отметить пропуск после выполнения
-              шагов урока и принятия домашнего задания. Без этой отметки форму также можно просто
-              оставить незаполненной.
+              Обязательность задаётся отдельно для каждой группы. Если ученик случайно состоит в
+              нескольких группах, сработает наиболее строгая настройка.
             </p>
           </div>
           {groups.length ? (
             <div className="space-y-2">
               {groups.map((group) => (
-                <label
+                <div
                   key={group.id}
-                  className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"
+                  className="space-y-3 rounded-lg border border-border p-3 text-sm"
                 >
-                  <span>{group.name}</span>
-                  <span className="flex items-center gap-2">
+                  <strong>{group.name}</strong>
+                  <label className="flex items-center justify-between gap-3">
+                    <span>Отзывы по урокам обязательны для перехода дальше</span>
                     {savingGroupId === group.id && (
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     )}
+                    <input
+                      type="checkbox"
+                      checked={group.lesson_feedback_required}
+                      disabled={Boolean(savingGroupId)}
+                      onChange={(event) =>
+                        void toggleGroupPolicy(
+                          group,
+                          "lesson_feedback_required",
+                          event.currentTarget.checked,
+                        )
+                      }
+                      aria-label={`Обязательные отзывы по урокам для потока ${group.name}`}
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-3">
+                    <span>Итоговый опрос о курсе обязателен после Дня 14</span>
+                    <input
+                      type="checkbox"
+                      checked={group.course_feedback_required}
+                      disabled={Boolean(savingGroupId)}
+                      onChange={(event) =>
+                        void toggleGroupPolicy(
+                          group,
+                          "course_feedback_required",
+                          event.currentTarget.checked,
+                        )
+                      }
+                      aria-label={`Обязательный итоговый опрос для потока ${group.name}`}
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-3 border-t border-border pt-2 text-muted-foreground">
+                    <span>Разрешить явно пропустить обязательный опрос урока</span>
                     <input
                       type="checkbox"
                       checked={group.allow_feedback_skip}
@@ -384,13 +571,14 @@ function AdminFeedback() {
                       onChange={(event) => void toggleGroupSkip(group, event.currentTarget.checked)}
                       aria-label={`Разрешить пропуск опроса группе ${group.name}`}
                     />
-                  </span>
-                </label>
+                  </label>
+                </div>
               ))}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Пока нет учебных групп. Создай группу в разделе «Студенты», чтобы настроить пропуск.
+              Пока нет учебных групп. Создай поток в разделе «Студенты», затем включи для него
+              нужные обязательные опросы.
             </p>
           )}
         </div>
@@ -542,6 +730,185 @@ function AdminFeedback() {
             Сохранить настройки
           </Button>
         </div>
+      </section>
+      <section className="space-y-4 rounded-2xl border border-border bg-card p-5">
+        <div>
+          <h2 className="text-xl font-bold">Итоговый опрос после Дня 14</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Этот набор вопросов собирает впечатление о курсе целиком и отдельно настраивается от
+            отзывов по урокам.
+          </p>
+        </div>
+        {courseQuestions.map((question, index) => (
+          <article key={question.id} className="space-y-3 rounded-xl border border-border p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <strong className="text-sm">Вопрос {index + 1}</strong>
+              <div className="flex gap-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Выше"
+                  disabled={index === 0}
+                  onClick={() => moveCourseQuestion(index, -1)}
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Ниже"
+                  disabled={index === courseQuestions.length - 1}
+                  onClick={() => moveCourseQuestion(index, 1)}
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Удалить вопрос"
+                  onClick={() =>
+                    setCourseQuestions((current) => current.filter((_, row) => row !== index))
+                  }
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
+              <Input
+                value={question.label}
+                onChange={(event) => updateCourseQuestion(index, { label: event.target.value })}
+                aria-label="Текст итогового вопроса"
+              />
+              <select
+                className="h-10 rounded-md border border-input bg-background px-3"
+                value={question.type}
+                onChange={(event) =>
+                  updateCourseQuestion(index, {
+                    type: event.target.value as CourseFeedbackQuestion["type"],
+                    options:
+                      event.target.value === "radio"
+                        ? (question.options ?? [
+                            { label: "Вариант 1", value: "option_1" },
+                            { label: "Вариант 2", value: "option_2" },
+                          ])
+                        : undefined,
+                  })
+                }
+              >
+                <option value="rating">Шкала 1–10</option>
+                <option value="textarea">Развёрнутый ответ</option>
+                <option value="radio">Один вариант</option>
+              </select>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={question.required}
+                onChange={(event) =>
+                  updateCourseQuestion(index, { required: event.target.checked })
+                }
+              />
+              Обязательный вопрос
+            </label>
+            {question.type === "radio" && (
+              <Textarea
+                rows={3}
+                aria-label="Варианты: подпись | значение, по одному на строку"
+                value={(question.options ?? [])
+                  .map((option) => `${option.label} | ${option.value}`)
+                  .join("\n")}
+                onChange={(event) =>
+                  updateCourseQuestion(index, {
+                    options: event.target.value
+                      .split("\n")
+                      .filter(Boolean)
+                      .map((line, row) => {
+                        const [label, value] = line.split("|").map((part) => part.trim());
+                        return {
+                          label: label || `Вариант ${row + 1}`,
+                          value: value || `option_${row + 1}`,
+                        };
+                      }),
+                  })
+                }
+                placeholder="Текст варианта | value"
+              />
+            )}
+          </article>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={addCourseQuestion}>
+            <Plus className="h-4 w-4" /> Добавить вопрос
+          </Button>
+          <Button
+            onClick={() => void saveCourseQuestions()}
+            disabled={savingCourseQuestions || !courseQuestions.length}
+          >
+            {savingCourseQuestions ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            Сохранить итоговый опрос
+          </Button>
+        </div>
+        {courseFeedback.length > 0 && (
+          <div className="space-y-3 border-t border-border pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-semibold">Ответы об итогах курса · {courseFeedback.length}</h3>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const rows = [
+                    ["student", "answers", "created_at"],
+                    ...courseFeedback.map((item) => [
+                      profileById.get(item.user_id)?.full_name ?? item.user_id,
+                      JSON.stringify(item.answers),
+                      item.created_at,
+                    ]),
+                  ];
+                  const escape = (value: unknown) =>
+                    `"${String(value ?? "").replaceAll('"', '""')}"`;
+                  const blob = new Blob(
+                    ["\ufeff" + rows.map((row) => row.map(escape).join(",")).join("\r\n")],
+                    { type: "text/csv;charset=utf-8" },
+                  );
+                  const url = URL.createObjectURL(blob);
+                  const anchor = document.createElement("a");
+                  anchor.href = url;
+                  anchor.download = "qa-start-course-feedback.csv";
+                  anchor.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                <Download className="h-4 w-4" /> Экспорт ответов
+              </Button>
+            </div>
+            {courseFeedback.map((item) => (
+              <article key={item.id} className="space-y-2 rounded-xl border border-border p-4">
+                <div className="flex flex-wrap justify-between gap-2 text-sm">
+                  <strong>
+                    {profileById.get(item.user_id)?.full_name ??
+                      profileById.get(item.user_id)?.login ??
+                      item.user_id}
+                  </strong>
+                  <span className="text-muted-foreground">
+                    {new Date(item.created_at).toLocaleString("ru-RU")}
+                  </span>
+                </div>
+                {Object.entries(item.answers).map(([key, value]) => (
+                  <p key={key} className="text-sm">
+                    <span className="font-medium">
+                      {courseQuestionsSaved.find((question) => question.id === key)?.label ?? key}:
+                    </span>{" "}
+                    {String(value)}
+                  </p>
+                ))}
+              </article>
+            ))}
+          </div>
+        )}
       </section>
       <section className="space-y-4 rounded-2xl border border-border bg-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">

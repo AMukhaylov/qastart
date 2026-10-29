@@ -3,8 +3,9 @@ import test from "node:test";
 import {
   canSkipLessonFeedback,
   canSubmitLessonFeedback,
-  getFeedbackCohortPolicy,
+  resolveLessonFeedbackRequirement,
   validateFeedbackAnswers,
+  validateQuestionAnswers,
 } from "../../src/lib/lesson-feedback-validation.ts";
 
 const questions = [
@@ -58,10 +59,80 @@ test("feedback unlocks after required blocks when a lesson has no homework", () 
   );
 });
 
-test("zero cohort feedback is mandatory while students in later groups may skip it", () => {
-  assert.deepEqual(getFeedbackCohortPolicy(true, false), { enabled: true, required: true });
-  assert.deepEqual(getFeedbackCohortPolicy(true, true), { enabled: true, required: false });
-  assert.deepEqual(getFeedbackCohortPolicy(false, false), { enabled: false, required: false });
+test("course survey uses a separate configurable template and validation", () => {
+  const courseQuestions = [
+    { id: "course_rating", type: "rating" as const, label: "Оцени курс", required: true },
+    { id: "most_useful", type: "textarea" as const, label: "Что полезно?", required: true },
+    {
+      id: "recommend",
+      type: "radio" as const,
+      label: "Порекомендуешь?",
+      required: true,
+      options: [
+        { label: "Да", value: "yes" },
+        { label: "Нет", value: "no" },
+      ],
+    },
+  ];
+  assert.deepEqual(
+    validateQuestionAnswers(courseQuestions, {
+      course_rating: 9,
+      most_useful: "Много практики",
+      recommend: "yes",
+    }),
+    { valid: true },
+  );
+  assert.equal(
+    validateQuestionAnswers(courseQuestions, {
+      course_rating: 11,
+      most_useful: "Много практики",
+      recommend: "yes",
+    }).valid,
+    false,
+  );
+  assert.equal(
+    validateQuestionAnswers(courseQuestions, {
+      course_rating: 9,
+      most_useful: "  ",
+      recommend: "yes",
+    }).valid,
+    false,
+  );
+});
+
+test("cohort policy decides whether lesson feedback blocks progress", () => {
+  assert.equal(
+    resolveLessonFeedbackRequirement({
+      isInGroup: true,
+      cohortRequired: false,
+      lessonOverride: true,
+    }),
+    false,
+  );
+  assert.equal(
+    resolveLessonFeedbackRequirement({
+      isInGroup: true,
+      cohortRequired: true,
+      lessonOverride: null,
+    }),
+    true,
+  );
+  assert.equal(
+    resolveLessonFeedbackRequirement({
+      isInGroup: true,
+      cohortRequired: true,
+      lessonOverride: false,
+    }),
+    false,
+  );
+  assert.equal(
+    resolveLessonFeedbackRequirement({
+      isInGroup: false,
+      cohortRequired: true,
+      lessonOverride: false,
+    }),
+    false,
+  );
 });
 
 test("homework lesson keeps survey locked until mentor approval", () => {

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { isCourseFeedbackRequiredForStudent } from "./lesson-feedback-policy.server";
 
 export const COURSE_TITLE = "Инженер по тестированию ПО";
 export const MENTOR_NAME = "Артур Мухайлов";
@@ -88,6 +89,16 @@ export async function maybeIssueCertificate(userId: string) {
     finalLesson && passedFinalQuizAttempts?.some((attempt) => attempt.lesson_id === finalLesson.id),
   );
   if (!hasPassedFinalQuiz) return null;
+
+  if (await isCourseFeedbackRequiredForStudent(userId)) {
+    const { data: courseFeedback, error: courseFeedbackError } = await supabaseAdmin
+      .from("course_feedback")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (courseFeedbackError) throw courseFeedbackError;
+    if (!courseFeedback) return null;
+  }
 
   const completedLessonIds = new Set(progress?.map((item) => item.lesson_id) ?? []);
   completedLessonIds.add(finalLesson!.id);

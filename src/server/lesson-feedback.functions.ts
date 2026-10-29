@@ -13,9 +13,9 @@ import { hasPassedEverySqlTask } from "./sql-sandbox-assessment.server";
 import {
   canSkipLessonFeedback,
   canSubmitLessonFeedback,
-  getFeedbackCohortPolicy,
   validateFeedbackAnswers,
 } from "@/lib/lesson-feedback-validation";
+import { getStudentFeedbackPolicy } from "./lesson-feedback-policy.server";
 
 const access = z.string().min(20);
 const questionSchema = z.object({
@@ -38,25 +38,6 @@ export type FeedbackQuestion = z.infer<typeof questionSchema>;
 const answerSchema = z.record(z.string(), z.union([z.string(), z.number()]));
 const adminInput = z.object({ accessToken: access });
 
-async function getStudentFeedbackGroupPolicy(userId: string) {
-  const { data: memberships, error: membershipsError } = await supabaseAdmin
-    .from("group_students")
-    .select("group_id")
-    .eq("student_id", userId);
-  if (membershipsError) throw membershipsError;
-  const groupIds = [...new Set((memberships ?? []).map((row) => row.group_id))];
-  if (!groupIds.length) return { isInGroup: false, allowSkip: false };
-  const { data: groups, error: groupsError } = await supabaseAdmin
-    .from("student_groups")
-    .select("allow_feedback_skip")
-    .in("id", groupIds);
-  if (groupsError) throw groupsError;
-  return {
-    isInGroup: groupIds.length > 0,
-    allowSkip: (groups ?? []).some((group) => group.allow_feedback_skip === true),
-  };
-}
-
 async function requireAdmin(token: string) {
   const roles = await getRolesForAccessToken(token);
   if (!roles.includes("admin")) throw new Error("Недостаточно прав");
@@ -64,31 +45,33 @@ async function requireAdmin(token: string) {
 
 async function getFeedbackConfig(lessonId: string, userId: string) {
   const [
-    { data: global, error: globalError },
     { data: local, error: localError },
     { data: template, error: templateError },
-    groupPolicy,
+    policy,
+    { data: defaults, error: defaultsError },
   ] = await Promise.all([
-    supabaseAdmin
-      .from("lesson_feedback_course_settings")
-      .select("required_by_default")
-      .eq("id", true)
-      .single(),
     supabaseAdmin
       .from("lesson_feedback_settings")
       .select("required_override,use_common_template,questions")
       .eq("lesson_id", lessonId)
       .maybeSingle(),
     supabaseAdmin.from("lesson_feedback_templates").select("questions").eq("id", true).single(),
-    getStudentFeedbackGroupPolicy(userId),
+    getStudentFeedbackPolicy(userId),
+    supabaseAdmin
+      .from("lesson_feedback_course_settings")
+      .select("enabled_by_default")
+      .eq("id", true)
+      .single(),
   ]);
-  if (globalError) throw globalError;
   if (localError) throw localError;
   if (templateError) throw templateError;
-  const enabled = local?.required_override ?? global?.required_by_default ?? false;
+  if (defaultsError) throw defaultsError;
+  const required = local?.required_override ?? policy.lessonRequired;
+  const enabled = defaults.enabled_by_default || required;
   return {
-    ...getFeedbackCohortPolicy(enabled, groupPolicy.isInGroup),
-    allowSkip: groupPolicy.allowSkip,
+    enabled,
+    required,
+    allowSkip: policy.allowLessonSkip,
     questions: local?.use_common_template
       ? ((template?.questions as FeedbackQuestion[] | undefined) ?? [])
       : Array.isArray(local?.questions)
@@ -218,6 +201,17 @@ export const getStudentLessonFeedback = createServerFn({ method: "POST" })
     if (existingError) throw existingError;
     if (skipError) throw skipError;
     if (!lesson) throw new Error("Урок не найден");
+    if (lesson.day_number === 14) {
+      return {
+        enabled: false,
+        required: false,
+        available: false,
+        submitted: false,
+        skipped: false,
+        allowSkip: false,
+        questions: [],
+      };
+    }
     const schedule = await getLessonScheduleAccess(userId, lesson.day_number);
     if (!schedule.allowed)
       return {
@@ -246,10 +240,8 @@ export const getStudentLessonFeedback = createServerFn({ method: "POST" })
       lessonBlocks,
     );
     const requirementsComplete = await validateLessonRequirements(userId, lesson.id, lessonBlocks);
-    const feedbackRequired = config.required && lesson.day_number < 14;
     return {
       ...config,
-      required: feedbackRequired,
       available: canSubmitLessonFeedback({
         enabled: config.enabled,
         requiredBlocksComplete: requirementsComplete,
@@ -259,7 +251,7 @@ export const getStudentLessonFeedback = createServerFn({ method: "POST" })
       }),
       submitted: Boolean(existing),
       skipped: Boolean(skipRow),
-      allowSkip: config.allowSkip || (lesson.day_number === 14 && config.enabled),
+      allowSkip: config.allowSkip,
       submittedAt: existing?.created_at ?? null,
     };
   });
@@ -278,7 +270,7 @@ export const submitLessonFeedback = createServerFn({ method: "POST" })
       .eq("id", data.lessonId)
       .maybeSingle();
     if (lessonError) throw lessonError;
-    if (!lesson || lesson.day_number < 1 || lesson.day_number > 14)
+    if (!lesson || lesson.day_number < 1 || lesson.day_number >= 14)
       throw new Error("Урок недоступен");
     const schedule = await getLessonScheduleAccess(userId, lesson.day_number);
     if (!schedule.allowed || schedule.isAdmin)
@@ -337,7 +329,7 @@ export const skipLessonFeedback = createServerFn({ method: "POST" })
       .eq("id", data.lessonId)
       .maybeSingle();
     if (lessonError) throw lessonError;
-    if (!lesson || lesson.day_number < 1 || lesson.day_number > 14)
+    if (!lesson || lesson.day_number < 1 || lesson.day_number >= 14)
       throw new Error("Урок недоступен");
     const schedule = await getLessonScheduleAccess(userId, lesson.day_number);
     if (!schedule.allowed || schedule.isAdmin)
@@ -415,29 +407,48 @@ export const getAdminFeedbackData = createServerFn({ method: "POST" })
   .inputValidator((data) => adminInput.parse(data))
   .handler(async ({ data }) => {
     await requireAdmin(data.accessToken);
-    const [lessons, courseSettings, settings, template, feedback, profiles, studentRoles, groups] =
-      await Promise.all([
-        supabaseAdmin.from("lessons").select("id,day_number,title").order("day_number"),
-        supabaseAdmin
-          .from("lesson_feedback_course_settings")
-          .select("required_by_default")
-          .eq("id", true)
-          .single(),
-        supabaseAdmin
-          .from("lesson_feedback_settings")
-          .select("lesson_id,required_override,use_common_template,questions"),
-        supabaseAdmin.from("lesson_feedback_templates").select("questions").eq("id", true).single(),
-        supabaseAdmin
-          .from("lesson_feedback")
-          .select(
-            "id,user_id,lesson_id,answers,rating,difficulty,comment,status,created_at,updated_at",
-          )
-          .order("created_at", { ascending: false })
-          .limit(5000),
-        supabaseAdmin.from("profiles").select("id,full_name,login"),
-        supabaseAdmin.from("user_roles").select("user_id").eq("role", "student"),
-        supabaseAdmin.from("student_groups").select("id,name,allow_feedback_skip").order("name"),
-      ]);
+    const [
+      lessons,
+      courseSettings,
+      settings,
+      template,
+      feedback,
+      profiles,
+      studentRoles,
+      groups,
+      courseFeedback,
+      courseTemplate,
+    ] = await Promise.all([
+      supabaseAdmin.from("lessons").select("id,day_number,title").order("day_number"),
+      supabaseAdmin
+        .from("lesson_feedback_course_settings")
+        .select("required_by_default,enabled_by_default,course_feedback_required_by_default")
+        .eq("id", true)
+        .single(),
+      supabaseAdmin
+        .from("lesson_feedback_settings")
+        .select("lesson_id,required_override,use_common_template,questions"),
+      supabaseAdmin.from("lesson_feedback_templates").select("questions").eq("id", true).single(),
+      supabaseAdmin
+        .from("lesson_feedback")
+        .select(
+          "id,user_id,lesson_id,answers,rating,difficulty,comment,status,created_at,updated_at",
+        )
+        .order("created_at", { ascending: false })
+        .limit(5000),
+      supabaseAdmin.from("profiles").select("id,full_name,login"),
+      supabaseAdmin.from("user_roles").select("user_id").eq("role", "student"),
+      supabaseAdmin
+        .from("student_groups")
+        .select("id,name,allow_feedback_skip,lesson_feedback_required,course_feedback_required")
+        .order("name"),
+      supabaseAdmin
+        .from("course_feedback")
+        .select("id,user_id,answers,status,created_at")
+        .order("created_at", { ascending: false })
+        .limit(5000),
+      supabaseAdmin.from("course_feedback_templates").select("questions").eq("id", true).single(),
+    ]);
     for (const response of [
       lessons,
       courseSettings,
@@ -447,6 +458,8 @@ export const getAdminFeedbackData = createServerFn({ method: "POST" })
       profiles,
       studentRoles,
       groups,
+      courseFeedback,
+      courseTemplate,
     ])
       if (response.error) throw response.error;
     return {
@@ -458,7 +471,59 @@ export const getAdminFeedbackData = createServerFn({ method: "POST" })
       profiles: profiles.data ?? [],
       studentCount: new Set((studentRoles.data ?? []).map((row) => row.user_id)).size,
       groups: groups.data ?? [],
+      courseFeedback: courseFeedback.data ?? [],
+      courseFeedbackQuestions: courseTemplate.data?.questions ?? [],
     };
+  });
+
+export const saveAdminFeedbackDefaults = createServerFn({ method: "POST" })
+  .inputValidator((data) =>
+    z
+      .object({
+        accessToken: access,
+        globalRequired: z.boolean(),
+        globalEnabled: z.boolean(),
+        globalCourseRequired: z.boolean(),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin(data.accessToken);
+    const { error } = await supabaseAdmin.from("lesson_feedback_course_settings").upsert(
+      {
+        id: true,
+        required_by_default: data.globalRequired,
+        enabled_by_default: data.globalEnabled,
+        course_feedback_required_by_default: data.globalCourseRequired,
+      },
+      { onConflict: "id" },
+    );
+    if (error) throw error;
+    return { saved: true };
+  });
+
+export const saveAdminFeedbackGroupPolicy = createServerFn({ method: "POST" })
+  .inputValidator((data) =>
+    z
+      .object({
+        accessToken: access,
+        groupId: z.string().uuid(),
+        lessonRequired: z.boolean(),
+        courseRequired: z.boolean(),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin(data.accessToken);
+    const { error } = await supabaseAdmin
+      .from("student_groups")
+      .update({
+        lesson_feedback_required: data.lessonRequired,
+        course_feedback_required: data.courseRequired,
+      })
+      .eq("id", data.groupId);
+    if (error) throw error;
+    return { saved: true };
   });
 
 export const saveAdminFeedbackGroupSkipSetting = createServerFn({ method: "POST" })
@@ -482,7 +547,6 @@ export const saveAdminFeedbackSettings = createServerFn({ method: "POST" })
     z
       .object({
         accessToken: access,
-        globalRequired: z.boolean(),
         lessonId: z.string().uuid(),
         requiredOverride: z.boolean().nullable(),
         useCommonTemplate: z.boolean(),
@@ -515,27 +579,22 @@ export const saveAdminFeedbackSettings = createServerFn({ method: "POST" })
     );
     if (!difficultyQuestion?.required)
       throw new Error("Оставь обязательный вопрос сложности со стандартными вариантами ответа");
-    const [{ error: globalError }, { error: lessonError }, { error: templateError }] =
-      await Promise.all([
-        supabaseAdmin
-          .from("lesson_feedback_course_settings")
-          .upsert({ id: true, required_by_default: data.globalRequired }, { onConflict: "id" }),
-        supabaseAdmin.from("lesson_feedback_settings").upsert(
-          {
-            lesson_id: data.lessonId,
-            required_override: data.requiredOverride,
-            use_common_template: data.useCommonTemplate,
-            questions: data.questions,
-          },
-          { onConflict: "lesson_id" },
-        ),
-        data.useCommonTemplate
-          ? supabaseAdmin
-              .from("lesson_feedback_templates")
-              .upsert({ id: true, questions: data.questions }, { onConflict: "id" })
-          : Promise.resolve({ error: null }),
-      ]);
-    if (globalError) throw globalError;
+    const [{ error: lessonError }, { error: templateError }] = await Promise.all([
+      supabaseAdmin.from("lesson_feedback_settings").upsert(
+        {
+          lesson_id: data.lessonId,
+          required_override: data.requiredOverride,
+          use_common_template: data.useCommonTemplate,
+          questions: data.questions,
+        },
+        { onConflict: "lesson_id" },
+      ),
+      data.useCommonTemplate
+        ? supabaseAdmin
+            .from("lesson_feedback_templates")
+            .upsert({ id: true, questions: data.questions }, { onConflict: "id" })
+        : Promise.resolve({ error: null }),
+    ]);
     if (lessonError) throw lessonError;
     if (templateError) throw templateError;
     return { saved: true };

@@ -55,6 +55,11 @@ import {
   submitLessonFeedback,
   type FeedbackQuestion,
 } from "@/server/lesson-feedback.functions";
+import {
+  getStudentCourseFeedback,
+  submitStudentCourseFeedback,
+  type CourseFeedbackQuestion,
+} from "@/server/course-feedback.functions";
 
 export const Route = createFileRoute("/lessons/$day")({
   validateSearch: z.object({ focus: z.literal("homework").optional() }),
@@ -152,6 +157,17 @@ function LessonPage() {
   const [feedbackSkipAllowed, setFeedbackSkipAllowed] = useState(false);
   const [feedbackQuestions, setFeedbackQuestions] = useState<FeedbackQuestion[]>([]);
   const [feedbackAnswers, setFeedbackAnswers] = useState<Record<string, string | number>>({});
+  const [courseFeedbackEnabled, setCourseFeedbackEnabled] = useState(false);
+  const [courseFeedbackRequired, setCourseFeedbackRequired] = useState(false);
+  const [courseFeedbackAvailable, setCourseFeedbackAvailable] = useState(false);
+  const [courseFeedbackSubmitted, setCourseFeedbackSubmitted] = useState(false);
+  const [courseFeedbackQuestions, setCourseFeedbackQuestions] = useState<CourseFeedbackQuestion[]>(
+    [],
+  );
+  const [courseFeedbackAnswers, setCourseFeedbackAnswers] = useState<
+    Record<string, string | number>
+  >({});
+  const [sendingCourseFeedback, setSendingCourseFeedback] = useState(false);
   const [sendingFeedback, setSendingFeedback] = useState(false);
   const [skippingFeedback, setSkippingFeedback] = useState(false);
   const [sqlSandboxAttempts, setSqlSandboxAttempts] = useState<SavedSqlSandboxAttempt[]>([]);
@@ -287,6 +303,24 @@ function LessonPage() {
     setFeedbackSubmitted(feedbackState.submitted || feedbackState.skipped);
     setFeedbackSkipAllowed(feedbackState.allowSkip);
     setFeedbackQuestions(feedbackState.questions);
+    if (dayNum === 14 && !isAdmin) {
+      const courseFeedbackState = await getStudentCourseFeedback({
+        data: { accessToken: session.access_token },
+      });
+      if (requestId !== lessonLoadRequestRef.current) return;
+      setCourseFeedbackEnabled(courseFeedbackState.enabled || courseFeedbackState.submitted);
+      setCourseFeedbackRequired(courseFeedbackState.required);
+      setCourseFeedbackAvailable(courseFeedbackState.available);
+      setCourseFeedbackSubmitted(courseFeedbackState.submitted);
+      setCourseFeedbackQuestions(courseFeedbackState.questions);
+    } else {
+      setCourseFeedbackEnabled(false);
+      setCourseFeedbackRequired(false);
+      setCourseFeedbackAvailable(false);
+      setCourseFeedbackSubmitted(false);
+      setCourseFeedbackQuestions([]);
+      setCourseFeedbackAnswers({});
+    }
     setCourseStartAt(lessonData.courseStartAt);
     setAvailableDay(isAdmin ? 14 : lessonData.currentDay);
     const hasPassedFinalQuiz = Boolean(lessonData.finalQuizPassed);
@@ -364,6 +398,22 @@ function LessonPage() {
     }
   }
 
+  async function refreshCourseFeedbackState() {
+    if (!session?.access_token) return;
+    try {
+      const state = await getStudentCourseFeedback({
+        data: { accessToken: session.access_token },
+      });
+      setCourseFeedbackEnabled(state.enabled || state.submitted);
+      setCourseFeedbackRequired(state.required);
+      setCourseFeedbackAvailable(state.available);
+      setCourseFeedbackSubmitted(state.submitted);
+      setCourseFeedbackQuestions(state.questions);
+    } catch {
+      // The final survey can retry on a later page load.
+    }
+  }
+
   async function sendFeedback() {
     if (!lesson || !session?.access_token || sendingFeedback) return;
     setSendingFeedback(true);
@@ -378,6 +428,23 @@ function LessonPage() {
       toast.error(error instanceof Error ? error.message : "Не удалось отправить отзыв");
     } finally {
       setSendingFeedback(false);
+    }
+  }
+
+  async function sendCourseFeedback() {
+    if (!session?.access_token || sendingCourseFeedback) return;
+    setSendingCourseFeedback(true);
+    try {
+      await submitStudentCourseFeedback({
+        data: { accessToken: session.access_token, answers: courseFeedbackAnswers },
+      });
+      setCourseFeedbackSubmitted(true);
+      setCourseFeedbackAvailable(false);
+      toast.success("Спасибо за отзыв о курсе! Ответ сохранён.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось отправить итоговый отзыв");
+    } finally {
+      setSendingCourseFeedback(false);
     }
   }
 
@@ -1015,7 +1082,10 @@ function LessonPage() {
                   exitRequest={finalQuizExitRequest}
                   onActiveChange={setFinalQuizActive}
                   onPassed={() => {
-                    void markBlocksCompleted([block.id]).then(() => refreshFeedbackState());
+                    void markBlocksCompleted([block.id]).then(() => {
+                      void refreshFeedbackState();
+                      void refreshCourseFeedbackState();
+                    });
                     setFinalQuizPassed(true);
                     setCompleted(true);
                   }}
@@ -1062,6 +1132,124 @@ function LessonPage() {
                 text={displayedCompletionText}
               />
             </section>
+          )}
+
+          {lesson.day_number === 14 && finalQuizPassed && !isAdmin && (
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-[var(--shadow-soft)] md:p-7">
+              <LessonGuide
+                variant="success"
+                title="Поздравляем с итоговым тестом!"
+                text="Ты прошёл итоговую проверку. Расскажи теперь, как тебе курс целиком."
+              />
+            </section>
+          )}
+
+          {courseFeedbackEnabled && courseFeedbackAvailable && !isAdmin && (
+            <section
+              id="course-feedback"
+              className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7"
+            >
+              <div className="mb-5">
+                <h2 className="text-xl font-extrabold">Поделись впечатлением о курсе</h2>
+                <p className="mt-2 text-muted-foreground">
+                  Этот отдельный опрос — о курсе целиком, а не об одном уроке.
+                </p>
+                {courseFeedbackRequired ? (
+                  <p className="mt-2 text-sm font-medium text-primary">
+                    Опрос обязателен для завершения курса и получения сертификата.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Опрос необязателен и не влияет на завершение курса.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-6">
+                {courseFeedbackQuestions.map((question) => (
+                  <fieldset key={question.id} className="space-y-2">
+                    <legend className="text-sm font-semibold">
+                      {question.label}
+                      {question.required ? " *" : ""}
+                    </legend>
+                    {question.type === "rating" ? (
+                      <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
+                        {Array.from({ length: 10 }, (_, index) => index + 1).map((score) => (
+                          <button
+                            key={score}
+                            type="button"
+                            aria-label={`${score} из 10`}
+                            aria-pressed={courseFeedbackAnswers[question.id] === score}
+                            onClick={() =>
+                              setCourseFeedbackAnswers((answers) => ({
+                                ...answers,
+                                [question.id]: score,
+                              }))
+                            }
+                            className={`rounded-xl border px-2 py-3 text-sm font-bold ${courseFeedbackAnswers[question.id] === score ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:border-primary"}`}
+                          >
+                            {score}
+                          </button>
+                        ))}
+                      </div>
+                    ) : question.type === "radio" ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {(question.options ?? []).map((option) => (
+                          <label
+                            key={option.value}
+                            className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary-soft/30"
+                          >
+                            <input
+                              type="radio"
+                              name={`course-feedback-${question.id}`}
+                              value={option.value}
+                              checked={courseFeedbackAnswers[question.id] === option.value}
+                              onChange={() =>
+                                setCourseFeedbackAnswers((answers) => ({
+                                  ...answers,
+                                  [question.id]: option.value,
+                                }))
+                              }
+                            />
+                            {option.label}
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <Textarea
+                        rows={3}
+                        maxLength={3000}
+                        value={String(courseFeedbackAnswers[question.id] ?? "")}
+                        onChange={(event) =>
+                          setCourseFeedbackAnswers((answers) => ({
+                            ...answers,
+                            [question.id]: event.target.value,
+                          }))
+                        }
+                        placeholder="Напиши ответ…"
+                      />
+                    )}
+                  </fieldset>
+                ))}
+                <Button
+                  size="lg"
+                  disabled={sendingCourseFeedback}
+                  onClick={() => void sendCourseFeedback()}
+                >
+                  {sendingCourseFeedback ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  Отправить отзыв о курсе
+                </Button>
+              </div>
+            </section>
+          )}
+
+          {courseFeedbackSubmitted && !courseFeedbackRequired && !isAdmin && (
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+              Спасибо! Итоговый отзыв о курсе сохранён.
+            </p>
           )}
 
           {feedbackEnabled &&
@@ -1265,7 +1453,9 @@ function LessonPage() {
                 new Date(Date.parse(courseStartAt) + (nextDay - 1) * 86_400_000).toISOString(),
               )}
             </span>
-          ) : completed && finalQuizPassed ? (
+          ) : completed &&
+            finalQuizPassed &&
+            (!courseFeedbackRequired || courseFeedbackSubmitted) ? (
             <LessonNavigationButton
               tone="next"
               className="self-start sm:self-auto"
@@ -1273,6 +1463,10 @@ function LessonPage() {
             >
               Завершить курс <CheckCircle2 className="h-4 w-4" />
             </LessonNavigationButton>
+          ) : completed && finalQuizPassed && courseFeedbackRequired ? (
+            <span className="text-sm text-muted-foreground">
+              Чтобы завершить курс, заполни итоговый опрос после Дня 14.
+            </span>
           ) : null}
         </div>
       </footer>

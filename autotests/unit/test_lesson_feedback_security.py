@@ -51,7 +51,9 @@ def test_feedback_gates_zero_cohort_completion_and_human_homework_still_does():
     assert ".from(\"lesson_progress\").upsert(" in FINAL_QUIZ
     assert "getStudentSequenceLock(userId, lesson.day_number)" in LESSON_CONTENT
     assert "availableDay" in STUDENT_DASHBOARD
-    assert "!isOptionalCohort" in FEEDBACK_POLICY
+    assert "group.lesson_feedback_required" in FEEDBACK_POLICY
+    assert "group.course_feedback_required" in FEEDBACK_POLICY
+    assert "Membership only selects a cohort policy" in FEEDBACK_POLICY
 
 
 def test_homework_status_refresh_is_scoped_to_authenticated_student_and_lesson():
@@ -98,15 +100,30 @@ def test_feedback_skip_is_opt_in_by_group_and_not_writable_from_student_client()
     assert "allow_feedback_skip boolean not null default false" in SKIP_MIGRATION
     assert "alter table public.lesson_feedback_skips enable row level security" in SKIP_MIGRATION
     assert "revoke all on public.lesson_feedback_skips from public, anon, authenticated" in SKIP_MIGRATION
-    assert 'from("group_students")' in SERVER
-    assert 'from("student_groups")' in SERVER
-    assert "group.allow_feedback_skip === true" in SERVER
+    assert 'from("group_students")' in FEEDBACK_POLICY
+    assert 'from("student_groups")' in FEEDBACK_POLICY
+    assert "group.allow_feedback_skip" in FEEDBACK_POLICY
     assert 'from("lesson_feedback_skips")' in SERVER
     assert "validateLessonRequirements(userId, lesson.id, lessonBlocks)" in SERVER
     assert 'data?.status === "approved"' in SERVER
     admin_page = (ROOT / "src/routes/admin.feedback.tsx").read_text(encoding="utf-8")
-    assert "Пропуск опроса по группам" in admin_page
+    assert "Настройки созданных потоков" in admin_page
     assert "Разрешить пропуск опроса группе" in admin_page
+
+
+def test_course_survey_policy_is_per_cohort_and_submission_is_server_gated():
+    migration = next((ROOT / "supabase/migrations").glob("*_cohort_feedback_policy_and_course_survey.sql")).read_text(
+        encoding="utf-8"
+    )
+    course_server = (ROOT / "src/server/course-feedback.functions.ts").read_text(encoding="utf-8")
+    assert "course_feedback_required boolean not null default false" in migration
+    assert "course_feedback_required_by_default boolean not null default true" in migration
+    assert "revoke all on public.course_feedback_templates, public.course_feedback from public, anon, authenticated" in migration
+    assert 'from("course_feedback")' in course_server
+    assert 'getUserIdForAccessToken(data.accessToken)' in course_server
+    assert "hasPassedFinalQuiz(userId)" in course_server
+    assert "validateQuestionAnswers(questions, data.answers)" in course_server
+    assert "unique references auth.users(id)" in migration
 
 
 def test_student_feedback_page_uses_star_rating_and_only_shows_configured_skip_action():

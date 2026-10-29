@@ -245,6 +245,8 @@ export type Database = {
       student_groups: {
         Row: {
           allow_feedback_skip: boolean;
+          lesson_feedback_required: boolean;
+          course_feedback_required: boolean;
           id: string;
           name: string;
           description: string;
@@ -253,6 +255,8 @@ export type Database = {
         };
         Insert: {
           allow_feedback_skip?: boolean;
+          lesson_feedback_required?: boolean;
+          course_feedback_required?: boolean;
           id?: string;
           name: string;
           description?: string;
@@ -261,6 +265,8 @@ export type Database = {
         };
         Update: {
           allow_feedback_skip?: boolean;
+          lesson_feedback_required?: boolean;
+          course_feedback_required?: boolean;
           id?: string;
           name?: string;
           description?: string;
@@ -716,9 +722,27 @@ export type Database = {
         ];
       };
       lesson_feedback_course_settings: {
-        Row: { id: boolean; required_by_default: boolean; updated_at: string };
-        Insert: { id?: boolean; required_by_default?: boolean; updated_at?: string };
-        Update: { id?: boolean; required_by_default?: boolean; updated_at?: string };
+        Row: {
+          id: boolean;
+          required_by_default: boolean;
+          enabled_by_default: boolean;
+          course_feedback_required_by_default: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          id?: boolean;
+          required_by_default?: boolean;
+          enabled_by_default?: boolean;
+          course_feedback_required_by_default?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          id?: boolean;
+          required_by_default?: boolean;
+          enabled_by_default?: boolean;
+          course_feedback_required_by_default?: boolean;
+          updated_at?: string;
+        };
         Relationships: [];
       };
       lesson_feedback_settings: {
@@ -819,6 +843,39 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      course_feedback_templates: {
+        Row: { id: boolean; questions: Json; updated_at: string };
+        Insert: { id?: boolean; questions?: Json; updated_at?: string };
+        Update: { id?: boolean; questions?: Json; updated_at?: string };
+        Relationships: [];
+      };
+      course_feedback: {
+        Row: {
+          id: string;
+          user_id: string;
+          answers: Json;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          answers: Json;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          answers?: Json;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       quiz_attempts: {
         Row: {
