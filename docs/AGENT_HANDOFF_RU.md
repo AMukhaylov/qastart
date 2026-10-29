@@ -11,9 +11,9 @@ QA Start — русскоязычная обучающая платформа п
 - Сайт PROD: <https://startqa.ru>
 - GitHub: <https://github.com/AMukhaylov/qastart>
 - Supabase project ref: `bhvbydcddoxjfpcschzw` (`qastart`, регион `eu-west-1`)
-- Последняя проверенная версия PROD: `0.5.15` (пояснение обязательных вопросов feedback)
-- Последний проверенный релизный коммит: `6eb5e39`
-- Тег этого релиза: `v0.5.15`
+- Последняя проверенная версия PROD: `0.5.16` (JSON-выгрузка аналитики курса)
+- Последний проверенный релизный коммит: `5572289`
+- Тег этого релиза: `v0.5.16`
 - Рабочая GitHub-ветка с актуальным кодом PROD: `codex/final-quiz-bank-admin`
 
 На 2026-10-27 ветка `main` отставала и содержала старую версию (`0.1.1`). Не начинай релиз с `main` и не вливай ветки между собой вслепую: сначала проверь GitHub refs, граф коммитов и `package.json`.
@@ -59,6 +59,7 @@ SSH-ключ, если он доступен на этой Windows-машине:
 
 ## Проверки и известные риски на 2026-10-29
 
+- Релиз `0.5.16` в PROD и GitHub (`5572289`, `v0.5.16`). В аналитике доступна выгрузка JSON со сводными показателями, ученическими метриками, статистикой вопросов и ответами/пропусками feedback. Имя, логин и исходный ID ученика удаляются/псевдонимизируются; показано предупреждение проверить свободный текст на личные данные перед передачей ИИ. Unit: 88 passed; Python unit: 77 passed; lint, typecheck, production build и deploy smoke прошли; PM2 `qastart` — `online`.
 - Релиз `0.5.15` в PROD и GitHub (`6eb5e39`, `v0.5.15`). В форме feedback добавлена подсказка, что звёздочка рядом с вопросом обозначает обязательный ответ. Unit: 87 passed; feedback security regression: 7 passed; lint, typecheck, production build и production deploy прошли. Production smoke прошёл; PM2 `qastart` — `online`.
 - Релиз `0.5.14` в PROD и GitHub (`eab5e37`, `v0.5.14`). Звёзды рейтинга feedback увеличены до 40 px, кнопки — до 64 px, цифры — до 12 px. Unit: 87 passed; feedback security regression: 7 passed; lint, typecheck, production build и production deploy прошли. Production smoke подтвердил основные страницы/Auth/Storage; PM2 `qastart` — `online`.
 - Релиз `0.5.13` в PROD и GitHub (`2140ef4`, `v0.5.13`). Под шкалой звёзд добавлено пояснение: оценка 1 означает, что урок совсем не понравился, 10 — что очень понравился; подпись связана с кнопками для скринридеров. Unit: 87 passed; feedback security regression: 7 passed; lint, typecheck, production build и production deploy прошли; PM2 `qastart` — `online`. Smoke подтвердил основные страницы/Auth/Storage на деплое; повторный локальный smoke пропустил проверку Storage, поскольку локально нет service-role ключа.
