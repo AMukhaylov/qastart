@@ -11,9 +11,9 @@ QA Start — русскоязычная обучающая платформа п
 - Сайт PROD: <https://startqa.ru>
 - GitHub: <https://github.com/AMukhaylov/qastart>
 - Supabase project ref: `bhvbydcddoxjfpcschzw` (`qastart`, регион `eu-west-1`)
-- Последняя проверенная версия PROD: `0.5.12` (нумерация звёздного рейтинга feedback)
-- Последний проверенный релизный коммит: `37cfb0d`
-- Тег этого релиза: `v0.5.12`
+- Последняя проверенная версия PROD: `0.5.13` (пояснение шкалы звёздного рейтинга feedback)
+- Последний проверенный релизный коммит: `2140ef4`
+- Тег этого релиза: `v0.5.13`
 - Рабочая GitHub-ветка с актуальным кодом PROD: `codex/final-quiz-bank-admin`
 
 На 2026-10-27 ветка `main` отставала и содержала старую версию (`0.1.1`). Не начинай релиз с `main` и не вливай ветки между собой вслепую: сначала проверь GitHub refs, граф коммитов и `package.json`.
@@ -58,6 +58,8 @@ SSH-ключ, если он доступен на этой Windows-машине:
 8. После выкладки перепроверь сайт, PM2, smoke-check, Supabase proxy/storage и состояние таймера. Явно сообщи пользователю, что прошло, а что не проверялось.
 
 ## Проверки и известные риски на 2026-10-29
+
+- Релиз `0.5.13` в PROD и GitHub (`2140ef4`, `v0.5.13`). Под шкалой звёзд добавлено пояснение: оценка 1 означает, что урок совсем не понравился, 10 — что очень понравился; подпись связана с кнопками для скринридеров. Unit: 87 passed; feedback security regression: 7 passed; lint, typecheck, production build и production deploy прошли; PM2 `qastart` — `online`. Smoke подтвердил основные страницы/Auth/Storage на деплое; повторный локальный smoke пропустил проверку Storage, поскольку локально нет service-role ключа.
 
 - Релиз `0.5.12` в PROD и GitHub (`37cfb0d`, `v0.5.12`). Внутри каждой звезды feedback отображается число 1–10. Unit: 87 passed; Python regression: 7 passed; lint, typecheck, build и production smoke прошли; PM2 `qastart` — `online`.
 
