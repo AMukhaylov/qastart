@@ -64,6 +64,9 @@ def test_student_feedback_page_uses_star_rating_and_only_shows_configured_skip_a
     page = (ROOT / "src/routes/lessons.$day.tsx").read_text(encoding="utf-8")
     assert "<Star" in page
     assert "{score}" in page
+    assert "min-h-16" in page
+    assert "h-10 w-10" in page
+    assert "text-xs font-bold leading-none" in page
     assert "1 означает «совсем не понравилось»" in page
     assert "10" in page and "означает «очень понравилось»" in page
     assert "feedbackSkipAllowed &&" in page

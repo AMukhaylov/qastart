@@ -1039,14 +1039,14 @@ function LessonPage() {
                                   [question.id]: score,
                                 }))
                               }
-                              className={`relative flex min-h-11 items-center justify-center rounded-xl border transition-colors ${feedbackAnswers[question.id] === score ? "border-amber-400 bg-amber-50 text-amber-600" : "border-border bg-background text-muted-foreground hover:border-amber-300 hover:text-amber-500"}`}
+                              className={`relative flex min-h-16 items-center justify-center rounded-xl border transition-colors ${feedbackAnswers[question.id] === score ? "border-amber-400 bg-amber-50 text-amber-600" : "border-border bg-background text-muted-foreground hover:border-amber-300 hover:text-amber-500"}`}
                             >
                               <Star
-                                className={`h-6 w-6 ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "fill-current" : ""}`}
+                                className={`h-10 w-10 ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "fill-current" : ""}`}
                                 aria-hidden="true"
                               />
                               <span
-                                className={`absolute text-[10px] font-bold leading-none ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "text-white" : "text-current"}`}
+                                className={`absolute text-xs font-bold leading-none ${Number(feedbackAnswers[question.id] ?? 0) >= score ? "text-white" : "text-current"}`}
                                 aria-hidden="true"
                               >
                                 {score}
