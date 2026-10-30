@@ -107,8 +107,12 @@ def test_feedback_skip_is_opt_in_by_group_and_not_writable_from_student_client()
     assert "validateLessonRequirements(userId, lesson.id, lessonBlocks)" in SERVER
     assert 'data?.status === "approved"' in SERVER
     admin_page = (ROOT / "src/routes/admin.feedback.tsx").read_text(encoding="utf-8")
-    assert "Настройки созданных потоков" in admin_page
-    assert "Разрешить пропуск опроса группе" in admin_page
+    assert 'aria-label="Выбрать учебную группу для настроек обратной связи"' in admin_page
+    assert 'setSelectedGroupId((current)' in admin_page
+    assert "Поток 0 настраивается здесь так же, как любая другая группа." in admin_page
+    assert "Ученики без группы — текущий нулевой поток" not in admin_page
+    assert 'href="/admin/students"' in admin_page
+    assert "Разрешить явно пропустить обязательный опрос урока" in admin_page
 
 
 def test_course_survey_policy_is_per_cohort_and_submission_is_server_gated():

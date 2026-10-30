@@ -8,7 +8,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import {
   getAdminFeedbackData,
-  saveAdminFeedbackDefaults,
   saveAdminFeedbackGroupPolicy,
   saveAdminFeedbackGroupSkipSetting,
   saveAdminFeedbackSettings,
@@ -55,6 +54,7 @@ function AdminFeedback() {
   const [profiles, setProfiles] = useState<ProfileItem[]>([]);
   const [studentCount, setStudentCount] = useState(0);
   const [groups, setGroups] = useState<FeedbackGroup[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState("");
   const [courseFeedback, setCourseFeedback] = useState<CourseFeedbackItem[]>([]);
   const [savingGroupId, setSavingGroupId] = useState<string | null>(null);
   const [feedbackSettings, setFeedbackSettings] = useState<
@@ -71,13 +71,10 @@ function AdminFeedback() {
   const [useCommonTemplate, setUseCommonTemplate] = useState(true);
   const [lessonId, setLessonId] = useState("");
   const [globalRequired, setGlobalRequired] = useState(false);
-  const [globalEnabled, setGlobalEnabled] = useState(true);
-  const [globalCourseRequired, setGlobalCourseRequired] = useState(false);
   const [override, setOverride] = useState<"inherit" | "on" | "off">("inherit");
   const [questions, setQuestions] = useState<FeedbackQuestion[]>(emptyQuestions);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [savingDefaults, setSavingDefaults] = useState(false);
   const [savingCourseQuestions, setSavingCourseQuestions] = useState(false);
   const [studentFilter, setStudentFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -93,15 +90,19 @@ function AdminFeedback() {
         setFeedback(data.feedback as FeedbackItem[]);
         setProfiles(data.profiles as ProfileItem[]);
         setStudentCount(data.studentCount);
-        setGroups(data.groups as unknown as FeedbackGroup[]);
+        const loadedGroups = data.groups as unknown as FeedbackGroup[];
+        setGroups(loadedGroups);
+        setSelectedGroupId((current) =>
+          loadedGroups.some((group) => group.id === current)
+            ? current
+            : (loadedGroups[0]?.id ?? ""),
+        );
         setCourseFeedback(data.courseFeedback as CourseFeedbackItem[]);
         setCourseQuestions(data.courseFeedbackQuestions as CourseFeedbackQuestion[]);
         setCourseQuestionsSaved(data.courseFeedbackQuestions as CourseFeedbackQuestion[]);
         setFeedbackSettings(data.settings as typeof feedbackSettings);
         setCommonTemplate(data.commonTemplate as FeedbackQuestion[]);
         setGlobalRequired(Boolean(data.courseSettings?.required_by_default));
-        setGlobalEnabled(Boolean(data.courseSettings?.enabled_by_default));
-        setGlobalCourseRequired(Boolean(data.courseSettings?.course_feedback_required_by_default));
         const firstLesson = (data.lessons as LessonItem[])[0];
         if (firstLesson) setLessonId(firstLesson.id);
       })
@@ -186,6 +187,7 @@ function AdminFeedback() {
     () => feedback.filter((item) => item.lesson_id === lessonId).length,
     [feedback, lessonId],
   );
+  const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
   const requiredLessonCount = lessons.filter((lesson) => {
     const overrideValue = feedbackSettings.find(
       (item) => item.lesson_id === lesson.id,
@@ -361,25 +363,6 @@ function AdminFeedback() {
       setSavingGroupId(null);
     }
   }
-  async function saveDefaults() {
-    if (!session?.access_token || savingDefaults) return;
-    setSavingDefaults(true);
-    try {
-      await saveAdminFeedbackDefaults({
-        data: {
-          accessToken: session.access_token,
-          globalRequired,
-          globalEnabled,
-          globalCourseRequired,
-        },
-      });
-      toast.success("Политика потока без группы сохранена");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Не удалось сохранить политику потока");
-    } finally {
-      setSavingDefaults(false);
-    }
-  }
   async function saveCourseQuestions() {
     if (!session?.access_token || savingCourseQuestions) return;
     setSavingCourseQuestions(true);
@@ -466,120 +449,101 @@ function AdminFeedback() {
       </header>
       <section className="space-y-5 rounded-2xl border border-border bg-card p-5">
         <div>
-          <h2 className="text-xl font-bold">Обязательность по потокам</h2>
+          <h2 className="text-xl font-bold">Настройки обратной связи для групп</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Новые потоки по умолчанию опциональны. Отдельно включай обязательность отзывов по урокам
-            и итогового опроса после Дня 14.
+            Выбери группу и настрой для неё отзывы по урокам, возможность их пропустить и итоговый
+            опрос после Дня 14. Поток 0 настраивается здесь так же, как любая другая группа.
           </p>
         </div>
         <div className="space-y-3 rounded-xl border border-border p-4">
-          <h3 className="font-semibold">Ученики без группы — текущий нулевой поток</h3>
-          <label className="flex items-center gap-3 text-sm">
-            <input
-              type="checkbox"
-              checked={globalEnabled}
-              onChange={(event) => setGlobalEnabled(event.target.checked)}
-            />
-            Показывать отзывы после уроков
-          </label>
-          <label className="flex items-center gap-3 text-sm">
-            <input
-              type="checkbox"
-              checked={globalRequired}
-              onChange={(event) => setGlobalRequired(event.target.checked)}
-            />
-            Требовать отзывы по урокам перед переходом дальше
-          </label>
-          <label className="flex items-center gap-3 text-sm">
-            <input
-              type="checkbox"
-              checked={globalCourseRequired}
-              onChange={(event) => setGlobalCourseRequired(event.target.checked)}
-            />
-            Требовать итоговый отзыв о курсе после Дня 14
-          </label>
-          <p className="text-xs text-muted-foreground">
-            Эти настройки применяются только к ученикам, которые не добавлены ни в одну группу.
-            Сейчас в PROD учебные группы ещё не созданы.
-          </p>
-          <Button onClick={() => void saveDefaults()} disabled={savingDefaults}>
-            {savingDefaults ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
-            Сохранить настройки нулевого потока
-          </Button>
-        </div>
-        <div className="space-y-3 rounded-xl border border-border p-4">
-          <div>
-            <h3 className="font-semibold">Настройки созданных потоков</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Обязательность задаётся отдельно для каждой группы. Если ученик случайно состоит в
-              нескольких группах, сработает наиболее строгая настройка.
-            </p>
-          </div>
           {groups.length ? (
-            <div className="space-y-2">
-              {groups.map((group) => (
-                <div
-                  key={group.id}
-                  className="space-y-3 rounded-lg border border-border p-3 text-sm"
+            <>
+              <label className="block max-w-xl text-sm font-medium">
+                Учебная группа
+                <select
+                  className="mt-1 h-11 w-full rounded-md border border-input bg-background px-3"
+                  value={selectedGroupId}
+                  onChange={(event) => setSelectedGroupId(event.target.value)}
+                  aria-label="Выбрать учебную группу для настроек обратной связи"
                 >
-                  <strong>{group.name}</strong>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedGroup && (
+                <div className="space-y-3 rounded-lg border border-border p-4 text-sm">
+                  <strong className="text-base">Настройки группы «{selectedGroup.name}»</strong>
                   <label className="flex items-center justify-between gap-3">
                     <span>Отзывы по урокам обязательны для перехода дальше</span>
-                    {savingGroupId === group.id && (
+                    {savingGroupId === selectedGroup.id && (
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     )}
                     <input
                       type="checkbox"
-                      checked={group.lesson_feedback_required}
+                      checked={selectedGroup.lesson_feedback_required}
                       disabled={Boolean(savingGroupId)}
                       onChange={(event) =>
                         void toggleGroupPolicy(
-                          group,
+                          selectedGroup,
                           "lesson_feedback_required",
                           event.currentTarget.checked,
                         )
                       }
-                      aria-label={`Обязательные отзывы по урокам для потока ${group.name}`}
+                      aria-label={`Обязательные отзывы по урокам для группы ${selectedGroup.name}`}
                     />
                   </label>
                   <label className="flex items-center justify-between gap-3">
                     <span>Итоговый опрос о курсе обязателен после Дня 14</span>
                     <input
                       type="checkbox"
-                      checked={group.course_feedback_required}
+                      checked={selectedGroup.course_feedback_required}
                       disabled={Boolean(savingGroupId)}
                       onChange={(event) =>
                         void toggleGroupPolicy(
-                          group,
+                          selectedGroup,
                           "course_feedback_required",
                           event.currentTarget.checked,
                         )
                       }
-                      aria-label={`Обязательный итоговый опрос для потока ${group.name}`}
+                      aria-label={`Обязательный итоговый опрос для группы ${selectedGroup.name}`}
                     />
                   </label>
                   <label className="flex items-center justify-between gap-3 border-t border-border pt-2 text-muted-foreground">
                     <span>Разрешить явно пропустить обязательный опрос урока</span>
                     <input
                       type="checkbox"
-                      checked={group.allow_feedback_skip}
+                      checked={selectedGroup.allow_feedback_skip}
                       disabled={Boolean(savingGroupId)}
-                      onChange={(event) => void toggleGroupSkip(group, event.currentTarget.checked)}
-                      aria-label={`Разрешить пропуск опроса группе ${group.name}`}
+                      onChange={(event) =>
+                        void toggleGroupSkip(selectedGroup, event.currentTarget.checked)
+                      }
+                      aria-label={`Разрешить пропуск опроса группе ${selectedGroup.name}`}
                     />
                   </label>
                 </div>
-              ))}
-            </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Правила сохраняются отдельно для выбранной группы. Если ученик состоит в нескольких
+                группах, применяется наиболее строгая настройка.
+              </p>
+            </>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              Пока нет учебных групп. Создай поток в разделе «Студенты», затем включи для него
-              нужные обязательные опросы.
-            </p>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p>
+                Учебных групп пока нет. Создай группу «Поток 0» и назначь учеников в разделе
+                «Студенты», затем выбери её здесь. Новые группы по умолчанию останутся
+                опциональными.
+              </p>
+              <a
+                href="/admin/students"
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Перейти в раздел «Студенты»
+              </a>
+            </div>
           )}
         </div>
         <div className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)]">
