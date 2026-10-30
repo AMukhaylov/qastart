@@ -17,6 +17,7 @@ import {
   saveAdminCourseFeedbackQuestions,
   type CourseFeedbackQuestion,
 } from "@/server/course-feedback.functions";
+import { parseFeedbackOptionLabels } from "@/lib/feedback-option-editor";
 
 export const Route = createFileRoute("/admin/feedback")({ component: AdminFeedback });
 
@@ -665,25 +666,14 @@ function AdminFeedback() {
               {question.type === "radio" && (
                 <Textarea
                   rows={3}
-                  aria-label="Варианты ответов: подпись | значение, по одному на строку"
-                  value={(question.options ?? [])
-                    .map((option) => `${option.label} | ${option.value}`)
-                    .join("\n")}
+                  aria-label="Варианты ответов, по одному на строку"
+                  value={(question.options ?? []).map((option) => option.label).join("\n")}
                   onChange={(event) =>
                     updateQuestion(index, {
-                      options: event.target.value
-                        .split("\n")
-                        .filter(Boolean)
-                        .map((line, row) => {
-                          const [label, value] = line.split("|").map((part) => part.trim());
-                          return {
-                            label: label || `Вариант ${row + 1}`,
-                            value: value || `option_${row + 1}`,
-                          };
-                        }),
+                      options: parseFeedbackOptionLabels(event.target.value, question.options),
                     })
                   }
-                  placeholder="Текст варианта | value"
+                  placeholder="Каждый вариант с новой строки"
                 />
               )}
             </article>
@@ -783,25 +773,14 @@ function AdminFeedback() {
             {question.type === "radio" && (
               <Textarea
                 rows={3}
-                aria-label="Варианты: подпись | значение, по одному на строку"
-                value={(question.options ?? [])
-                  .map((option) => `${option.label} | ${option.value}`)
-                  .join("\n")}
+                aria-label="Варианты итогового опроса, по одному на строку"
+                value={(question.options ?? []).map((option) => option.label).join("\n")}
                 onChange={(event) =>
                   updateCourseQuestion(index, {
-                    options: event.target.value
-                      .split("\n")
-                      .filter(Boolean)
-                      .map((line, row) => {
-                        const [label, value] = line.split("|").map((part) => part.trim());
-                        return {
-                          label: label || `Вариант ${row + 1}`,
-                          value: value || `option_${row + 1}`,
-                        };
-                      }),
+                    options: parseFeedbackOptionLabels(event.target.value, question.options),
                   })
                 }
-                placeholder="Текст варианта | value"
+                placeholder="Каждый вариант с новой строки"
               />
             )}
           </article>
