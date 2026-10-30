@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Loader2, Plus, Save, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,62 +81,57 @@ function AdminFeedback() {
   const [dateTo, setDateTo] = useState("");
   const [ratingFilter, setRatingFilter] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState("");
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!isAdmin || !session?.access_token) return;
-    void getAdminFeedbackData({ data: { accessToken: session.access_token } })
-      .then((data) => {
-        setLessons(data.lessons as LessonItem[]);
-        setFeedback(data.feedback as FeedbackItem[]);
-        setProfiles(data.profiles as ProfileItem[]);
-        setStudentCount(data.studentCount);
-        const loadedGroups = data.groups as unknown as FeedbackGroup[];
-        setGroups(loadedGroups);
-        setSelectedGroupId((current) =>
-          loadedGroups.some((group) => group.id === current)
-            ? current
-            : (loadedGroups[0]?.id ?? ""),
-        );
-        setCourseFeedback(data.courseFeedback as CourseFeedbackItem[]);
-        setCourseQuestions(data.courseFeedbackQuestions as CourseFeedbackQuestion[]);
-        setCourseQuestionsSaved(data.courseFeedbackQuestions as CourseFeedbackQuestion[]);
-        setFeedbackSettings(data.settings as typeof feedbackSettings);
-        setCommonTemplate(data.commonTemplate as FeedbackQuestion[]);
-        setGlobalRequired(Boolean(data.courseSettings?.required_by_default));
-        const firstLesson = (data.lessons as LessonItem[])[0];
-        if (firstLesson) setLessonId(firstLesson.id);
-      })
-      .catch((error) =>
-        toast.error(error instanceof Error ? error.message : "Не удалось загрузить обратную связь"),
-      )
-      .finally(() => setLoading(false));
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const data = await getAdminFeedbackData({ data: { accessToken: session.access_token } });
+      setLessons(data.lessons as LessonItem[]);
+      setFeedback(data.feedback as FeedbackItem[]);
+      setProfiles(data.profiles as ProfileItem[]);
+      setStudentCount(data.studentCount);
+      const loadedGroups = data.groups as unknown as FeedbackGroup[];
+      setGroups(loadedGroups);
+      setSelectedGroupId((current) =>
+        loadedGroups.some((group) => group.id === current) ? current : (loadedGroups[0]?.id ?? ""),
+      );
+      setCourseFeedback(data.courseFeedback as CourseFeedbackItem[]);
+      setCourseQuestions(data.courseFeedbackQuestions as CourseFeedbackQuestion[]);
+      setCourseQuestionsSaved(data.courseFeedbackQuestions as CourseFeedbackQuestion[]);
+      setFeedbackSettings(data.settings as typeof feedbackSettings);
+      setCommonTemplate(data.commonTemplate as FeedbackQuestion[]);
+      setGlobalRequired(Boolean(data.courseSettings?.required_by_default));
+      const firstLesson = (data.lessons as LessonItem[])[0];
+      if (firstLesson) setLessonId(firstLesson.id);
+    } catch (error) {
+      setLoadError(true);
+      toast.error(error instanceof Error ? error.message : "Не удалось загрузить обратную связь");
+    } finally {
+      setLoading(false);
+    }
   }, [isAdmin, session?.access_token]);
 
   useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
     if (!lessonId) return;
-    void getAdminFeedbackData({ data: { accessToken: session?.access_token ?? "" } })
-      .then((data) => {
-        const lessonSetting = (data.settings as typeof feedbackSettings).find(
-          (item) => item.lesson_id === lessonId,
-        );
-        setOverride(
-          lessonSetting?.required_override === null ||
-            lessonSetting?.required_override === undefined
-            ? "inherit"
-            : lessonSetting.required_override
-              ? "on"
-              : "off",
-        );
-        const usesCommon = lessonSetting?.use_common_template ?? true;
-        setUseCommonTemplate(usesCommon);
-        setQuestions(
-          usesCommon
-            ? (data.commonTemplate as FeedbackQuestion[])
-            : (lessonSetting?.questions ?? emptyQuestions),
-        );
-      })
-      .catch(() => undefined);
-  }, [lessonId, session?.access_token]);
+    const lessonSetting = feedbackSettings.find((item) => item.lesson_id === lessonId);
+    setOverride(
+      lessonSetting?.required_override === null || lessonSetting?.required_override === undefined
+        ? "inherit"
+        : lessonSetting.required_override
+          ? "on"
+          : "off",
+    );
+    const usesCommon = lessonSetting?.use_common_template ?? true;
+    setUseCommonTemplate(usesCommon);
+    setQuestions(usesCommon ? commonTemplate : (lessonSetting?.questions ?? emptyQuestions));
+  }, [lessonId, feedbackSettings, commonTemplate]);
 
   const profileById = useMemo(
     () => new Map(profiles.map((profile) => [profile.id, profile])),
@@ -437,6 +432,16 @@ function AdminFeedback() {
       <div className="flex items-center gap-2 text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
         Загрузка обратной связи…
+      </div>
+    );
+  if (loadError)
+    return (
+      <div className="space-y-4 rounded-2xl border border-destructive/30 bg-card p-6">
+        <p className="font-semibold">Не удалось загрузить обратную связь.</p>
+        <p className="text-sm text-muted-foreground">
+          Проверь соединение и повтори загрузку. Настройки и ответы не были изменены.
+        </p>
+        <Button onClick={() => void load()}>Повторить загрузку</Button>
       </div>
     );
   return (

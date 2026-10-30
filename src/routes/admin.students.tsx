@@ -554,6 +554,15 @@ function AdminStudents() {
           </Button>
         </div>
       )}
+      {loading && !loadError && rows.length === 0 && (
+        <div
+          role="status"
+          className="rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground"
+        >
+          <RefreshCw className="mx-auto mb-3 h-5 w-5 animate-spin" />
+          Загружаем список учеников и их прогресс…
+        </div>
+      )}
       {showGroups && (
         <section className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
           <div className="flex flex-wrap items-end gap-3">
