@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import "@tanstack/react-start";
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getAvatarPresetById } from "@/lib/avatar-presets";
