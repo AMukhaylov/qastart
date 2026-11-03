@@ -24,14 +24,19 @@ function AdminLayout() {
   const { user, loading, rolesLoading, isAdmin, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const isAdminIndex = location.pathname === "/admin" || location.pathname === "/admin/";
 
   useEffect(() => {
     if (loading || rolesLoading) return;
     if (location.pathname === "/admin/login") return;
-    if (!user || !isAdmin) navigate({ to: "/admin/login" });
-  }, [user, isAdmin, loading, rolesLoading, location.pathname, navigate]);
+    // The index route chooses between /admin/homework and /admin/login after
+    // auth has settled. Letting both routes navigate at once can leave /admin
+    // stuck on its transition screen.
+    if (isAdminIndex) return;
+    if (!user || !isAdmin) navigate({ to: "/admin/login", replace: true });
+  }, [user, isAdmin, loading, rolesLoading, isAdminIndex, location.pathname, navigate]);
 
-  if (location.pathname === "/admin/login") {
+  if (location.pathname === "/admin/login" || isAdminIndex) {
     return <Outlet />;
   }
 
@@ -45,8 +50,11 @@ function AdminLayout() {
 
   if (!user || !isAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-muted-foreground">
-        Переходим ко входу…
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-muted-foreground">
+        <p>Переходим ко входу…</p>
+        <a className="text-primary underline" href="/admin/login">
+          Открыть страницу входа
+        </a>
       </div>
     );
   }
