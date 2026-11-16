@@ -1,15 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-  ArrowRight,
-  Award,
-  BookOpenCheck,
-  CheckCircle2,
-  ClipboardCheck,
-  MessageCircle,
-  ShieldCheck,
-  UserRoundCheck,
-} from "lucide-react";
+import { ArrowRight, CheckCircle2, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
@@ -17,18 +8,6 @@ import { Input } from "@/components/ui/input";
 import { submitCourseApplication } from "@/server/applications.functions";
 
 export const Route = createFileRoute("/apply")({ component: ApplyPage });
-
-const benefits = [
-  { icon: BookOpenCheck, title: "14 дней", text: "Понятный маршрут от основ до практики." },
-  { icon: ClipboardCheck, title: "Практика", text: "Закрепляй знания на заданиях по QA." },
-  {
-    icon: CheckCircle2,
-    title: "Проверка домашних заданий",
-    text: "Получай обратную связь и рекомендации.",
-  },
-  { icon: MessageCircle, title: "Поддержка наставника", text: "Задавай вопросы по ходу обучения." },
-  { icon: Award, title: "Итоговый сертификат", text: "Получи сертификат после прохождения курса." },
-];
 
 function ApplyPage() {
   const [name, setName] = useState("");
@@ -94,7 +73,7 @@ function ApplyPage() {
               <span className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-background/80 px-3 py-1.5 text-sm font-medium text-primary shadow-sm">
                 <ShieldCheck className="h-4 w-4" /> Поток 0 · бесплатно
               </span>
-              <h1 className="mt-5 max-w-2xl text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
+              <h1 className="mt-6 max-w-2xl text-4xl font-extrabold leading-[1.05] tracking-tight md:text-6xl">
                 Попробуй профессию тестировщика бесплатно
               </h1>
               <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
@@ -239,35 +218,6 @@ function ApplyPage() {
                 </>
               )}
             </section>
-          </div>
-        </section>
-
-        <section className="container-page py-12 sm:py-16">
-          <div className="mx-auto max-w-2xl text-center">
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">
-              Что тебя ждёт
-            </p>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-              Попробуй QA на практике
-            </h2>
-            <p className="mt-3 text-muted-foreground">
-              Бесплатный поток поможет познакомиться с профессией и сделать первые шаги в
-              тестировании.
-            </p>
-          </div>
-          <div className="mx-auto mt-8 grid max-w-5xl gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {benefits.map(({ icon: Icon, title, text: description }) => (
-              <article
-                key={title}
-                className="rounded-2xl border border-border bg-card p-5 shadow-sm"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-soft text-primary">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <h3 className="mt-4 font-bold">{title}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{description}</p>
-              </article>
-            ))}
           </div>
         </section>
       </main>
