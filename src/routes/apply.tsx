@@ -95,19 +95,22 @@ function ApplyPage() {
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
                     <CheckCircle2 className="h-6 w-6" />
                   </div>
-                  <h2 id="application-title" className="mt-5 text-2xl font-bold">
+                  <h2 id="application-title" className="mt-5 font-display text-xl font-extrabold">
                     Заявка принята!
                   </h2>
-                  <p className="mt-3 text-muted-foreground">
+                  <p className="mt-3 text-base leading-relaxed text-muted-foreground">
                     Я лично свяжусь с тобой и расскажу о начале обучения.
                   </p>
                 </div>
               ) : (
                 <>
-                  <h2 id="application-title" className="text-2xl font-bold tracking-tight">
+                  <h2
+                    id="application-title"
+                    className="font-display text-xl font-extrabold tracking-tight"
+                  >
                     Запишись на Поток 0
                   </h2>
-                  <p className="mt-2 text-sm text-muted-foreground">
+                  <p className="mt-2 text-base leading-relaxed text-muted-foreground">
                     Оставь имя и удобный контакт — телефон не нужен.
                   </p>
                   <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
@@ -127,7 +130,7 @@ function ApplyPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <label htmlFor="application-name" className="text-sm font-semibold">
+                      <label htmlFor="application-name" className="text-sm font-medium">
                         Как тебя зовут?
                       </label>
                       <Input
@@ -143,7 +146,7 @@ function ApplyPage() {
                     </div>
                     <div className="grid gap-3 sm:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)]">
                       <div className="space-y-2">
-                        <label htmlFor="application-contact-type" className="text-sm font-semibold">
+                        <label htmlFor="application-contact-type" className="text-sm font-medium">
                           Где написать?
                         </label>
                         <select
@@ -152,14 +155,14 @@ function ApplyPage() {
                           onChange={(event) =>
                             setContactType(event.target.value as "telegram" | "vk")
                           }
-                          className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="h-12 w-full rounded-xl border border-input bg-background px-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring md:text-sm"
                         >
                           <option value="telegram">Telegram</option>
                           <option value="vk">ВКонтакте</option>
                         </select>
                       </div>
                       <div className="space-y-2">
-                        <label htmlFor="application-contact" className="text-sm font-semibold">
+                        <label htmlFor="application-contact" className="text-sm font-medium">
                           Имя пользователя или ссылка
                         </label>
                         <Input
@@ -211,7 +214,7 @@ function ApplyPage() {
                       {submitting ? "Отправляем…" : "Записаться бесплатно"}
                       {!submitting && <ArrowRight className="h-4 w-4" />}
                     </Button>
-                    <p className="text-center text-xs text-muted-foreground">
+                    <p className="text-center text-sm text-muted-foreground">
                       Никаких звонков и спама — только сообщение по поводу обучения.
                     </p>
                   </form>
