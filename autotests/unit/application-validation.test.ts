@@ -46,3 +46,20 @@ test("application data and status mutation are inaccessible to public Supabase r
     /grant execute on function public\.reserve_course_application_attempt\(text\) to service_role/i,
   );
 });
+
+test("application deletion requires admin authorization and a UUID", () => {
+  const server = readFileSync(
+    new URL("../../src/server/applications.functions.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    server,
+    /const deleteInput = adminInput\.extend\(\{ id: z\.string\(\)\.uuid\(\) \}\)/,
+  );
+  assert.match(server, /export const deleteCourseApplication = createServerFn/);
+  assert.match(
+    server,
+    /deleteCourseApplication[\s\S]*?await assertApplicationAdmin\(data\.accessToken\)/,
+  );
+  assert.match(server, /delete\(\)[\s\S]*?\.eq\("id", data\.id\)/);
+});

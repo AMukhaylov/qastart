@@ -38,7 +38,7 @@ export const Route = createRootRoute({
           "QA Start — 14 интерактивных уроков по основам тестирования: практика, домашние задания, поддержка наставника и итоговый сертификат.",
       },
       { name: "author", content: "QA школа" },
-      { name: "app-version", content: "v0.5.29" },
+      { name: "app-version", content: "v0.5.30" },
       {
         property: "og:title",
         content: "QA Start — интерактивный курс по тестированию для начинающих",

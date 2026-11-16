@@ -90,6 +90,7 @@ const updateInput = adminInput.extend({
   id: z.string().uuid(),
   status: z.enum(APPLICATION_STATUSES),
 });
+const deleteInput = adminInput.extend({ id: z.string().uuid() });
 
 async function assertApplicationAdmin(accessToken: string) {
   const roles = await getRolesForAccessToken(accessToken);
@@ -140,4 +141,19 @@ export const updateCourseApplicationStatus = createServerFn({ method: "POST" })
     if (error) throw new Error("Не удалось изменить статус заявки");
     if (!updated) throw new Error("Заявка не найдена");
     return { id: updated.id as string, status: updated.status as ApplicationStatus };
+  });
+
+export const deleteCourseApplication = createServerFn({ method: "POST" })
+  .inputValidator((data) => deleteInput.parse(data))
+  .handler(async ({ data }) => {
+    await assertApplicationAdmin(data.accessToken);
+    const { data: deleted, error } = await supabaseAdmin
+      .from("course_applications")
+      .delete()
+      .eq("id", data.id)
+      .select("id")
+      .maybeSingle();
+    if (error) throw new Error("Не удалось удалить заявку");
+    if (!deleted) throw new Error("Заявка не найдена");
+    return { id: deleted.id as string };
   });

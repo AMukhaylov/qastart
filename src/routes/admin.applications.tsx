@@ -1,11 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Filter, Loader2, RefreshCw, Search, UserRoundPlus } from "lucide-react";
+import { Filter, Loader2, RefreshCw, Search, Trash2, UserRoundPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { APPLICATION_STATUSES, type ApplicationStatus } from "@/lib/application-validation";
 import {
+  deleteCourseApplication,
   listCourseApplications,
   updateCourseApplicationStatus,
 } from "@/server/applications.functions";
@@ -36,6 +47,7 @@ function AdminApplications() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Application | null>(null);
 
   const load = useCallback(async () => {
     if (!isAdmin || !session?.access_token) return;
@@ -85,6 +97,23 @@ function AdminApplications() {
       toast.error(
         updateError instanceof Error ? updateError.message : "Не удалось изменить статус",
       );
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function deleteApplication(row: Application) {
+    if (!session?.access_token) return;
+    setUpdatingId(row.id);
+    try {
+      await deleteCourseApplication({
+        data: { accessToken: session.access_token, id: row.id },
+      });
+      setRows((current) => current.filter((item) => item.id !== row.id));
+      setPendingDelete(null);
+      toast.success("Заявка удалена");
+    } catch (deleteError) {
+      toast.error(deleteError instanceof Error ? deleteError.message : "Не удалось удалить заявку");
     } finally {
       setUpdatingId(null);
     }
@@ -202,29 +231,74 @@ function AdminApplications() {
                     ))}
                   </dl>
                 </div>
-                <label className="w-full shrink-0 text-sm font-medium lg:w-52">
-                  Статус
-                  <select
-                    value={row.status}
+                <div className="w-full shrink-0 lg:w-52">
+                  <label className="block text-sm font-medium">
+                    Статус
+                    <select
+                      value={row.status}
+                      disabled={updatingId === row.id}
+                      onChange={(event) =>
+                        void changeStatus(row, event.target.value as ApplicationStatus)
+                      }
+                      className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                      aria-label={`Статус заявки ${row.name}`}
+                    >
+                      {APPLICATION_STATUSES.map((value) => (
+                        <option key={value} value={value}>
+                          {statusLabels[value]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3 w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
                     disabled={updatingId === row.id}
-                    onChange={(event) =>
-                      void changeStatus(row, event.target.value as ApplicationStatus)
-                    }
-                    className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-                    aria-label={`Статус заявки ${row.name}`}
+                    onClick={() => setPendingDelete(row)}
                   >
-                    {APPLICATION_STATUSES.map((value) => (
-                      <option key={value} value={value}>
-                        {statusLabels[value]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    <Trash2 className="h-4 w-4" /> Удалить заявку
+                  </Button>
+                </div>
               </div>
             </article>
           ))}
         </div>
       )}
+      <AlertDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => {
+          if (!open && !updatingId) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить заявку?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Заявка{pendingDelete ? ` от ${pendingDelete.name}` : ""} будет удалена без возможности
+              восстановления.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(updatingId)}>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={Boolean(updatingId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                if (pendingDelete) void deleteApplication(pendingDelete);
+              }}
+            >
+              {updatingId ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
