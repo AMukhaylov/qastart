@@ -1023,6 +1023,60 @@ export type Database = {
         };
         Relationships: [];
       };
+      course_applications: {
+        Row: {
+          consent_at: string;
+          consent_version: string;
+          contact: string;
+          contact_type: string;
+          created_at: string;
+          id: string;
+          name: string;
+          normalized_contact: string;
+          status: string;
+          updated_at: string;
+          utm_campaign: string | null;
+          utm_content: string | null;
+          utm_medium: string | null;
+          utm_source: string | null;
+          utm_term: string | null;
+        };
+        Insert: {
+          consent_at?: string;
+          consent_version?: string;
+          contact: string;
+          contact_type: string;
+          created_at?: string;
+          id?: string;
+          name: string;
+          normalized_contact: string;
+          status?: string;
+          updated_at?: string;
+          utm_campaign?: string | null;
+          utm_content?: string | null;
+          utm_medium?: string | null;
+          utm_source?: string | null;
+          utm_term?: string | null;
+        };
+        Update: {
+          consent_at?: string;
+          consent_version?: string;
+          contact?: string;
+          contact_type?: string;
+          created_at?: string;
+          id?: string;
+          name?: string;
+          normalized_contact?: string;
+          status?: string;
+          updated_at?: string;
+          utm_campaign?: string | null;
+          utm_content?: string | null;
+          utm_medium?: string | null;
+          utm_source?: string | null;
+          utm_term?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -1037,6 +1091,10 @@ export type Database = {
           p_user_id: string;
         };
         Returns: number;
+      };
+      reserve_course_application_attempt: {
+        Args: { p_ip_hash: string };
+        Returns: boolean;
       };
       has_role: {
         Args: {

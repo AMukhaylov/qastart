@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as ApplyRouteImport } from './routes/apply'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ContactsRouteImport } from './routes/contacts'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -20,6 +21,7 @@ import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminAnalyticsRouteImport } from './routes/admin.analytics'
+import { Route as AdminApplicationsRouteImport } from './routes/admin.applications'
 import { Route as AdminArchieRouteImport } from './routes/admin.archie'
 import { Route as AdminFeedbackRouteImport } from './routes/admin.feedback'
 import { Route as AdminHomeworkRouteImport } from './routes/admin.homework'
@@ -39,6 +41,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApplyRoute = ApplyRouteImport.update({
+  id: '/apply',
+  path: '/apply',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -84,6 +91,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminApplicationsRoute = AdminApplicationsRouteImport.update({
+  id: '/applications',
+  path: '/applications',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminArchieRoute = AdminArchieRouteImport.update({
@@ -140,6 +152,7 @@ const LessonsDayRoute = LessonsDayRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/apply': typeof ApplyRoute
   '/auth': typeof AuthRoute
   '/contacts': typeof ContactsRoute
   '/dashboard': typeof DashboardRoute
@@ -148,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/applications': typeof AdminApplicationsRoute
   '/admin/archie': typeof AdminArchieRoute
   '/admin/feedback': typeof AdminFeedbackRoute
   '/admin/homework': typeof AdminHomeworkRoute
@@ -162,6 +176,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/apply': typeof ApplyRoute
   '/auth': typeof AuthRoute
   '/contacts': typeof ContactsRoute
   '/dashboard': typeof DashboardRoute
@@ -170,6 +185,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/applications': typeof AdminApplicationsRoute
   '/admin/archie': typeof AdminArchieRoute
   '/admin/feedback': typeof AdminFeedbackRoute
   '/admin/homework': typeof AdminHomeworkRoute
@@ -186,6 +202,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/apply': typeof ApplyRoute
   '/auth': typeof AuthRoute
   '/contacts': typeof ContactsRoute
   '/dashboard': typeof DashboardRoute
@@ -194,6 +211,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/applications': typeof AdminApplicationsRoute
   '/admin/archie': typeof AdminArchieRoute
   '/admin/feedback': typeof AdminFeedbackRoute
   '/admin/homework': typeof AdminHomeworkRoute
@@ -211,6 +229,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/apply'
     | '/auth'
     | '/contacts'
     | '/dashboard'
@@ -219,6 +238,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/reset-password'
     | '/admin/analytics'
+    | '/admin/applications'
     | '/admin/archie'
     | '/admin/feedback'
     | '/admin/homework'
@@ -233,6 +253,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/apply'
     | '/auth'
     | '/contacts'
     | '/dashboard'
@@ -241,6 +262,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/reset-password'
     | '/admin/analytics'
+    | '/admin/applications'
     | '/admin/archie'
     | '/admin/feedback'
     | '/admin/homework'
@@ -256,6 +278,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/apply'
     | '/auth'
     | '/contacts'
     | '/dashboard'
@@ -264,6 +287,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/reset-password'
     | '/admin/analytics'
+    | '/admin/applications'
     | '/admin/archie'
     | '/admin/feedback'
     | '/admin/homework'
@@ -280,6 +304,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
+  ApplyRoute: typeof ApplyRoute
   AuthRoute: typeof AuthRoute
   ContactsRoute: typeof ContactsRoute
   DashboardRoute: typeof DashboardRoute
@@ -306,6 +331,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/apply': {
+      id: '/apply'
+      path: '/apply'
+      fullPath: '/apply'
+      preLoaderRoute: typeof ApplyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -369,6 +401,13 @@ declare module '@tanstack/react-router' {
       path: '/analytics'
       fullPath: '/admin/analytics'
       preLoaderRoute: typeof AdminAnalyticsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/applications': {
+      id: '/admin/applications'
+      path: '/applications'
+      fullPath: '/admin/applications'
+      preLoaderRoute: typeof AdminApplicationsRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/archie': {
@@ -446,6 +485,7 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminAnalyticsRoute: typeof AdminAnalyticsRoute
+  AdminApplicationsRoute: typeof AdminApplicationsRoute
   AdminArchieRoute: typeof AdminArchieRoute
   AdminFeedbackRoute: typeof AdminFeedbackRoute
   AdminHomeworkRoute: typeof AdminHomeworkRoute
@@ -458,6 +498,7 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminAnalyticsRoute: AdminAnalyticsRoute,
+  AdminApplicationsRoute: AdminApplicationsRoute,
   AdminArchieRoute: AdminArchieRoute,
   AdminFeedbackRoute: AdminFeedbackRoute,
   AdminHomeworkRoute: AdminHomeworkRoute,
@@ -473,6 +514,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
+  ApplyRoute: ApplyRoute,
   AuthRoute: AuthRoute,
   ContactsRoute: ContactsRoute,
   DashboardRoute: DashboardRoute,

@@ -29,7 +29,6 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { FaVk } from "react-icons/fa6";
 import archieLaptop from "@/assets/archie-laptop.png";
 import archiePortrait from "@/assets/archie-study-transparent.png";
 import mentorPhoto from "@/assets/mentor-mukhailov.jpg";
@@ -204,9 +203,9 @@ function LandingPage() {
                 </Button>
               )}
               <Button asChild variant="outline" size="xl">
-                <a href="https://vk.ru/qa_school" target="_blank" rel="noopener noreferrer">
-                  <FaVk className="h-5 w-5 text-[#0077ff]" /> Записаться на курс
-                </a>
+                <Link to="/apply">
+                  <UserCheck className="h-5 w-5 text-primary" /> Записаться бесплатно
+                </Link>
               </Button>
             </div>
           </div>

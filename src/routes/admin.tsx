@@ -9,6 +9,7 @@ import {
   ChartNoAxesCombined,
   Bot,
   MessageSquareText,
+  UserRoundPlus,
 } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,7 @@ function AdminLayout() {
     { to: "/admin/archie", label: "Арчи", icon: Bot },
     { to: "/admin/analytics", label: "Аналитика", icon: ChartNoAxesCombined },
     { to: "/admin/feedback", label: "Обратная связь", icon: MessageSquareText },
+    { to: "/admin/applications", label: "Заявки", icon: UserRoundPlus },
   ] as const;
 
   return (
