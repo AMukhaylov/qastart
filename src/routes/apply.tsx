@@ -64,7 +64,7 @@ function ApplyPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <SiteHeader />
+      <SiteHeader showPublicNavigation={false} />
       <main>
         <section className="relative isolate overflow-hidden border-b border-border bg-[var(--gradient-accent)]">
           <div className="absolute -right-24 -top-28 -z-10 h-80 w-80 rounded-full bg-primary/15 blur-3xl" />

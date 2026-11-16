@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationBell } from "@/components/notification-bell";
 
-export function SiteHeader() {
+export function SiteHeader({ showPublicNavigation = true }: { showPublicNavigation?: boolean }) {
   const { user, signOut, isAdmin } = useAuth();
   const [profile, setProfile] = useState<{
     full_name: string | null;
@@ -44,7 +44,7 @@ export function SiteHeader() {
       <div className="container-page flex h-16 items-center justify-between">
         <BrandLogo />
 
-        {!user && (
+        {!user && showPublicNavigation && (
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
             <a
               href="#how"
