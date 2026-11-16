@@ -110,9 +110,6 @@ function ApplyPage() {
                   >
                     Запишись на Поток 0
                   </h2>
-                  <p className="mt-2 text-base leading-relaxed text-muted-foreground">
-                    Оставь имя и удобный контакт — телефон не нужен.
-                  </p>
                   <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
                     <div
                       className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden"
@@ -215,7 +212,7 @@ function ApplyPage() {
                       {!submitting && <ArrowRight className="h-4 w-4" />}
                     </Button>
                     <p className="text-center text-sm text-muted-foreground">
-                      Никаких звонков и спама — только сообщение по поводу обучения.
+                      Никаких звонков и спама, только сообщение по поводу обучения.
                     </p>
                   </form>
                 </>
