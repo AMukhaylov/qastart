@@ -30,6 +30,7 @@ import { getAcceptedSqlHomeworkLessonIds } from "@/lib/homework-status";
 import { listPublishedMeetings } from "@/server/meetings.functions";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatCourseDate, lessonOpensAt } from "@/lib/course-schedule";
+import { formatMoscowDateTime } from "@/lib/moscow-time";
 import type { HomeworkSnapshot } from "@/lib/course-homework";
 
 export const Route = createFileRoute("/dashboard")({
@@ -56,14 +57,7 @@ type Profile = { full_name: string | null; avatar_url: string | null };
 type Meeting = Awaited<ReturnType<typeof listPublishedMeetings>>[number];
 
 function formatMeetingDate(value: string | null) {
-  if (!value) return "Дата скоро появится";
-  return new Date(value).toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatMoscowDateTime(value, "Дата скоро появится");
 }
 
 function Dashboard() {
@@ -397,13 +391,19 @@ function Dashboard() {
                       {meeting.description}
                     </p>
                   )}
-                  {meeting.meeting_url && (
+                  {meeting.recording_url ? (
+                    <Button asChild variant="hero" className="mt-5">
+                      <a href={meeting.recording_url} target="_blank" rel="noreferrer">
+                        <Video className="h-4 w-4" /> Посмотреть запись
+                      </a>
+                    </Button>
+                  ) : meeting.meeting_url ? (
                     <Button asChild variant="hero" className="mt-5">
                       <a href={meeting.meeting_url} target="_blank" rel="noreferrer">
                         <Video className="h-4 w-4" /> Перейти на встречу
                       </a>
                     </Button>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>

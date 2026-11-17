@@ -874,7 +874,7 @@ function LessonPage() {
               {!courseStartAt
                 ? "Дата начала обучения пока не назначена. Уточни её у администратора."
                 : sequenceLocked
-                  ? `Сначала заверши День ${previousLessonDay ?? dayNum - 1}. Для нулевого потока отзыв обязателен перед переходом дальше.`
+                  ? `Сначала заверши День ${previousLessonDay ?? dayNum - 1}, включая домашнее задание. Практика и итоговый тест открываются после прохождения предыдущих дней.`
                   : lessonOpensAt && new Date(lessonOpensAt).getTime() > Date.now()
                     ? dayNum === 1
                       ? `Ваше обучение ещё не началось. Первый урок откроется ${formatCourseDate(lessonOpensAt)}.`

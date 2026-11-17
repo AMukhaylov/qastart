@@ -11,6 +11,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { listAdminMeetings, updateAdminMeeting } from "@/server/meetings.functions";
 import { listAdminStudentGroups } from "@/server/student-groups.functions";
 import { listAdminStudentsAuth } from "@/server/students.functions";
+import {
+  formatMoscowDateTime,
+  fromMoscowDatetimeLocal,
+  toMoscowDatetimeLocal,
+} from "@/lib/moscow-time";
 
 export const Route = createFileRoute("/admin/meetings")({
   component: AdminMeetings,
@@ -19,32 +24,6 @@ export const Route = createFileRoute("/admin/meetings")({
 type Meeting = Awaited<ReturnType<typeof listAdminMeetings>>[number];
 type Group = Awaited<ReturnType<typeof listAdminStudentGroups>>[number];
 type Student = { id: string; full_name: string | null; login: string };
-
-function toDatetimeLocal(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
-}
-
-function fromDatetimeLocal(value: string) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString();
-}
-
-function formatMeetingDate(value: string | null) {
-  if (!value) return "Дата не указана";
-  return new Date(value).toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function AdminMeetings() {
   const { session, isAdmin } = useAuth();
@@ -104,6 +83,7 @@ function AdminMeetings() {
           title: meeting.title,
           description: meeting.description,
           meetingUrl: meeting.meeting_url,
+          recordingUrl: meeting.recording_url ?? "",
           startsAt: meeting.starts_at,
           isPublished: meeting.is_published,
           groupIds: (meeting.groupLinks ?? []).map((row: any) => row.group_id),
@@ -161,7 +141,7 @@ function AdminMeetings() {
                       Встреча {meeting.position}
                     </div>
                     <div className="mt-1 text-sm text-muted-foreground">
-                      {formatMeetingDate(meeting.starts_at)}
+                      {formatMoscowDateTime(meeting.starts_at)}
                     </div>
                   </div>
                 </div>
@@ -185,14 +165,15 @@ function AdminMeetings() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Дата и время</Label>
+                  <Label>Дата и время (МСК)</Label>
                   <Input
                     type="datetime-local"
-                    value={toDatetimeLocal(meeting.starts_at)}
+                    value={toMoscowDatetimeLocal(meeting.starts_at)}
                     onChange={(event) =>
-                      update(meeting.id, "starts_at", fromDatetimeLocal(event.target.value))
+                      update(meeting.id, "starts_at", fromMoscowDatetimeLocal(event.target.value))
                     }
                   />
+                  <p className="text-xs text-muted-foreground">Укажи время по Москве (UTC+3).</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Ссылка на встречу</Label>
@@ -201,6 +182,18 @@ function AdminMeetings() {
                     value={meeting.meeting_url}
                     onChange={(event) => update(meeting.id, "meeting_url", event.target.value)}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Ссылка на запись (Яндекс Диск)</Label>
+                  <Input
+                    type="url"
+                    placeholder="https://disk.yandex.ru/..."
+                    value={meeting.recording_url ?? ""}
+                    onChange={(event) => update(meeting.id, "recording_url", event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    После сохранения ученики увидят кнопку «Посмотреть запись».
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Описание для учеников</Label>

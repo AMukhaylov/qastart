@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { resolveLessonFeedbackRequirement } from "@/lib/lesson-feedback-validation";
+import { getFirstIncompletePrerequisiteDay } from "@/lib/lesson-sequence";
 
 export type StudentFeedbackPolicy = {
   isInGroup: boolean;
@@ -76,7 +77,7 @@ export async function isCourseFeedbackRequiredForStudent(userId: string) {
 }
 
 export async function getStudentSequenceLock(userId: string, dayNumber: number) {
-  if (dayNumber <= 1) return null;
+  if (dayNumber < 13) return null;
   const { data: previousLessons, error: lessonError } = await supabaseAdmin
     .from("lessons")
     .select("id,day_number")
@@ -86,71 +87,18 @@ export async function getStudentSequenceLock(userId: string, dayNumber: number) 
   if (lessonError) throw lessonError;
   if (!previousLessons?.length) return null;
   const lessonIds = previousLessons.map((lesson) => lesson.id);
-  const [
-    { data: progressRows, error: progressError },
-    { data: overrides, error: overridesError },
-    policy,
-  ] = await Promise.all([
-    supabaseAdmin
-      .from("lesson_progress")
-      .select("lesson_id")
-      .eq("user_id", userId)
-      .eq("completed", true)
-      .in("lesson_id", lessonIds),
-    supabaseAdmin
-      .from("lesson_feedback_settings")
-      .select("lesson_id,required_override")
-      .in("lesson_id", lessonIds),
-    getStudentFeedbackPolicy(userId),
-  ]);
+  const { data: progressRows, error: progressError } = await supabaseAdmin
+    .from("lesson_progress")
+    .select("lesson_id")
+    .eq("user_id", userId)
+    .eq("completed", true)
+    .in("lesson_id", lessonIds);
   if (progressError) throw progressError;
-  if (overridesError) throw overridesError;
-  const completed = new Set((progressRows ?? []).map((row) => row.lesson_id));
-  const overridesByLesson = new Map(
-    (overrides ?? []).map((row) => [row.lesson_id, row.required_override]),
+  const completedIds = new Set((progressRows ?? []).map((row) => row.lesson_id));
+  const previousLessonDay = getFirstIncompletePrerequisiteDay(
+    dayNumber,
+    previousLessons,
+    completedIds,
   );
-  const blockingLesson = previousLessons.find((lesson) => {
-    const required = resolveLessonFeedbackRequirement({
-      isInGroup: policy.isInGroup,
-      cohortRequired: policy.lessonRequired,
-      lessonOverride: overridesByLesson.get(lesson.id),
-    });
-    return required && !completed.has(lesson.id);
-  });
-  return blockingLesson ? { previousLessonDay: blockingLesson.day_number } : null;
-}
-
-export async function getStudentFeedbackProgressionDay(
-  userId: string,
-  scheduleDay: number,
-  lessons: Array<{ id: string; day_number: number }>,
-  completedLessonIds: Set<string>,
-) {
-  if (scheduleDay <= 0) return scheduleDay;
-  const availableLessons = [...lessons]
-    .filter((lesson) => lesson.day_number <= scheduleDay && lesson.day_number < 14)
-    .sort((a, b) => a.day_number - b.day_number);
-  if (!availableLessons.length) return scheduleDay;
-  const policy = await getStudentFeedbackPolicy(userId);
-  const { data: overrides, error } = await supabaseAdmin
-    .from("lesson_feedback_settings")
-    .select("lesson_id,required_override")
-    .in(
-      "lesson_id",
-      availableLessons.map((lesson) => lesson.id),
-    );
-  if (error) throw error;
-  const overridesByLesson = new Map(
-    (overrides ?? []).map((row) => [row.lesson_id, row.required_override]),
-  );
-  const firstIncompleteRequired = availableLessons.find(
-    (lesson) =>
-      !completedLessonIds.has(lesson.id) &&
-      resolveLessonFeedbackRequirement({
-        isInGroup: policy.isInGroup,
-        cohortRequired: policy.lessonRequired,
-        lessonOverride: overridesByLesson.get(lesson.id),
-      }),
-  );
-  return firstIncompleteRequired?.day_number ?? scheduleDay;
+  return previousLessonDay === null ? null : { previousLessonDay };
 }

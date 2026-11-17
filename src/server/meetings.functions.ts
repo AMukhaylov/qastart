@@ -9,17 +9,32 @@ import {
 } from "./admin-auth.server";
 
 const MEETING_SELECT =
-  "id,position,title,description,meeting_url,starts_at,is_published,created_at,updated_at";
+  "id,position,title,description,meeting_url,recording_url,starts_at,is_published,created_at,updated_at";
 
 const accessInput = z.object({
   accessToken: z.string().min(20),
 });
+
+function isHttpsUrl(value: string) {
+  if (!value) return true;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 const meetingInput = accessInput.extend({
   id: z.string().uuid(),
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(600),
   meetingUrl: z.string().trim().max(500),
+  recordingUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .refine(isHttpsUrl, "Укажи корректную ссылку, которая начинается с https://")
+    .transform((value) => value || null),
   startsAt: z.string().trim().max(80).nullable(),
   isPublished: z.boolean(),
   groupIds: z.array(z.string().uuid()).max(100).default([]),
@@ -151,6 +166,7 @@ export const updateAdminMeeting = createServerFn({ method: "POST" })
         title: data.title,
         description: data.description,
         meeting_url: data.meetingUrl,
+        recording_url: data.recordingUrl,
         starts_at: data.startsAt || null,
         is_published: data.isPublished,
       })

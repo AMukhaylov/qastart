@@ -84,4 +84,14 @@ test("new applications create realtime notifications for admins", () => {
     submission,
     /await notifyAdminsCourseApplication\(\{ id: application\.id, name: data\.name \}\)/,
   );
+
+  const notificationMigration = readFileSync(
+    new URL(
+      "../../supabase/migrations/20261117192211_add_meeting_recording_and_application_notification_type.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(notificationMigration, /course_application_submitted/);
+  assert.match(notificationMigration, /notifications_type_check/);
 });

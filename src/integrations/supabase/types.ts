@@ -180,6 +180,7 @@ export type Database = {
           id: string;
           is_published: boolean;
           meeting_url: string;
+          recording_url: string | null;
           position: number;
           starts_at: string | null;
           title: string;
@@ -191,6 +192,7 @@ export type Database = {
           id?: string;
           is_published?: boolean;
           meeting_url?: string;
+          recording_url?: string | null;
           position: number;
           starts_at?: string | null;
           title?: string;
@@ -202,6 +204,7 @@ export type Database = {
           id?: string;
           is_published?: boolean;
           meeting_url?: string;
+          recording_url?: string | null;
           position?: number;
           starts_at?: string | null;
           title?: string;

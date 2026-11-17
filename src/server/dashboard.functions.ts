@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getUserIdForAccessToken } from "./admin-auth.server";
 import { getCourseScheduleForUser } from "./course-schedule.server";
 import { buildHomeworkSnapshots, countHomeworkTimings } from "@/lib/course-homework";
-import { getStudentFeedbackProgressionDay } from "./lesson-feedback-policy.server";
+import { getAvailableCourseDay } from "@/lib/lesson-sequence";
 
 const accessInput = z.object({ accessToken: z.string().min(20) });
 
@@ -93,12 +93,7 @@ export const getStudentDashboardData = createServerFn({ method: "POST" })
     const completedIds = new Set((progress ?? []).map((item) => item.lesson_id));
     const availableDay = schedule.isAdmin
       ? 14
-      : await getStudentFeedbackProgressionDay(
-          userId,
-          schedule.currentDay,
-          lessons ?? [],
-          completedIds,
-        );
+      : getAvailableCourseDay(schedule.currentDay, lessons ?? [], completedIds);
     return {
       lessons: (lessons ?? []).map((lesson) =>
         allowedLessonIds.has(lesson.id) ? lesson : { ...lesson, homework_md: "" },
