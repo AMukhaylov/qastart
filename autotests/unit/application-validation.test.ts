@@ -63,3 +63,25 @@ test("application deletion requires admin authorization and a UUID", () => {
   );
   assert.match(server, /delete\(\)[\s\S]*?\.eq\("id", data\.id\)/);
 });
+
+test("new applications create realtime notifications for admins", () => {
+  const server = readFileSync(
+    new URL("../../src/server/notifications.server.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(server, /export async function notifyAdminsCourseApplication/);
+  assert.match(server, /\.eq\("role", "admin"\)/);
+  assert.match(server, /type: "course_application_submitted"/);
+  assert.match(server, /title: "Новая заявка на Поток 0"/);
+  assert.match(server, /link: "\/admin\/applications"/);
+  assert.match(server, /course_application:\$\{application\.id\}:admin:\$\{admin\.user_id\}/);
+
+  const submission = readFileSync(
+    new URL("../../src/server/applications.functions.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    submission,
+    /await notifyAdminsCourseApplication\(\{ id: application\.id, name: data\.name \}\)/,
+  );
+});

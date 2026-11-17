@@ -6,7 +6,8 @@ type NotificationType =
   | "homework_rework"
   | "homework_mentor_comment"
   | "homework_submitted"
-  | "homework_resubmitted";
+  | "homework_resubmitted"
+  | "course_application_submitted";
 
 type NotificationInput = {
   recipientUserId: string;
@@ -137,6 +138,32 @@ export async function notifyAdminsHomeworkSubmitted(
           lessonId: context.lessonId,
           studentId: context.userId,
           studentName,
+        },
+      }),
+    ),
+  );
+}
+
+export async function notifyAdminsCourseApplication(application: { id: string; name: string }) {
+  const { data: admins, error } = await supabaseAdmin
+    .from("user_roles")
+    .select("user_id")
+    .eq("role", "admin");
+  if (error) throw error;
+
+  await Promise.all(
+    (admins ?? []).map((admin) =>
+      createNotification({
+        recipientUserId: admin.user_id,
+        type: "course_application_submitted",
+        title: "Новая заявка на Поток 0",
+        body: `${application.name} оставил(а) заявку на бесплатное обучение.`,
+        link: "/admin/applications",
+        eventKey: `course_application:${application.id}:admin:${admin.user_id}`,
+        metadata: {
+          targetType: "course_application",
+          targetId: application.id,
+          applicantName: application.name,
         },
       }),
     ),

@@ -9,6 +9,7 @@ import {
   type ApplicationStatus,
 } from "@/lib/application-validation";
 import { getRolesForAccessToken } from "./admin-auth.server";
+import { notifyAdminsCourseApplication } from "./notifications.server";
 
 const accessTokenSchema = z.string().min(20);
 const utmValue = z
@@ -61,24 +62,34 @@ export const submitCourseApplication = createServerFn({ method: "POST" })
         throw new Error("Слишком много попыток. Попробуй отправить заявку через 10 минут.");
     }
 
-    const { error } = await supabaseAdmin.from("course_applications").insert({
-      name: data.name,
-      contact_type: data.contactType,
-      contact: data.contact,
-      normalized_contact: normalizeApplicationContact(data.contactType, data.contact),
-      status: "new",
-      utm_source: data.utmSource,
-      utm_medium: data.utmMedium,
-      utm_campaign: data.utmCampaign,
-      utm_term: data.utmTerm,
-      utm_content: data.utmContent,
-      consent_at: new Date().toISOString(),
-      consent_version: "2026-11-16",
-    });
+    const { data: application, error } = await supabaseAdmin
+      .from("course_applications")
+      .insert({
+        name: data.name,
+        contact_type: data.contactType,
+        contact: data.contact,
+        normalized_contact: normalizeApplicationContact(data.contactType, data.contact),
+        status: "new",
+        utm_source: data.utmSource,
+        utm_medium: data.utmMedium,
+        utm_campaign: data.utmCampaign,
+        utm_term: data.utmTerm,
+        utm_content: data.utmContent,
+        consent_at: new Date().toISOString(),
+        consent_version: "2026-11-16",
+      })
+      .select("id")
+      .single();
 
     // A unique normalized contact makes double taps and repeated applications idempotent.
     if (error?.code === "23505") return { accepted: true, duplicate: true };
     if (error) throw new Error("Не удалось отправить заявку. Попробуй ещё раз позже.");
+    try {
+      await notifyAdminsCourseApplication({ id: application.id, name: data.name });
+    } catch (notificationError) {
+      // The saved application remains accepted if the notification service is temporarily down.
+      console.error("Failed to notify admins about a course application", notificationError);
+    }
     return { accepted: true, duplicate: false };
   });
 
