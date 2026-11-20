@@ -1305,7 +1305,11 @@ function StudentForm({
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <FormInput label="Имя" value={form.firstName} onChange={field("firstName")} />
-        <FormInput label="Фамилия" value={form.lastName} onChange={field("lastName")} />
+        <FormInput
+          label="Фамилия (необязательно)"
+          value={form.lastName}
+          onChange={field("lastName")}
+        />
         <FormInput label="Логин" value={form.login} onChange={field("login")} />
         <PasswordInput
           label={form.userId ? "Новый пароль (необязательно)" : "Пароль"}

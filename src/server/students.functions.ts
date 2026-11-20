@@ -20,17 +20,38 @@ const loginSchema = z
   .regex(/^[a-zA-Z0-9_]+$/, "Используйте латинские буквы, цифры и _");
 const passwordSchema = z.string().min(10, "Пароль должен содержать минимум 10 символов").max(72);
 const nameSchema = z.string().trim().min(1, "Введите имя").max(60);
+const lastNameSchema = z
+  .string()
+  .trim()
+  .max(60, "Фамилия должна содержать не более 60 символов")
+  .optional()
+  .default("");
+
+function validateStudentInput<T extends z.ZodType>(schema: T, input: unknown): z.infer<T> {
+  const result = schema.safeParse(input);
+  if (result.success) return result.data;
+
+  const issue = result.error.issues[0];
+  if (issue?.path[0] === "lastName") {
+    throw new Error(
+      issue.code === "too_big"
+        ? "Фамилия должна содержать не более 60 символов"
+        : "Укажите фамилию текстом или оставьте поле пустым",
+    );
+  }
+  throw new Error(issue?.message ?? "Проверьте введённые данные");
+}
 
 const createStudentInput = adminAccessInput.extend({
   firstName: nameSchema,
-  lastName: nameSchema,
+  lastName: lastNameSchema,
   login: loginSchema,
   password: passwordSchema,
   courseStartDate: z.string().nullable().optional(),
 });
 const updateStudentInput = studentIdInput.extend({
   firstName: nameSchema,
-  lastName: nameSchema,
+  lastName: lastNameSchema,
   login: loginSchema,
   password: passwordSchema.optional().or(z.literal("")),
   courseStartDate: z.string().nullable().optional(),
@@ -330,12 +351,12 @@ export const listAdminStudentsOverview = createServerFn({ method: "POST" })
   });
 
 export const createAdminStudent = createServerFn({ method: "POST" })
-  .inputValidator((data) => createStudentInput.parse(data))
+  .inputValidator((data) => validateStudentInput(createStudentInput, data))
   .handler(async ({ data }) => {
     await assertAdmin(data.accessToken);
     const login = data.login.toLowerCase();
     await assertAvailableLogin(login);
-    const fullName = `${data.firstName.trim()} ${data.lastName.trim()}`;
+    const fullName = [data.firstName.trim(), data.lastName.trim()].filter(Boolean).join(" ");
     const courseStartAt = data.courseStartDate ? courseStartFromDate(data.courseStartDate) : null;
     const technicalEmail = `${login}.${randomHex(8)}@students.startqa.local`;
     const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
@@ -361,12 +382,12 @@ export const createAdminStudent = createServerFn({ method: "POST" })
   });
 
 export const updateAdminStudent = createServerFn({ method: "POST" })
-  .inputValidator((data) => updateStudentInput.parse(data))
+  .inputValidator((data) => validateStudentInput(updateStudentInput, data))
   .handler(async ({ data }) => {
     await assertAdmin(data.accessToken);
     const login = data.login.toLowerCase();
     await assertAvailableLogin(login, data.userId);
-    const fullName = `${data.firstName.trim()} ${data.lastName.trim()}`;
+    const fullName = [data.firstName.trim(), data.lastName.trim()].filter(Boolean).join(" ");
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("profiles")
       .select("course_start_at")
