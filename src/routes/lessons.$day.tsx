@@ -175,6 +175,7 @@ function LessonPage() {
   const [hwText, setHwText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [lessonAdminAccess, setLessonAdminAccess] = useState(false);
   const [locked, setLocked] = useState(false);
   const [sequenceLocked, setSequenceLocked] = useState(false);
@@ -250,6 +251,7 @@ function LessonPage() {
   async function load() {
     const requestId = ++lessonLoadRequestRef.current;
     setLoading(true);
+    setLoadError(false);
     setFinalQuizPassed(false);
     setSubmission(null);
     setMessages([]);
@@ -277,82 +279,88 @@ function LessonPage() {
       setLoading(false);
       return;
     }
-    const lessonData = await getStudentLessonData({
-      data: { accessToken: session.access_token, dayNumber: dayNum },
-    });
-    if (requestId !== lessonLoadRequestRef.current) return;
-    const hasAdminAccess = Boolean(lessonData.isAdmin);
-    setLessonAdminAccess(hasAdminAccess);
-    const l = lessonData.lesson;
-    if (!l) {
-      setLesson(null);
-      setCompleted(false);
-      setLocked(Boolean(lessonData.lock));
-      setSequenceLocked(Boolean(lessonData.lock?.sequenceLocked));
-      setPreviousLessonDay(lessonData.lock?.previousLessonDay ?? null);
-      setLessonOpensAt(lessonData.lock?.opensAt ?? null);
-      setCourseStartAt(lessonData.lock?.courseStartAt ?? null);
-      setAvailableDay(lessonData.currentDay);
-      setHwText("");
+    try {
+      const lessonData = await getStudentLessonData({
+        data: { accessToken: session.access_token, dayNumber: dayNum },
+      });
+      if (requestId !== lessonLoadRequestRef.current) return;
+      const hasAdminAccess = Boolean(lessonData.isAdmin);
+      setLessonAdminAccess(hasAdminAccess);
+      const l = lessonData.lesson;
+      if (!l) {
+        setLesson(null);
+        setCompleted(false);
+        setLocked(Boolean(lessonData.lock));
+        setSequenceLocked(Boolean(lessonData.lock?.sequenceLocked));
+        setPreviousLessonDay(lessonData.lock?.previousLessonDay ?? null);
+        setLessonOpensAt(lessonData.lock?.opensAt ?? null);
+        setCourseStartAt(lessonData.lock?.courseStartAt ?? null);
+        setAvailableDay(lessonData.currentDay);
+        setHwText("");
+        setLoading(false);
+        return;
+      }
+      setLesson(l as Lesson);
+      if (!hasAdminAccess) {
+        const feedbackState = await getStudentLessonFeedback({
+          data: { accessToken: session.access_token, lessonId: l.id },
+        });
+        if (requestId !== lessonLoadRequestRef.current) return;
+        setFeedbackEnabled(feedbackState.enabled);
+        setFeedbackRequired(feedbackState.required);
+        setFeedbackAvailable(feedbackState.available);
+        setFeedbackSubmitted(feedbackState.submitted || feedbackState.skipped);
+        setFeedbackSkipAllowed(feedbackState.allowSkip);
+        setFeedbackQuestions(feedbackState.questions);
+      }
+      if (dayNum === 14 && !hasAdminAccess) {
+        const courseFeedbackState = await getStudentCourseFeedback({
+          data: { accessToken: session.access_token },
+        });
+        if (requestId !== lessonLoadRequestRef.current) return;
+        setCourseFeedbackEnabled(courseFeedbackState.enabled || courseFeedbackState.submitted);
+        setCourseFeedbackRequired(courseFeedbackState.required);
+        setCourseFeedbackAvailable(courseFeedbackState.available);
+        setCourseFeedbackSubmitted(courseFeedbackState.submitted);
+        setCourseFeedbackQuestions(courseFeedbackState.questions);
+      } else {
+        setCourseFeedbackEnabled(false);
+        setCourseFeedbackRequired(false);
+        setCourseFeedbackAvailable(false);
+        setCourseFeedbackSubmitted(false);
+        setCourseFeedbackQuestions([]);
+        setCourseFeedbackAnswers({});
+      }
+      setCourseStartAt(lessonData.courseStartAt);
+      setAvailableDay(hasAdminAccess ? 14 : lessonData.currentDay);
+      const hasPassedFinalQuiz = Boolean(lessonData.finalQuizPassed);
+      setFinalQuizPassed(hasPassedFinalQuiz);
+      setCompleted(dayNum === 14 ? hasPassedFinalQuiz : Boolean(lessonData.progress?.completed));
+      setBlocks((lessonData.blocks ?? []) as LessonBlock[]);
+      setSavedQuestionAnswers(lessonData.savedQuestionAnswers ?? {});
+      const serverViewedIds = (lessonData.blockProgress ?? []).map((row) => row.block_id);
+      const queuedViewedIds =
+        typeof window === "undefined" || !user?.id
+          ? []
+          : readPendingProgressIds(window.localStorage, progressQueueKey(user.id, l.id));
+      setViewedBlockIds(Array.from(new Set([...serverViewedIds, ...queuedViewedIds])));
+      setSqlSandboxAttempts((lessonData.sqlSandboxAttempts ?? []) as SavedSqlSandboxAttempt[]);
+      if (lessonData.submission) {
+        const currentSubmission = lessonData.submission as Submission;
+        setSubmission(currentSubmission);
+        setHwText(currentSubmission.status === "rejected" ? "" : currentSubmission.content);
+        // Message history is secondary to lesson content. Load it after the
+        // lesson becomes interactive so a slow thread lookup cannot block study.
+        void loadMessages(currentSubmission, requestId);
+      } else {
+        setHwText("");
+      }
       setLoading(false);
-      return;
-    }
-    setLesson(l as Lesson);
-    if (!hasAdminAccess) {
-      const feedbackState = await getStudentLessonFeedback({
-        data: { accessToken: session.access_token, lessonId: l.id },
-      });
+    } catch {
       if (requestId !== lessonLoadRequestRef.current) return;
-      setFeedbackEnabled(feedbackState.enabled);
-      setFeedbackRequired(feedbackState.required);
-      setFeedbackAvailable(feedbackState.available);
-      setFeedbackSubmitted(feedbackState.submitted || feedbackState.skipped);
-      setFeedbackSkipAllowed(feedbackState.allowSkip);
-      setFeedbackQuestions(feedbackState.questions);
+      setLoadError(true);
+      setLoading(false);
     }
-    if (dayNum === 14 && !hasAdminAccess) {
-      const courseFeedbackState = await getStudentCourseFeedback({
-        data: { accessToken: session.access_token },
-      });
-      if (requestId !== lessonLoadRequestRef.current) return;
-      setCourseFeedbackEnabled(courseFeedbackState.enabled || courseFeedbackState.submitted);
-      setCourseFeedbackRequired(courseFeedbackState.required);
-      setCourseFeedbackAvailable(courseFeedbackState.available);
-      setCourseFeedbackSubmitted(courseFeedbackState.submitted);
-      setCourseFeedbackQuestions(courseFeedbackState.questions);
-    } else {
-      setCourseFeedbackEnabled(false);
-      setCourseFeedbackRequired(false);
-      setCourseFeedbackAvailable(false);
-      setCourseFeedbackSubmitted(false);
-      setCourseFeedbackQuestions([]);
-      setCourseFeedbackAnswers({});
-    }
-    setCourseStartAt(lessonData.courseStartAt);
-    setAvailableDay(hasAdminAccess ? 14 : lessonData.currentDay);
-    const hasPassedFinalQuiz = Boolean(lessonData.finalQuizPassed);
-    setFinalQuizPassed(hasPassedFinalQuiz);
-    setCompleted(dayNum === 14 ? hasPassedFinalQuiz : Boolean(lessonData.progress?.completed));
-    setBlocks((lessonData.blocks ?? []) as LessonBlock[]);
-    setSavedQuestionAnswers(lessonData.savedQuestionAnswers ?? {});
-    const serverViewedIds = (lessonData.blockProgress ?? []).map((row) => row.block_id);
-    const queuedViewedIds =
-      typeof window === "undefined" || !user?.id
-        ? []
-        : readPendingProgressIds(window.localStorage, progressQueueKey(user.id, l.id));
-    setViewedBlockIds(Array.from(new Set([...serverViewedIds, ...queuedViewedIds])));
-    setSqlSandboxAttempts((lessonData.sqlSandboxAttempts ?? []) as SavedSqlSandboxAttempt[]);
-    if (lessonData.submission) {
-      const currentSubmission = lessonData.submission as Submission;
-      setSubmission(currentSubmission);
-      setHwText(currentSubmission.status === "rejected" ? "" : currentSubmission.content);
-      // Message history is secondary to lesson content. Load it after the
-      // lesson becomes interactive so a slow thread lookup cannot block study.
-      void loadMessages(currentSubmission, requestId);
-    } else {
-      setHwText("");
-    }
-    setLoading(false);
   }
 
   async function markBlocksCompleted(blockIds: string[]) {
@@ -866,6 +874,20 @@ function LessonPage() {
               Подготавливаем материалы и твой прогресс.
             </p>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="max-w-md rounded-2xl border border-border bg-card p-8 shadow-[var(--shadow-soft)]">
+          <h1 className="text-xl font-extrabold">Не удалось загрузить урок</h1>
+          <p className="mt-2 text-muted-foreground">Проверь соединение и попробуй ещё раз.</p>
+          <Button className="mt-6" onClick={() => void load()}>
+            Повторить загрузку
+          </Button>
         </div>
       </div>
     );

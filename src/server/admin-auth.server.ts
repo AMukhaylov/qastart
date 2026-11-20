@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 export type AppRole = "admin" | "student";
 
 const VALID_ROLES: AppRole[] = ["admin", "student"];
-const DEFAULT_AUTH_ATTEMPTS = 4;
+const DEFAULT_AUTH_ATTEMPTS = 2;
 const AUTH_PAGE_SIZE = 1000;
 
 export type AuthUserSummary = {
@@ -42,10 +42,12 @@ export async function getUserIdForAccessToken(
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(accessToken);
-    const userId = userData.user?.id;
+    // getClaims verifies asymmetric JWT signatures using the project's cached JWKS,
+    // avoiding a round trip to Auth for every server function call.
+    const { data, error: userError } = await supabaseAdmin.auth.getClaims(accessToken);
+    const userId = data?.claims?.sub;
 
-    if (!userError && userId) return userId;
+    if (!userError && typeof userId === "string") return userId;
 
     lastError = userError ?? new Error("Не удалось проверить токен доступа");
     if (attempt < attempts) await wait(Math.min(700 * attempt, 3500));
