@@ -36,6 +36,7 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       return {
         lesson: null,
         lock: null,
+        isAdmin: false,
         progress: null,
         submission: null,
         blocks: [],
@@ -77,6 +78,11 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
           .eq("user_id", userId)
           .eq("lesson_id", lesson.id),
         supabaseAdmin
+          .from("lesson_question_answers")
+          .select("block_id,selected_indexes")
+          .eq("user_id", userId)
+          .eq("lesson_id", lesson.id),
+        supabaseAdmin
           .from("sql_sandbox_attempts")
           .select(
             "block_id,task_id,query_text,passed,passed_at,result_columns,result_rows,feedback",
@@ -98,6 +104,7 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       return {
         lesson: null,
         lock: { courseStartAt: access.courseStartAt, opensAt: access.opensAt },
+        isAdmin: access.isAdmin,
         progress: null,
         submission: null,
         blocks: [],
@@ -120,6 +127,7 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
           sequenceLocked: true,
           previousLessonDay: sequenceLock.previousLessonDay,
         },
+        isAdmin: access.isAdmin,
         progress: null,
         submission: null,
         blocks: [],
@@ -137,6 +145,7 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       { data: submission, error: submissionError },
       { data: blocks, error: blocksError },
       { data: blockProgress, error: blockProgressError },
+      { data: savedQuestionAnswers, error: savedQuestionAnswersError },
       { data: sqlSandboxAttempts, error: sqlSandboxAttemptsError },
       { data: passedFinalQuiz, error: passedFinalQuizError },
     ] = lessonRows;
@@ -146,6 +155,7 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       blocksError,
       blockProgressError,
       passedFinalQuizError,
+      savedQuestionAnswersError,
     ]) {
       if (error) throw error;
     }
@@ -171,12 +181,6 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
         feedback: verified.message,
       };
     });
-    const { data: savedQuestionAnswers, error: savedQuestionAnswersError } = await supabaseAdmin
-      .from("lesson_question_answers")
-      .select("block_id,selected_indexes")
-      .eq("user_id", userId)
-      .eq("lesson_id", lesson.id);
-    if (savedQuestionAnswersError) throw savedQuestionAnswersError;
     const lessonBlocksById = new Map((blocks ?? []).map((block) => [block.id, block]));
     const answeredQuestionIds = new Set(
       (savedQuestionAnswers ?? [])
@@ -225,6 +229,7 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
     return {
       lesson,
       lock: null,
+      isAdmin: access.isAdmin,
       progress,
       submission,
       blocks: (blocks ?? []).map((block) => hideSqlAnswerKeyFromStudent(block)),

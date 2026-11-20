@@ -139,7 +139,7 @@ function LessonPage() {
   const { day } = Route.useParams();
   const { focus } = Route.useSearch();
   const dayNum = parseInt(day, 10);
-  const { user, session, loading: authLoading, isAdmin, rolesLoading } = useAuth();
+  const { user, session, loading: authLoading, isAdmin } = useAuth();
   const navigate = useNavigate();
 
   const [lesson, setLesson] = useState<Lesson | null>(null);
@@ -175,6 +175,7 @@ function LessonPage() {
   const [hwText, setHwText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lessonAdminAccess, setLessonAdminAccess] = useState(false);
   const [locked, setLocked] = useState(false);
   const [sequenceLocked, setSequenceLocked] = useState(false);
   const [previousLessonDay, setPreviousLessonDay] = useState<number | null>(null);
@@ -193,6 +194,7 @@ function LessonPage() {
   const pendingBlockIdsRef = useRef(new Set<string>());
   const progressSyncInFlightRef = useRef(false);
   const sqlHomeworkCompletionAttemptsRef = useRef(new Set<string>());
+  const canPreviewAllLessons = isAdmin || lessonAdminAccess;
 
   const leaveFinalQuiz = (destination: "dashboard" | number) => {
     setFinalQuizExitDestination(destination);
@@ -237,13 +239,13 @@ function LessonPage() {
   }, [focus, lesson, loading, messages.length, submission]);
 
   useEffect(() => {
-    if (!user?.id || isNaN(dayNum) || rolesLoading) return;
-    const lessonKey = `${user.id}:${dayNum}:${isAdmin}`;
+    if (!user?.id || !session?.access_token || isNaN(dayNum)) return;
+    const lessonKey = `${user.id}:${dayNum}`;
     if (loadedLessonKeyRef.current === lessonKey) return;
     loadedLessonKeyRef.current = lessonKey;
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, dayNum, isAdmin, rolesLoading]);
+  }, [user?.id, session?.access_token, dayNum]);
 
   async function load() {
     const requestId = ++lessonLoadRequestRef.current;
@@ -269,6 +271,7 @@ function LessonPage() {
     setFeedbackSkipAllowed(false);
     setFeedbackQuestions([]);
     setFeedbackAnswers({});
+    setLessonAdminAccess(false);
 
     if (!session?.access_token) {
       setLoading(false);
@@ -278,6 +281,8 @@ function LessonPage() {
       data: { accessToken: session.access_token, dayNumber: dayNum },
     });
     if (requestId !== lessonLoadRequestRef.current) return;
+    const hasAdminAccess = Boolean(lessonData.isAdmin);
+    setLessonAdminAccess(hasAdminAccess);
     const l = lessonData.lesson;
     if (!l) {
       setLesson(null);
@@ -293,17 +298,19 @@ function LessonPage() {
       return;
     }
     setLesson(l as Lesson);
-    const feedbackState = await getStudentLessonFeedback({
-      data: { accessToken: session.access_token, lessonId: l.id },
-    });
-    if (requestId !== lessonLoadRequestRef.current) return;
-    setFeedbackEnabled(feedbackState.enabled);
-    setFeedbackRequired(feedbackState.required);
-    setFeedbackAvailable(feedbackState.available);
-    setFeedbackSubmitted(feedbackState.submitted || feedbackState.skipped);
-    setFeedbackSkipAllowed(feedbackState.allowSkip);
-    setFeedbackQuestions(feedbackState.questions);
-    if (dayNum === 14 && !isAdmin) {
+    if (!hasAdminAccess) {
+      const feedbackState = await getStudentLessonFeedback({
+        data: { accessToken: session.access_token, lessonId: l.id },
+      });
+      if (requestId !== lessonLoadRequestRef.current) return;
+      setFeedbackEnabled(feedbackState.enabled);
+      setFeedbackRequired(feedbackState.required);
+      setFeedbackAvailable(feedbackState.available);
+      setFeedbackSubmitted(feedbackState.submitted || feedbackState.skipped);
+      setFeedbackSkipAllowed(feedbackState.allowSkip);
+      setFeedbackQuestions(feedbackState.questions);
+    }
+    if (dayNum === 14 && !hasAdminAccess) {
       const courseFeedbackState = await getStudentCourseFeedback({
         data: { accessToken: session.access_token },
       });
@@ -322,7 +329,7 @@ function LessonPage() {
       setCourseFeedbackAnswers({});
     }
     setCourseStartAt(lessonData.courseStartAt);
-    setAvailableDay(isAdmin ? 14 : lessonData.currentDay);
+    setAvailableDay(hasAdminAccess ? 14 : lessonData.currentDay);
     const hasPassedFinalQuiz = Boolean(lessonData.finalQuizPassed);
     setFinalQuizPassed(hasPassedFinalQuiz);
     setCompleted(dayNum === 14 ? hasPassedFinalQuiz : Boolean(lessonData.progress?.completed));
@@ -846,7 +853,7 @@ function LessonPage() {
     return result;
   }
 
-  if (authLoading || rolesLoading || loading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-[var(--gradient-soft)] px-6 flex items-center justify-center">
         <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl border border-border bg-card p-8 text-center shadow-[var(--shadow-soft)]">
@@ -1033,7 +1040,7 @@ function LessonPage() {
             completedBlockIds={new Set(viewedBlockIds)}
             savedQuestionAnswers={savedQuestionAnswers}
             onBlocksCompleted={markBlocksCompleted}
-            onQuestionAnswered={isAdmin ? undefined : saveQuestionAnswer}
+            onQuestionAnswered={canPreviewAllLessons ? undefined : saveQuestionAnswer}
             legacyContent={lesson.content_md}
             lessonDay={lesson.day_number}
             lessonTitle={lesson.title}
@@ -1134,7 +1141,7 @@ function LessonPage() {
             </section>
           )}
 
-          {lesson.day_number === 14 && finalQuizPassed && !isAdmin && (
+          {lesson.day_number === 14 && finalQuizPassed && !canPreviewAllLessons && (
             <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-[var(--shadow-soft)] md:p-7">
               <LessonGuide
                 variant="success"
@@ -1144,7 +1151,7 @@ function LessonPage() {
             </section>
           )}
 
-          {courseFeedbackEnabled && courseFeedbackAvailable && !isAdmin && (
+          {courseFeedbackEnabled && courseFeedbackAvailable && !canPreviewAllLessons && (
             <section
               id="course-feedback"
               className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7"
@@ -1246,7 +1253,7 @@ function LessonPage() {
             </section>
           )}
 
-          {courseFeedbackSubmitted && !courseFeedbackRequired && !isAdmin && (
+          {courseFeedbackSubmitted && !courseFeedbackRequired && !canPreviewAllLessons && (
             <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
               Спасибо! Итоговый отзыв о курсе сохранён.
             </p>
@@ -1256,7 +1263,7 @@ function LessonPage() {
             !feedbackSubmitted &&
             feedbackAvailable &&
             (completed || feedbackRequired) &&
-            !isAdmin && (
+            !canPreviewAllLessons && (
               <section
                 id="lesson-feedback"
                 className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-soft)] sm:p-7"
@@ -1392,7 +1399,7 @@ function LessonPage() {
         </div>
       </main>
 
-      {!isAdmin &&
+      {!canPreviewAllLessons &&
         !loading &&
         lesson &&
         lesson.day_number === dayNum &&
