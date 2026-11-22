@@ -1631,7 +1631,7 @@ function BlockEditor({
         <Field label="Embed URL">
           <Input value={stringValue(c, "url")} onChange={(e) => set("url", e.target.value)} />
           <p className="text-xs text-muted-foreground">
-            Вставь адрес из src в адаптивном коде Kinescope, а не весь HTML-код.
+            Можно вставить ссылку плеера или полный адаптивный код Kinescope.
           </p>
         </Field>
         {simple("Описание", "description", true)}

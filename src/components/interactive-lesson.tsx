@@ -31,6 +31,7 @@ import {
   stringValue,
 } from "@/lib/interactive-lesson";
 import type { SqlSandboxConfig } from "@/lib/interactive-lesson";
+import { getSafeVideoEmbedUrl } from "@/lib/video-embed";
 
 const StateDiagramCanvas = lazy(() =>
   import("@/components/state-diagram").then((module) => ({ default: module.StateDiagramCanvas })),
@@ -439,7 +440,7 @@ function LessonBlockView({
       break;
     }
     case "video": {
-      const url = stringValue(c, "url");
+      const url = getSafeVideoEmbedUrl(stringValue(c, "url"));
       content = url ? (
         <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-2 px-5 py-4 font-bold">
