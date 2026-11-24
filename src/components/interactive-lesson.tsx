@@ -115,7 +115,11 @@ export function InteractiveLesson({
   renderFinalQuiz,
 }: InteractiveLessonProps) {
   const [completingStep, setCompletingStep] = useState<number | null>(null);
-  const steps = useMemo(() => createSteps(blocks), [blocks]);
+  const visibleBlocks = useMemo(
+    () => blocks.filter((block) => block.content.visible !== false),
+    [blocks],
+  );
+  const steps = useMemo(() => createSteps(visibleBlocks), [visibleBlocks]);
   const isStepCompleted = (step: LessonStep) =>
     step.blocks.filter(isBlockRequired).every((block) => completedBlockIds.has(block.id));
   const activeIndex = steps.findIndex((step) => !isStepCompleted(step));
@@ -156,6 +160,7 @@ export function InteractiveLesson({
       </article>
     ) : null;
   }
+  if (visibleBlocks.length === 0) return null;
 
   return (
     <div className="space-y-10 md:space-y-12">

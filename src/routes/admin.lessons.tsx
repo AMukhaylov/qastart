@@ -1919,7 +1919,11 @@ function BlockEditor({
           ? "homework_submitted"
           : "viewed";
   return (
-    <article className="rounded-2xl border border-border bg-muted/30 p-4">
+    <article
+      className={`rounded-2xl border border-border bg-muted/30 p-4 ${
+        c.visible === false ? "border-dashed opacity-70" : ""
+      }`}
+    >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1944,10 +1948,25 @@ function BlockEditor({
             <span className="rounded-full bg-primary-soft px-2 py-0.5 text-xs font-semibold text-primary">
               Часть {partNumber} из {totalParts}
             </span>
+            {c.visible === false && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                Скрыт у ученика
+              </span>
+            )}
           </div>
           <BlockPreview block={block} />
         </div>
         <div className="flex flex-wrap items-center gap-1">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={c.visible === false}
+              onChange={(event) => set("visible", !event.target.checked)}
+              aria-label="Скрыть блок у ученика"
+              title="Блок останется в редакторе, но ученики его не увидят"
+            />
+            Скрыть
+          </label>
           <Button
             size="sm"
             variant="soft"
@@ -1984,20 +2003,6 @@ function BlockEditor({
         <details className="mt-5 rounded-xl border border-border bg-background p-3">
           <summary className="cursor-pointer font-semibold">Настройки блока</summary>
           <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-muted/40 p-3">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={c.visible !== false}
-                onChange={(event) => set("visible", event.target.checked)}
-              />
-              <span>
-                <span className="block font-semibold">Показывать блок</span>
-                <span className="text-xs text-muted-foreground">
-                  Можно временно скрыть его без удаления.
-                </span>
-              </span>
-            </label>
             <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-background p-3">
               <input
                 type="checkbox"

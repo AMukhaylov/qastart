@@ -102,7 +102,7 @@ export const markLessonBlocksCompleted = createServerFn({ method: "POST" })
 
     for (const rawBlock of blocks) {
       const block = rawBlock as ProgressBlock;
-      if (!isAdmin && block.content.visible === false) return { saved: false };
+      if (!isAdmin && block.content.visible === false) continue;
       const condition = blockCompletionCondition(block);
       let valid = true;
       if (!isAdmin && condition === "question_answered") valid = answered.has(block.id);

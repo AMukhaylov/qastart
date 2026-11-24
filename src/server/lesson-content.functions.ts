@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import type { Json } from "@/integrations/supabase/types";
 import { getUserIdForAccessToken } from "./admin-auth.server";
 import { getLessonScheduleAccess } from "./course-schedule.server";
 import { getStudentSequenceLock } from "./lesson-feedback-policy.server";
@@ -165,29 +166,35 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
     ) {
       throw sqlSandboxAttemptsError;
     }
+    const allLessonBlocks = (blocks ?? []) as LessonBlock[];
+    const visibleLessonBlocks = allLessonBlocks.filter((block) => block.content.visible !== false);
     const verifiedSqlResults = await regradeStoredSqlAttempts(
-      (blocks ?? []) as LessonBlock[],
+      visibleLessonBlocks,
       sqlSandboxAttempts ?? [],
     );
-    const verifiedSqlAttempts = (sqlSandboxAttempts ?? []).map((attempt) => {
-      const verified = verifiedSqlResults.get(`${attempt.block_id}:${attempt.task_id}`);
-      if (!verified) return { ...attempt, passed: false, passed_at: null };
-      return {
-        ...attempt,
-        passed: verified.passed,
-        passed_at: verified.passed ? attempt.passed_at : null,
-        result_columns: verified.columns,
-        result_rows: verified.rows,
-        feedback: verified.message,
-      };
-    });
-    const lessonBlocksById = new Map((blocks ?? []).map((block) => [block.id, block]));
+    const verifiedSqlAttempts = (sqlSandboxAttempts ?? [])
+      .map((attempt) => {
+        const verified = verifiedSqlResults.get(`${attempt.block_id}:${attempt.task_id}`);
+        if (!verified) return { ...attempt, passed: false, passed_at: null };
+        return {
+          ...attempt,
+          passed: verified.passed,
+          passed_at: verified.passed ? attempt.passed_at : null,
+          result_columns: verified.columns,
+          result_rows: verified.rows,
+          feedback: verified.message,
+        };
+      })
+      .filter((attempt) => visibleLessonBlocks.some((block) => block.id === attempt.block_id));
+    const lessonBlocksById = new Map(allLessonBlocks.map((block) => [block.id, block]));
     const answeredQuestionIds = new Set(
       (savedQuestionAnswers ?? [])
         .filter((answer) => {
           const block = lessonBlocksById.get(answer.block_id);
           return Boolean(
-            block && isValidLessonQuestionSelection(block.content, answer.selected_indexes),
+            block &&
+            block.content.visible !== false &&
+            isValidLessonQuestionSelection(block.content, answer.selected_indexes),
           );
         })
         .map((answer) => answer.block_id),
@@ -197,7 +204,9 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
         .filter((answer) => {
           const block = lessonBlocksById.get(answer.block_id);
           return Boolean(
-            block && isValidLessonQuestionSelection(block.content, answer.selected_indexes),
+            block &&
+            block.content.visible !== false &&
+            isValidLessonQuestionSelection(block.content, answer.selected_indexes),
           );
         })
         .map((answer) => [answer.block_id, answer.selected_indexes as number[]]),
@@ -206,8 +215,11 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
     const completedBlockRows = blockProgress ?? [];
     const validProgressRows = [];
     for (const progressRow of completedBlockRows) {
-      const block = (blocks ?? []).find((item) => item.id === progressRow.block_id);
+      const block = allLessonBlocks.find((item) => item.id === progressRow.block_id);
       if (!block) continue;
+      // Preserve prior progress so it is available if the admin makes this
+      // block visible again, but do not expose hidden block progress to students.
+      if (block.content.visible === false) continue;
       const lessonBlock = block as LessonBlock;
       const condition = blockCompletionCondition(lessonBlock);
       let valid = true;
@@ -232,7 +244,13 @@ export const getStudentLessonData = createServerFn({ method: "POST" })
       isAdmin: access.isAdmin,
       progress,
       submission,
-      blocks: (blocks ?? []).map((block) => hideSqlAnswerKeyFromStudent(block)),
+      // Keep a metadata-only placeholder so the lesson renderer knows there
+      // are structured blocks even when every block is currently hidden.
+      blocks: allLessonBlocks.map((block) =>
+        block.content.visible === false
+          ? { ...block, content: { visible: false } }
+          : hideSqlAnswerKeyFromStudent(block as unknown as { block_type: string; content: Json }),
+      ),
       blockProgress: validProgressRows,
       savedQuestionAnswers: savedQuestionAnswerByBlockId,
       sqlSandboxAttempts: sqlSandboxAttemptsError ? [] : verifiedSqlAttempts,
