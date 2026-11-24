@@ -13,6 +13,7 @@ import { isValidLessonQuestionSelection } from "@/lib/lesson-question-answer";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getRolesForAccessToken, getUserIdForAccessToken } from "./admin-auth.server";
 import { hasPassedEverySqlTask } from "./sql-sandbox-assessment.server";
+import { homeworkMessageHasContent } from "@/lib/homework-message";
 import {
   notifyAdminsHomeworkSubmitted,
   notifyStudentHomeworkStatus,
@@ -33,7 +34,11 @@ const submitHomeworkInput = z.object({
   accessToken: z.string().min(20),
   lessonId: z.string().uuid(),
   submissionId: z.string().uuid().optional(),
-  content: z.string().trim().min(1).max(20_000),
+  content: z
+    .string()
+    .trim()
+    .max(20_000)
+    .refine(homeworkMessageHasContent, "Напиши ответ перед отправкой"),
   attachments: z.array(attachmentSchema).max(3).default([]),
 });
 
@@ -64,20 +69,28 @@ const reviewHomeworkInput = z.object({
 const answerHomeworkInput = z.object({
   accessToken: z.string().min(20),
   submissionId: z.string().uuid(),
-  feedback: z.string().trim().min(1).max(20_000),
+  feedback: z.string().trim().max(20_000).refine(homeworkMessageHasContent, "Напиши ответ ученику"),
   attachments: z.array(attachmentSchema).max(3).default([]),
 });
 
 const editHomeworkMessageInput = z.object({
   accessToken: z.string().min(20),
   messageId: z.string().uuid(),
-  body: z.string().trim().min(1).max(20_000),
+  body: z
+    .string()
+    .trim()
+    .max(20_000)
+    .refine(homeworkMessageHasContent, "Напиши комментарий перед сохранением"),
 });
 
 const askHomeworkQuestionInput = z.object({
   accessToken: z.string().min(20),
   submissionId: z.string().uuid(),
-  question: z.string().trim().min(1).max(20_000),
+  question: z
+    .string()
+    .trim()
+    .max(20_000)
+    .refine(homeworkMessageHasContent, "Напиши вопрос наставнику"),
   attachments: z.array(attachmentSchema).max(3).default([]),
 });
 
@@ -485,8 +498,8 @@ export const reviewHomeworkSubmission = createServerFn({ method: "POST" })
 
     const adminId = await getUserIdForAccessToken(data.accessToken);
 
-    const feedback = data.feedback.trim();
-    if (data.status === "rejected" && !feedback) {
+    const feedback = homeworkMessageHasContent(data.feedback) ? data.feedback.trim() : "";
+    if (data.status === "rejected" && !homeworkMessageHasContent(feedback)) {
       throw new Error("Комментарий обязателен при возврате на доработку");
     }
 

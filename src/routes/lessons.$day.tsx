@@ -18,6 +18,7 @@ import { Button, type ButtonProps } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { HomeworkMessageEditor } from "@/components/homework-message-editor";
 import { FinalQuiz } from "@/components/final-quiz";
 import { InteractiveLesson } from "@/components/interactive-lesson";
 import { LessonGuide } from "@/components/lesson-guide";
@@ -33,6 +34,7 @@ import { isBlockRequired, LessonBlock, stringValue } from "@/lib/interactive-les
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { homeworkMessageHasContent } from "@/lib/homework-message";
 import {
   progressQueueKey,
   queuePendingProgressIds,
@@ -800,7 +802,7 @@ function LessonPage() {
   }
 
   async function submitHomework() {
-    if (!lesson || !user || !hwText.trim()) return;
+    if (!lesson || !user || !homeworkMessageHasContent(hwText)) return;
     if (!session?.access_token) {
       toast.error("Не удалось подтвердить сессию. Войди заново");
       return;
@@ -1577,12 +1579,11 @@ function HomeworkSubmissionCard({
           <MessageHistory messages={messages} />
           {submission.status === "rejected" && (
             <div className="space-y-5 pt-2">
-              <Textarea
+              <HomeworkMessageEditor
+                label="Доработанный ответ ученика"
                 placeholder="Напиши доработанный ответ..."
                 value={hwText}
-                onChange={(event) => setHwText(event.target.value)}
-                rows={6}
-                className="resize-y"
+                onChange={setHwText}
               />
               <AttachmentPicker
                 attachments={attachments}
@@ -1592,7 +1593,7 @@ function HomeworkSubmissionCard({
               <Button
                 variant="hero"
                 onClick={onSubmit}
-                disabled={!canSubmit || !hwText.trim() || saving}
+                disabled={!canSubmit || !homeworkMessageHasContent(hwText) || saving}
               >
                 {saving ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1606,12 +1607,11 @@ function HomeworkSubmissionCard({
         </div>
       ) : (
         <div className="mt-6 space-y-3">
-          <Textarea
-            placeholder="Твой ответ..."
+          <HomeworkMessageEditor
+            label="Ответ ученика"
+            placeholder="Твой ответ... Выдели фрагмент и нажми B или I, чтобы его оформить."
             value={hwText}
-            onChange={(event) => setHwText(event.target.value)}
-            rows={6}
-            className="resize-y"
+            onChange={setHwText}
           />
           <AttachmentPicker
             attachments={attachments}
@@ -1621,7 +1621,7 @@ function HomeworkSubmissionCard({
           <Button
             variant="hero"
             onClick={onSubmit}
-            disabled={!canSubmit || !hwText.trim() || saving}
+            disabled={!canSubmit || !homeworkMessageHasContent(hwText) || saving}
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Отправить на проверку
@@ -1722,7 +1722,7 @@ function MessageHistory({ messages }: { messages: HomeworkMessage[] }) {
             </div>
             <span>{new Date(message.created_at).toLocaleString("ru-RU")}</span>
           </div>
-          {message.body && <div className="whitespace-pre-wrap">{message.body}</div>}
+          {message.body && <LessonRichContent content={message.body} />}
           {message.attachments?.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {message.attachments.map((file, index) => (

@@ -19,12 +19,14 @@ import {
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { HomeworkMessageEditor } from "@/components/homework-message-editor";
+import { LessonRichContent } from "@/components/lesson-rich-content";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { withRetry } from "@/lib/admin-diagnostics";
+import { homeworkMessageHasContent } from "@/lib/homework-message";
 import {
   answerHomeworkQuestion,
   editHomeworkMessage,
@@ -372,7 +374,7 @@ function AdminHomework() {
       return;
     }
     const fb = feedbacks[id]?.trim() ?? "";
-    if (status === "rejected" && !fb) {
+    if (status === "rejected" && !homeworkMessageHasContent(fb)) {
       toast.error("Добавь комментарий, что нужно доработать");
       return;
     }
@@ -404,7 +406,7 @@ function AdminHomework() {
       return;
     }
     const reply = feedbacks[id]?.trim() ?? "";
-    if (!reply) {
+    if (!homeworkMessageHasContent(reply)) {
       toast.error("Напиши ответ ученику");
       return;
     }
@@ -431,7 +433,7 @@ function AdminHomework() {
   }
 
   async function saveEditedMessage(message: HomeworkMessage) {
-    if (!session?.access_token || !editingMessageBody.trim()) return;
+    if (!session?.access_token || !homeworkMessageHasContent(editingMessageBody)) return;
     setUpdatingMessageId(message.id);
     try {
       const updated = await editHomeworkMessage({
@@ -690,15 +692,18 @@ function HomeworkDetail({
         <section className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-soft)]">
           <h2 className="text-xl font-extrabold">Проверка</h2>
           <div className="mt-4 space-y-3">
-            <Textarea
+            <HomeworkMessageEditor
+              label={
+                filter === "awaiting_mentor" ? "Ответ наставника ученику" : "Комментарий наставника"
+              }
               placeholder={
                 filter === "awaiting_mentor"
                   ? "Ответ ученику..."
-                  : "Комментарий наставника (обязателен при возврате на доработку)..."
+                  : "Комментарий обязателен при возврате на доработку."
               }
-              rows={4}
               value={feedback}
-              onChange={(e) => onFeedback(e.target.value)}
+              onChange={onFeedback}
+              rows="compact"
             />
             <AttachmentPicker
               attachments={attachments}
@@ -912,17 +917,21 @@ function MessageHistory({
           </div>
           {editingMessageId === message.id ? (
             <div className="space-y-2">
-              <Textarea
-                aria-label="Редактирование комментария наставника"
-                rows={4}
+              <HomeworkMessageEditor
+                label="Редактирование комментария наставника"
+                placeholder="Форматируй текст кнопками выше или добавь эмодзи."
                 value={editingMessageBody}
-                onChange={(event) => onEditedMessageChange(event.target.value)}
+                onChange={onEditedMessageChange}
+                rows="compact"
               />
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   onClick={() => onSaveEditedMessage(message)}
-                  disabled={!editingMessageBody.trim() || updatingMessageId === message.id}
+                  disabled={
+                    !homeworkMessageHasContent(editingMessageBody) ||
+                    updatingMessageId === message.id
+                  }
                 >
                   {updatingMessageId === message.id && <Loader2 className="h-4 w-4 animate-spin" />}
                   Сохранить
@@ -934,7 +943,7 @@ function MessageHistory({
             </div>
           ) : (
             <>
-              {message.body && <div className="whitespace-pre-wrap">{message.body}</div>}
+              {message.body && <LessonRichContent content={message.body} />}
               {message.author_role === "mentor" && message.author_id === currentUserId && (
                 <Button
                   size="sm"
