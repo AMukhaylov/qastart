@@ -6,6 +6,7 @@ import { getRolesForAccessToken } from "./admin-auth.server";
 
 const input = z.object({ accessToken: z.string().min(20) });
 const ANALYTICS_PAGE_SIZE = 1000;
+const EXCLUDED_ANALYTICS_LOGINS = new Set(["qastart_3937"]);
 
 async function fetchAllPages<T>(
   fetchPage: (
@@ -31,28 +32,42 @@ export const getAdminCourseAnalytics = createServerFn({ method: "POST" })
     const roles = await getRolesForAccessToken(data.accessToken);
     if (!roles.includes("admin")) throw new Error("Недостаточно прав");
 
-    const [roleRows, profiles, { data: lessons, error: lessonError }] = await Promise.all([
-      fetchAllPages((from, to) =>
-        supabaseAdmin
-          .from("user_roles")
-          .select("user_id")
-          .eq("role", "student")
-          .order("user_id")
-          .range(from, to),
-      ),
-      fetchAllPages((from, to) =>
-        supabaseAdmin
-          .from("profiles")
-          .select("id,full_name,login,created_at,course_start_at")
-          .order("id")
-          .range(from, to),
-      ),
-      supabaseAdmin.from("lessons").select("id,day_number,title,homework_md").order("day_number"),
-    ]);
+    const [roleRows, adminRows, profiles, { data: lessons, error: lessonError }] =
+      await Promise.all([
+        fetchAllPages((from, to) =>
+          supabaseAdmin
+            .from("user_roles")
+            .select("user_id")
+            .eq("role", "student")
+            .order("user_id")
+            .range(from, to),
+        ),
+        fetchAllPages((from, to) =>
+          supabaseAdmin
+            .from("user_roles")
+            .select("user_id")
+            .eq("role", "admin")
+            .order("user_id")
+            .range(from, to),
+        ),
+        fetchAllPages((from, to) =>
+          supabaseAdmin
+            .from("profiles")
+            .select("id,full_name,login,created_at,course_start_at")
+            .order("id")
+            .range(from, to),
+        ),
+        supabaseAdmin.from("lessons").select("id,day_number,title,homework_md").order("day_number"),
+      ]);
     if (lessonError) throw lessonError;
 
-    const studentIds = [...new Set((roleRows ?? []).map((row) => row.user_id))];
     const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
+    const adminIds = new Set((adminRows ?? []).map((row) => row.user_id));
+    // Admin accounts may also carry a legacy student role and test progress.
+    // The explicitly excluded test login must not affect cohort rates or totals.
+    const studentIds = [...new Set((roleRows ?? []).map((row) => row.user_id))].filter(
+      (id) => !adminIds.has(id) && !EXCLUDED_ANALYTICS_LOGINS.has(profileById.get(id)?.login ?? ""),
+    );
     const students = studentIds.map((id) => {
       const profile = profileById.get(id);
       return {
