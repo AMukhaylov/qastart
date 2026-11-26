@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, CheckCheck, Trash2, Volume2, VolumeX } from "lucide-react";
+import { Bell, BellRing, CheckCheck, Loader2, Trash2, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { getNotificationNavigationTarget } from "@/lib/notification-navigation";
+import { getWebPushPublicKey } from "@/server/push.functions";
 
 type AppNotification = {
   id: string;
@@ -60,12 +61,21 @@ function playNotificationSound(context: AudioContext | null) {
   }
 }
 
+function decodeVapidPublicKey(value: string) {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+  return Uint8Array.from(window.atob(padded), (character) => character.charCodeAt(0));
+}
+
 export function NotificationBell() {
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const pendingMeetingReminderSoundRef = useRef(false);
   const seenNotificationIdsRef = useRef<Set<string>>(new Set());
   const announcedNotificationIdsRef = useRef<Set<string>>(new Set());
   const soundEnabledRef = useRef(true);
@@ -109,7 +119,12 @@ export function NotificationBell() {
     soundEnabledRef.current = window.localStorage.getItem(SOUND_KEY) !== "off";
     const unlockAudio = () => {
       if (!audioContextRef.current) audioContextRef.current = createAudioContext();
-      void audioContextRef.current?.resume();
+      void audioContextRef.current?.resume().then(() => {
+        if (pendingMeetingReminderSoundRef.current && soundEnabledRef.current) {
+          pendingMeetingReminderSoundRef.current = false;
+          playNotificationSound(audioContextRef.current);
+        }
+      });
     };
     window.addEventListener("pointerdown", unlockAudio, { passive: true });
     window.addEventListener("keydown", unlockAudio, { passive: true });
@@ -135,6 +150,23 @@ export function NotificationBell() {
       if (!active || error) return;
       const nextItems = (data ?? []) as AppNotification[];
       nextItems.forEach((item) => seenNotificationIdsRef.current.add(item.id));
+      const recentUnreadMeetingReminders = nextItems.filter(
+        (item) =>
+          item.type === "meeting_reminder" &&
+          !item.read_at &&
+          !announcedNotificationIdsRef.current.has(item.id) &&
+          Date.now() - new Date(item.created_at).getTime() <= 30 * 60 * 1000,
+      );
+      if (recentUnreadMeetingReminders.length && soundEnabledRef.current) {
+        recentUnreadMeetingReminders.forEach((item) =>
+          announcedNotificationIdsRef.current.add(item.id),
+        );
+        if (audioContextRef.current?.state === "running") {
+          playNotificationSound(audioContextRef.current);
+        } else {
+          pendingMeetingReminderSoundRef.current = true;
+        }
+      }
       setItems(nextItems);
     };
     void refresh();
@@ -214,9 +246,9 @@ export function NotificationBell() {
   }, [openNotification, user?.id]);
 
   const unreadCount = useMemo(() => items.filter((item) => !item.read_at).length, [items]);
-  if (!user) return null;
 
   const markAllRead = async () => {
+    if (!user) return;
     const now = new Date().toISOString();
     setItems((current) => current.map((item) => ({ ...item, read_at: item.read_at ?? now })));
     await supabase
@@ -225,7 +257,82 @@ export function NotificationBell() {
       .eq("recipient_user_id", user.id)
       .is("read_at", null);
   };
+  const enablePushNotifications = async () => {
+    if (!user || pushBusy) return;
+    if (
+      !("serviceWorker" in navigator) ||
+      !("PushManager" in window) ||
+      !("Notification" in window)
+    ) {
+      toast.error("Этот браузер не поддерживает push-уведомления");
+      return;
+    }
+
+    setPushBusy(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session?.access_token) throw new Error("Войди в аккаунт заново");
+      const publicKey = await getWebPushPublicKey({
+        data: { accessToken: sessionData.session.access_token },
+      });
+      if (!publicKey) throw new Error("Push-уведомления пока не настроены на сервере");
+
+      const permission =
+        Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+      if (permission !== "granted")
+        throw new Error("Разреши уведомления для startqa.ru в браузере");
+
+      const registration = await navigator.serviceWorker.register("/notification-sw.js");
+      const existing = await registration.pushManager.getSubscription();
+      const subscription =
+        existing ??
+        (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: decodeVapidPublicKey(publicKey),
+        }));
+      const keys = subscription.toJSON().keys;
+      if (!keys?.p256dh || !keys.auth) throw new Error("Браузер не вернул ключи push-подписки");
+      const { error } = await supabase.from("web_push_subscriptions").upsert(
+        {
+          user_id: user.id,
+          endpoint: subscription.endpoint,
+          p256dh: keys.p256dh,
+          auth: keys.auth,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "endpoint" },
+      );
+      if (error) throw error;
+      setPushEnabled(true);
+      toast.success("Push-уведомления включены. Напоминания придут и при закрытой вкладке.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось включить push-уведомления");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!user?.id || !("serviceWorker" in navigator)) {
+      setPushEnabled(false);
+      return;
+    }
+    let active = true;
+    void navigator.serviceWorker
+      .getRegistration("/")
+      .then((registration) => registration?.pushManager.getSubscription())
+      .then((subscription) => {
+        if (active) setPushEnabled(Boolean(subscription));
+      })
+      .catch(() => {
+        if (active) setPushEnabled(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
   const clearNotifications = async () => {
+    if (!user) return;
     const previousItems = items;
     setItems([]);
     const { error } = await supabase
@@ -241,6 +348,8 @@ export function NotificationBell() {
     announcedNotificationIdsRef.current.clear();
     toast.success("Уведомления очищены");
   };
+
+  if (!user) return null;
 
   return (
     <DropdownMenu>
@@ -307,6 +416,22 @@ export function NotificationBell() {
           >
             {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />} Звук:{" "}
             {soundEnabled ? "вкл" : "выкл"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void enablePushNotifications()}
+            disabled={pushBusy || pushEnabled}
+            className="w-full justify-start"
+          >
+            {pushBusy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : pushEnabled ? (
+              <BellRing className="h-4 w-4 text-primary" />
+            ) : (
+              <Bell className="h-4 w-4" />
+            )}
+            {pushEnabled ? "Push-уведомления включены" : "Включить уведомления в фоне"}
           </Button>
         </div>
       </DropdownMenuContent>

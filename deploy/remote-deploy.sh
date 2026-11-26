@@ -121,6 +121,7 @@ if [[ -f "$APP_DIR/deploy/nginx-startqa.ru" ]]; then
 fi
 
 npm ci
+node deploy/ensure-vapid-keys.mjs
 npm run lint -- --ignore-pattern '**/.qastart-*/**'
 npm run typecheck
 npm run build

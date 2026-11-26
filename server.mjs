@@ -30,6 +30,7 @@ function loadEnvironmentFile() {
 }
 
 loadEnvironmentFile();
+const { startMeetingReminderScheduler } = await import("./deploy/meeting-reminders.mjs");
 const { default: app } = await import("./dist/server/server.js");
 
 const port = Number(process.env.PORT || 3000);
@@ -112,4 +113,5 @@ http
   })
   .listen(port, "127.0.0.1", () => {
     console.log(`qastart listening on http://127.0.0.1:${port}`);
+    startMeetingReminderScheduler();
   });
