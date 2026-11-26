@@ -78,6 +78,7 @@ function AdminFeedback() {
   const [saving, setSaving] = useState(false);
   const [savingCourseQuestions, setSavingCourseQuestions] = useState(false);
   const [studentFilter, setStudentFilter] = useState("");
+  const [feedbackLessonFilter, setFeedbackLessonFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [ratingFilter, setRatingFilter] = useState("");
@@ -141,7 +142,7 @@ function AdminFeedback() {
   const selectedFeedback = useMemo(
     () =>
       feedback.filter((item) => {
-        if (lessonId && item.lesson_id !== lessonId) return false;
+        if (feedbackLessonFilter && item.lesson_id !== feedbackLessonFilter) return false;
         const name =
           profileById.get(item.user_id)?.full_name ??
           profileById.get(item.user_id)?.login ??
@@ -156,7 +157,7 @@ function AdminFeedback() {
       }),
     [
       feedback,
-      lessonId,
+      feedbackLessonFilter,
       profileById,
       studentFilter,
       ratingFilter,
@@ -179,9 +180,20 @@ function AdminFeedback() {
     { length: 10 },
     (_, index) => selectedFeedback.filter((item) => item.rating === index + 1).length,
   );
-  const totalForLesson = useMemo(
-    () => feedback.filter((item) => item.lesson_id === lessonId).length,
-    [feedback, lessonId],
+  const feedbackQuestionLabelsByLesson = useMemo(
+    () =>
+      new Map(
+        lessons.map((lesson) => {
+          const setting = feedbackSettings.find((item) => item.lesson_id === lesson.id);
+          const lessonQuestions =
+            setting?.use_common_template === false ? (setting.questions ?? []) : commonTemplate;
+          return [
+            lesson.id,
+            new Map(lessonQuestions.map((question) => [question.id, question.label])),
+          ];
+        }),
+      ),
+    [lessons, feedbackSettings, commonTemplate],
   );
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
   const requiredLessonCount = lessons.filter((lesson) => {
@@ -863,8 +875,8 @@ function AdminFeedback() {
           <div>
             <h2 className="text-xl font-bold">Результаты</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Всего отзывов по уроку: {totalForLesson} · в выборке: {selectedFeedback.length} ·
-              средняя оценка: {selectedFeedback.length ? average.toFixed(1) : "—"} · медиана:{" "}
+              Всего отзывов: {feedback.length} · в выборке: {selectedFeedback.length} · средняя
+              оценка: {selectedFeedback.length ? average.toFixed(1) : "—"} · медиана:{" "}
               {median ?? "—"}
             </p>
           </div>
@@ -873,12 +885,25 @@ function AdminFeedback() {
             Экспорт CSV
           </Button>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <Input
             placeholder="Ученик"
             value={studentFilter}
             onChange={(event) => setStudentFilter(event.target.value)}
           />
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3"
+            value={feedbackLessonFilter}
+            onChange={(event) => setFeedbackLessonFilter(event.target.value)}
+            aria-label="Фильтр отзывов по уроку"
+          >
+            <option value="">Все уроки</option>
+            {lessons.map((lesson) => (
+              <option key={lesson.id} value={lesson.id}>
+                День {lesson.day_number}: {lesson.title}
+              </option>
+            ))}
+          </select>
           <Input
             type="date"
             value={dateFrom}
@@ -946,7 +971,7 @@ function AdminFeedback() {
             {Object.entries(item.answers ?? {}).map(([key, value]) => (
               <p key={key} className="text-sm">
                 <span className="font-medium">
-                  {questions.find((question) => question.id === key)?.label ?? key}:
+                  {feedbackQuestionLabelsByLesson.get(item.lesson_id)?.get(key) ?? key}:
                 </span>{" "}
                 {String(value)}
               </p>
