@@ -4,6 +4,7 @@ import webpush from "web-push";
 const REMINDER_MINUTES = [60, 15];
 const REMINDER_CATCH_UP_MS = 12 * 60 * 1000;
 const CHECK_INTERVAL_MS = 30 * 1000;
+const NETWORK_RETRY_DELAYS_MS = [1_000, 2_500];
 
 let schedulerStarted = false;
 let checkInProgress = false;
@@ -187,6 +188,23 @@ export async function runMeetingReminderCheck(now = new Date()) {
   return delivered;
 }
 
+function isTransientNetworkError(error) {
+  return error instanceof TypeError && error.message === "fetch failed";
+}
+
+async function runMeetingReminderCheckWithRetry() {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await runMeetingReminderCheck();
+    } catch (error) {
+      const retryDelay = NETWORK_RETRY_DELAYS_MS[attempt];
+      if (!retryDelay || !isTransientNetworkError(error)) throw error;
+      console.warn(`Meeting reminder network request failed; retrying (${attempt + 1}/2)`);
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    }
+  }
+}
+
 export function startMeetingReminderScheduler() {
   if (schedulerStarted) return;
   schedulerStarted = true;
@@ -194,7 +212,7 @@ export function startMeetingReminderScheduler() {
     if (checkInProgress) return;
     checkInProgress = true;
     try {
-      const count = await runMeetingReminderCheck();
+      const count = await runMeetingReminderCheckWithRetry();
       if (count) console.log(`Meeting reminder notifications processed: ${count}`);
     } catch (error) {
       console.error("Meeting reminder scheduler check failed", error?.message ?? error);

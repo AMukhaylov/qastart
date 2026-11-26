@@ -48,14 +48,25 @@ function createAudioContext() {
 function playNotificationSound(context: AudioContext | null) {
   if (!context || context.state !== "running") return;
   try {
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.frequency.value = 660;
-    gain.gain.setValueAtTime(0.04, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.12);
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start();
-    oscillator.stop(context.currentTime + 0.12);
+    const notes = [
+      { frequency: 660, start: 0, duration: 0.32 },
+      { frequency: 830, start: 0.28, duration: 0.32 },
+      { frequency: 990, start: 0.56, duration: 0.42 },
+    ];
+
+    notes.forEach(({ frequency, start, duration }) => {
+      const startsAt = context.currentTime + start;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, startsAt);
+      gain.gain.setValueAtTime(0.001, startsAt);
+      gain.gain.linearRampToValueAtTime(0.04, startsAt + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.001, startsAt + duration);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(startsAt);
+      oscillator.stop(startsAt + duration);
+    });
   } catch {
     // Sound is optional and must never prevent notification delivery.
   }
