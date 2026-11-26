@@ -1,6 +1,6 @@
 {
   "name": "tanstack_start_ts",
-  "version": "0.5.42",
+  "version": "0.5.43",
   "private": true,
   "sideEffects": false,
   "type": "module",
@@ -57,6 +57,7 @@
     "@tanstack/react-start": "1.168.60",
     "@tanstack/router-plugin": "1.168.42",
     "@tiptap/extension-link": "^3.31.4",
+    "@tiptap/extension-text-style": "3.31.4",
     "@tiptap/extension-underline": "^3.31.4",
     "@tiptap/react": "^3.31.4",
     "@tiptap/starter-kit": "^3.31.4",

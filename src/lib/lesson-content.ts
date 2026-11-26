@@ -17,22 +17,31 @@ const ALLOWED_TAGS = [
   "code",
   "pre",
   "a",
+  "span",
 ];
 
-const ALLOWED_ATTR = ["href", "target", "rel"];
+const ALLOWED_ATTR = ["href", "target", "rel", "style"];
 
 function isRichTextHtml(value: string) {
-  return /<\/?(?:p|br|h2|h3|strong|em|u|s|ul|ol|li|blockquote|code|pre|a)\b/i.test(value);
+  return /<\/?(?:p|br|h2|h3|strong|em|u|s|ul|ol|li|blockquote|code|pre|a|span)\b/i.test(value);
 }
 
 export function sanitizeLessonHtml(value: string) {
   if (typeof window === "undefined") return "";
 
-  return DOMPurify.sanitize(value, {
+  const sanitized = DOMPurify.sanitize(value, {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
     ALLOW_DATA_ATTR: false,
   });
+  const document = new DOMParser().parseFromString(sanitized, "text/html");
+  document.body.querySelectorAll("[style]").forEach((element) => {
+    const style = element.getAttribute("style")?.trim() ?? "";
+    if (element.tagName !== "SPAN" || !/^color:\s*#[\da-f]{6};?$/i.test(style)) {
+      element.removeAttribute("style");
+    }
+  });
+  return document.body.innerHTML;
 }
 
 export function lessonContentToHtml(value: string) {

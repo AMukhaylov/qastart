@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { useEffect, useState, type ReactNode } from "react";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Bold, Italic, Smile } from "lucide-react";
+import Link from "@tiptap/extension-link";
+import { Color, TextStyle } from "@tiptap/extension-text-style";
+import { Bold, Code, CodeXml, Italic, Link2, Palette, Quote, Smile, X } from "lucide-react";
 import { lessonContentToHtml, sanitizeLessonHtml } from "@/lib/lesson-content";
-import { homeworkMessageHasContent } from "@/lib/homework-message";
 
 const EMOJIS = ["😀", "🙂", "👍", "🎉", "✅", "🔍", "🚀", "💡", "🙏", "😕"];
 
@@ -15,6 +16,35 @@ type HomeworkMessageEditorProps = {
   rows?: "compact" | "regular";
 };
 
+function ToolbarButton({
+  editor,
+  label,
+  active = false,
+  onClick,
+  children,
+}: {
+  editor: Editor | null;
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      disabled={!editor}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
+      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40 ${active ? "bg-primary-soft text-primary" : ""}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function HomeworkMessageEditor({
   value,
   onChange,
@@ -25,7 +55,19 @@ export function HomeworkMessageEditor({
   const [showEmojis, setShowEmojis] = useState(false);
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [StarterKit.configure({ heading: { levels: [2, 3] }, link: false })],
+    extensions: [
+      StarterKit.configure({ heading: { levels: [2, 3] }, link: false }),
+      TextStyle,
+      Color,
+      Link.configure({
+        autolink: true,
+        linkOnPaste: true,
+        openOnClick: false,
+        protocols: ["http", "https", "mailto"],
+        defaultProtocol: "https",
+        HTMLAttributes: { target: "_blank", rel: "noopener noreferrer" },
+      }),
+    ],
     content: "",
     editorProps: {
       attributes: {
@@ -45,42 +87,108 @@ export function HomeworkMessageEditor({
     if (editor.getHTML() !== nextHtml) editor.commands.setContent(nextHtml, { emitUpdate: false });
   }, [editor, value]);
 
+  function setLink() {
+    if (!editor) return;
+    const currentUrl = editor.getAttributes("link").href as string | undefined;
+    const enteredUrl = window.prompt("Вставь ссылку", currentUrl ?? "");
+    if (enteredUrl === null) return;
+
+    const value = enteredUrl.trim();
+    if (!value) {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      return;
+    }
+
+    const url = /^(https?:\/\/|mailto:)/i.test(value) ? value : `https://${value}`;
+    try {
+      const parsed = new URL(url);
+      if (["http:", "https:", "mailto:"].includes(parsed.protocol)) {
+        editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+      }
+    } catch {
+      // Ignore invalid URLs instead of saving unsafe or malformed links.
+    }
+  }
+
   return (
     <div className="overflow-hidden rounded-xl border border-input bg-background shadow-sm focus-within:ring-2 focus-within:ring-ring/30">
       <div className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/40 p-1.5">
-        <button
-          type="button"
-          title="Жирный"
-          aria-label="Жирный"
-          aria-pressed={editor?.isActive("bold") ?? false}
-          onMouseDown={(event) => event.preventDefault()}
+        <ToolbarButton
+          editor={editor}
+          label="Жирный"
+          active={editor?.isActive("bold")}
           onClick={() => editor?.chain().focus().toggleBold().run()}
-          className={`inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground ${editor?.isActive("bold") ? "bg-primary-soft text-primary" : ""}`}
         >
           <Bold className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          title="Курсив"
-          aria-label="Курсив"
-          aria-pressed={editor?.isActive("italic") ?? false}
-          onMouseDown={(event) => event.preventDefault()}
+        </ToolbarButton>
+        <ToolbarButton
+          editor={editor}
+          label="Курсив"
+          active={editor?.isActive("italic")}
           onClick={() => editor?.chain().focus().toggleItalic().run()}
-          className={`inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground ${editor?.isActive("italic") ? "bg-primary-soft text-primary" : ""}`}
         >
           <Italic className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          title="Добавить эмодзи"
-          aria-label="Добавить эмодзи"
-          aria-expanded={showEmojis}
-          onMouseDown={(event) => event.preventDefault()}
+        </ToolbarButton>
+        <ToolbarButton
+          editor={editor}
+          label="Цитата"
+          active={editor?.isActive("blockquote")}
+          onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+        >
+          <Quote className="h-4 w-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          editor={editor}
+          label="Строка кода"
+          active={editor?.isActive("code")}
+          onClick={() => editor?.chain().focus().toggleCode().run()}
+        >
+          <Code className="h-4 w-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          editor={editor}
+          label="Блок кода"
+          active={editor?.isActive("codeBlock")}
+          onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
+        >
+          <CodeXml className="h-4 w-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          editor={editor}
+          label={editor?.isActive("link") ? "Изменить или удалить ссылку" : "Вставить ссылку"}
+          active={editor?.isActive("link")}
+          onClick={setLink}
+        >
+          <Link2 className="h-4 w-4" />
+        </ToolbarButton>
+        <label
+          title="Цвет текста"
+          className="relative inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <Palette className="h-4 w-4" />
+          <input
+            type="color"
+            aria-label="Цвет текста"
+            value={editor?.getAttributes("textStyle").color || "#1d4ed8"}
+            onChange={(event) => editor?.chain().focus().setColor(event.target.value).run()}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          />
+        </label>
+        <ToolbarButton
+          editor={editor}
+          label="Сбросить цвет текста"
+          onClick={() => editor?.chain().focus().unsetColor().run()}
+        >
+          <X className="h-4 w-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          editor={editor}
+          label="Добавить эмодзи"
+          active={showEmojis}
           onClick={() => setShowEmojis((open) => !open)}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <Smile className="h-4 w-4" />
-        </button>
+        </ToolbarButton>
         {showEmojis && (
           <div className="flex flex-wrap gap-1 border-l border-border pl-2" aria-label="Эмодзи">
             {EMOJIS.map((emoji) => (
@@ -102,9 +210,7 @@ export function HomeworkMessageEditor({
           </div>
         )}
       </div>
-      <div className="px-3 pt-2">
-        {placeholder && <p className="text-xs text-muted-foreground">{placeholder}</p>}
-      </div>
+      {placeholder && <p className="px-3 pt-2 text-xs text-muted-foreground">{placeholder}</p>}
       <EditorContent editor={editor} />
     </div>
   );
